@@ -1,92 +1,141 @@
-# Obsidian Sample Plugin
+# Finition — Répétitions dans Obsidian
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+Plugin Obsidian qui détecte les répétitions lexicales (même lemme répété
+à faible distance) et colore les mots concernés directement dans l'éditeur
+(Live Preview et mode Source), en live pendant la frappe.
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+## Principe
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
+- Tokenisation + filtrage des mots-outils
+- Détection de répétitions du même **lemme** dans une fenêtre glissante de
+  N caractères (réglable, 1500 par défaut)
+- Attribution de couleurs tournantes (une classe CSS parmi 20, reprises
+  telles quelles de `assets/chart-palette.yml` dans le repo `unshiter`,
+  pour rester visuellement cohérent avec les graphiques générés par
+  `analyse.sh`), avec recyclage des couleurs libérées une fois qu'un
+  groupe de répétition sort de la fenêtre
 
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open modal (simple)" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and outputs a Notice on click.
-- Registers a global interval which logs 'setInterval' to the console.
+## Limite assumée sur la lemmatisation
 
-## First time developing plugins?
+Une vraie lemmatisation contextuelle (désambiguïser "la" article vs
+pronom, par exemple) demande un pipeline NLP complet, trop lourd à
+embarquer dans un plugin Obsidian. Le plugin utilise à la place un
+**dictionnaire statique mot → lemme** (format `lexicon.json`), généré une
+fois par un script externe. Conséquences :
 
-Quick starting guide for new plugin devs:
+- Pas de désambiguïsation par catégorie grammaticale (un mot ambigu prend
+  toujours le même lemme, quel que soit son usage dans la phrase)
+- Les mots absents du dictionnaire (néologismes, noms propres) sont
+  traités comme leur propre lemme
+- Le filtrage des mots-outils se fait par liste de formes exactes, sans
+  filtrage par catégorie grammaticale
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `src/main.ts` to `main.js`.
-- Make changes to `src/main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+C'est une approximation raisonnable, sans dépendance lourde (pas de
+pipeline NLP, pas de venv) et compatible avec le bundle d'un plugin
+Obsidian classique.
 
-## Releasing new releases
+## Architecture du code (plugin/)
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
-
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
-
-## Adding your plugin to the community plugin list
-
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
-
-## How to use
-
-- Clone this repo.
-- Make sure your NodeJS is at least v18 (`node --version`).
-- `npm i` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
-
-## Manually installing the plugin
-
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
-
-## Improve code quality with eslint
-
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code.
-- This project already has eslint preconfigured, you can invoke a check by running`npm run lint`
-- Together with a custom eslint [plugin](https://github.com/obsidianmd/eslint-plugin) for Obsidan specific code guidelines.
-- A GitHub action is preconfigured to automatically lint every commit on all branches.
-
-## Funding URL
-
-You can include funding URLs where people who use your plugin can financially support it.
-
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
-
-```json
-{
-	"fundingUrl": "https://buymeacoffee.com"
-}
+```
+main.ts               orchestrateur : chargement des données/réglages,
+                       barre d'état, menu de mode exclusif
+types.ts               types partagés, réglages par défaut, FinitionRuntime
+editor-extension.ts    intégration CodeMirror 6 (décorations en direct)
+settings-tab.ts        onglet de réglages
+modes/
+  repetition.ts         algorithme "répétitions lexicales"
+  hedging.ts            algorithme "hedging épistémique"
 ```
 
-If you have multiple URLs, you can also do:
+Pour ajouter un futur mode (stéréotypes, burstiness...) : un nouveau
+fichier dans `modes/`, un cas ajouté dans `buildDecorations()` côté
+`editor-extension.ts`, une entrée de menu dans `main.ts` branchée sur
+`setMode("...")`, et une option dans le dropdown de `settings-tab.ts`.
 
-```json
-{
-	"fundingUrl": {
-		"Buy Me a Coffee": "https://buymeacoffee.com",
-		"GitHub Sponsor": "https://github.com/sponsors",
-		"Patreon": "https://www.patreon.com/"
-	}
-}
+## Mise en place
+
+### 1. Générer le dictionnaire lexical
+
+Le script `python-export/export_lemmas.py` fourni ici s'appuie sur un
+index Morphalou (forme → lemme) existant. Place-le dans
+`script/export/export_lemmas.py` de ton projet (il importe le package
+`detector/` qui vit dans `script/`), puis lance-le depuis la racine du
+projet :
+
+```sh
+venv/bin/python script/export/export_lemmas.py
 ```
 
-## API Documentation
+Pas besoin de `-m` ni de variable `PYTHONPATH` : le script s'ajoute
+lui-même `script/` à son `sys.path` avant d'importer `detector`.
 
-See https://docs.obsidian.md
+Cela produit trois fichiers dans `obsidian-plugin/data/` :
+- `lexicon.json` (mot → lemme, uniquement les formes où mot ≠ lemme)
+- `function-words.json` (liste à plat des mots-outils)
+- `epistemic-hedging.json` (locutions de prudence épistémique, pour le mode « Prudence épistémique »)
+
+Copie-les ensuite dans `data/` du plugin (voir structure ci-dessous).
+
+### 2. Builder le plugin
+
+```sh
+cd unshiter-obsidian/plugin
+npm install
+npm run build
+```
+
+### 3. Installer dans ton vault
+
+Copie `main.js`, `manifest.json`, `styles.css` et le dossier `data/`
+(avec `lexicon.json`, `function-words.json` et `epistemic-hedging.json`) dans :
+
+```
+<ton-vault>/.obsidian/plugins/finition/
+```
+
+Active le plugin dans Obsidian (Réglages → Plugins communautaires).
+
+## Point d'entrée : la note de musique dans la barre d'état (Finition)
+
+Une icône ♪ apparaît dans la barre d'état en bas d'Obsidian. Cliquer dessus
+ouvre un menu de choix du mode d'analyse actif, **mutuellement exclusifs** :
+activer un mode désactive automatiquement les autres (cumuler les
+surlignages rendrait le texte illisible et serait inutilement coûteux à
+calculer en direct). Recliquer sur le mode déjà actif l'éteint.
+
+- **Répétitions** — détection par lemme sur une fenêtre glissante
+- **Prudence épistémique** — surligne les locutions de prudence rhétorique
+  (« il semblerait que », « dans une certaine mesure »...), par simple
+  correspondance de locutions sur `epistemic-hedging.json`
+- **Stéréotypes (non portable en JS)** — grisé en permanence : dépend de
+  l'analyse syntaxique spaCy (dépendances, morphologie verbale) côté
+  Python, pas d'équivalent léger en JS
+- **Burstiness (bientôt)** — entrée grisée, en attente de portage
+
+Ajouter un mode futur revient à ajouter une entrée de menu + son propre
+calcul de surlignage, relié à `plugin.setMode(...)`, sans toucher à
+l'architecture générale.
+
+L'icône est atténuée quand aucun mode n'est actif, pleine opacité sinon.
+
+## Réglages disponibles
+
+- **Mode actif** (menu déroulant : Aucun / Répétitions / ...),
+  redondant avec le clic sur l'icône de la barre d'état, les deux restent
+  synchronisés
+- **Empan de répétition** en caractères, réglable (équivalent du 3ᵉ
+  argument `empan_caracteres` de `analyse.sh`) — **1500 par défaut**
+- Longueur minimale des mots pris en compte
+
+## Limites connues de ce scaffold v0.1
+
+- Document entier recalculé à chaque frappe (debouncé), pas d'analyse par
+  fenêtre de viewport → à affiner pour les très longs documents
+  (garde-fou actuel : désactivation au-delà de 200 000 caractères)
+- Pas encore de visualisation des autres métriques (stéréotypes,
+  ternaires) — seulement les répétitions et la prudence épistémique. La même
+  architecture (regex/dictionnaire → Decoration.mark) s'étend facilement
+  si tu veux les ajouter ensuite.
+- Licence Morphalou (LGPL-LR) : vérifie qu'elle autorise la redistribution
+  du dictionnaire dérivé dans un plugin public avant publication sur la
+  Community Plugins d'Obsidian.
