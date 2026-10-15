@@ -1,7 +1,7 @@
 {
 	"name": "finition",
 	"version": "0.1.0",
-	"description": "Finition — plugin Obsidian de surlignage des répétitions lexicales",
+	"description": "Finition — plugin Obsidian d'aide à l'écriture",
 	"main": "main.js",
 	"scripts": {
 		"css": "node build-css.mjs",
