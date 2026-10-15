@@ -1,8 +1,6 @@
-# Finition — Répétitions dans Obsidian
+# Finition
 
-Plugin Obsidian qui détecte les répétitions lexicales (même lemme répété
-à faible distance) et colore les mots concernés directement dans l'éditeur
-(Live Preview et mode Source), en live pendant la frappe.
+Un plugin pour fignoler vos textes : traque les répétitions, les stéréotypes, les lieux communs, les phrases de longueur semblable en cascade…
 
 ## Principe
 
@@ -43,8 +41,12 @@ types.ts               types partagés, réglages par défaut, FinitionRuntime
 editor-extension.ts    intégration CodeMirror 6 (décorations en direct)
 settings-tab.ts        onglet de réglages
 modes/
-  repetition.ts         algorithme "répétitions lexicales"
-  hedging.ts            algorithme "hedging épistémique"
+  tokenize.ts           tokenisation partagée (répétitions + stéréotypes)
+  repetition.ts         algorithme "répétitions"
+  hedging.ts            algorithme "prudence épistémique"
+  stereotype.ts         algorithme "stéréotypes" (séquences de lemmes)
+  burstiness.ts         algorithme "burstiness" (séries de phrases)
+  ternary.ts            algorithme "ternaires" (signatures grammaticales)
 ```
 
 Pour ajouter un futur mode (stéréotypes, burstiness...) : un nouveau
@@ -107,10 +109,16 @@ calculer en direct). Recliquer sur le mode déjà actif l'éteint.
 - **Prudence épistémique** — surligne les locutions de prudence rhétorique
   (« il semblerait que », « dans une certaine mesure »...), par simple
   correspondance de locutions sur `epistemic-hedging.json`
-- **Stéréotypes (non portable en JS)** — grisé en permanence : dépend de
-  l'analyse syntaxique spaCy (dépendances, morphologie verbale) côté
-  Python, pas d'équivalent léger en JS
-- **Burstiness (bientôt)** — entrée grisée, en attente de portage
+- **Stéréotypes** — repère les lieux communs et clichés corporels/émotionnels
+  (« serrer les poings », « le cœur s'emballer »...) par comparaison de
+  séquences de lemmes avec `stereotypes.json`
+- **Burstiness** — repère les séries de phrases consécutives de longueur
+  perceptiblement proche (tolérance Weber-Fechner), sans dictionnaire
+- **Ternaires** — repère les séquences de trois groupes parallèles séparés
+  par virgule et/ou « et »/« ou »/« ni », de même signature grammaticale
+  (déterminant/préposition/pronom/relatif/auxiliaire/mot plein) ; port
+  simplifié de `ternary_char_ranges()` (sans le filtre spaCy annexe qui
+  écarte certains faux positifs de qualification binaire)
 
 Ajouter un mode futur revient à ajouter une entrée de menu + son propre
 calcul de surlignage, relié à `plugin.setMode(...)`, sans toucher à
@@ -132,10 +140,10 @@ L'icône est atténuée quand aucun mode n'est actif, pleine opacité sinon.
 - Document entier recalculé à chaque frappe (debouncé), pas d'analyse par
   fenêtre de viewport → à affiner pour les très longs documents
   (garde-fou actuel : désactivation au-delà de 200 000 caractères)
-- Pas encore de visualisation des autres métriques (stéréotypes,
-  ternaires) — seulement les répétitions et la prudence épistémique. La même
-  architecture (regex/dictionnaire → Decoration.mark) s'étend facilement
-  si tu veux les ajouter ensuite.
+- Mode ternaires : porté sans le filtre spaCy annexe de l'original Python
+  (`_ternary_is_binary_qualification`), donc légèrement plus de faux
+  positifs sur les cas de qualification binaire (ex. « grand et beau,
+  intelligent »).
 - Licence Morphalou (LGPL-LR) : vérifie qu'elle autorise la redistribution
   du dictionnaire dérivé dans un plugin public avant publication sur la
   Community Plugins d'Obsidian.

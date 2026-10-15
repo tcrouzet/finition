@@ -27,6 +27,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 					.addOption("hedging", "Prudence épistémique")
 					.addOption("stereotype", "Stéréotypes")
 					.addOption("burstiness", "Burstiness")
+					.addOption("ternary", "Ternaires")
 					.setValue(this.plugin.settings.mode)
 					.onChange(async (value) => {
 						this.plugin.settings.mode = value as FinitionMode;

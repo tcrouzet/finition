@@ -15,6 +15,7 @@ import { computeRepetitions } from "./modes/repetition";
 import { computeHedgingHighlights } from "./modes/hedging";
 import { computeStereotypeHighlights } from "./modes/stereotype";
 import { computeBurstinessHighlights } from "./modes/burstiness";
+import { computeTernaryHighlights } from "./modes/ternary";
 
 /** Classe CSS appliquée aux occurrences du lemme actuellement sélectionné au clic. */
 const FOCUS_CLASS = "finition-focused";
@@ -45,6 +46,10 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 			const base = `finition-burst finition-burst-${highlight.colorIndex}`;
 			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
 		};
+	} else if (runtime.settings.mode === "ternary") {
+		highlights = computeTernaryHighlights(text);
+		cssClass = (highlight) =>
+			highlight.lemma === focusedLemma ? `finition-ternary ${FOCUS_CLASS}` : "finition-ternary";
 	} else {
 		return Decoration.none;
 	}

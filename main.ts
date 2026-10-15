@@ -161,12 +161,13 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				.onClick(() => this.setMode("burstiness"))
 		);
 
-		menu.addSeparator();
-
-		// Les ternaires ne sont pas portables en JS sans un vrai parseur
-		// syntaxique (ils dépendent de l'analyse de dépendances spaCy côté
-		// Python). Laissés ici en rappel, pas prévus à court terme.
-		menu.addItem((item) => item.setTitle("Ternaires (non portable en JS)").setIcon("git-branch").setDisabled(true));
+		menu.addItem((item) =>
+			item
+				.setTitle("Ternaires")
+				.setIcon("git-branch")
+				.setChecked(this.settings.mode === "ternary")
+				.onClick(() => this.setMode("ternary"))
+		);
 
 		menu.showAtMouseEvent(evt);
 	}

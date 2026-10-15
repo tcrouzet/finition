@@ -1,0 +1,32 @@
+/*
+ * Palette de couleurs du mode "Répétitions" — FICHIER À TOI, JAMAIS TOUCHÉ
+ * PAR L'AGENT. Modifie les couleurs ici librement, aucune autre édition de
+ * styles.base.css ne viendra l'écraser.
+ *
+ * Reprise à l'origine telle quelle de assets/chart-palette.yml (dans le
+ * repo unshiter), pour rester visuellement cohérent avec les graphiques
+ * générés par analyse.sh. "ia" (gris) n'est pas repris ici : réservé aux
+ * textes générés par IA dans les rapports Unshiter, pas d'usage pour les
+ * répétitions. L'index de couleur calculé en JS (color % 20) retombe sur
+ * une de ces 20 classes.
+ */
+.finition-color-0 { background: #d13c36; }  /* color01 — rouge vermillon */
+.finition-color-1 { background: #3478b8; }  /* color02 — bleu moyen */
+.finition-color-2 { background: #57a052; }  /* color03 — vert feuille */
+.finition-color-3 { background: #8b55a2; }  /* color04 — violet */
+.finition-color-4 { background: #e19a2d; }  /* color05 — orange ocre */
+.finition-color-5 { background: #2b9b9b; }  /* color06 — turquoise */
+.finition-color-6 { background: #c45b87; }  /* color07 — rose framboise */
+.finition-color-7 { background: #263f70; color: #f5f5f5; } /* color08 — bleu nuit */
+.finition-color-8 { background: #3d8f87; }  /* color09 — vert canard */
+.finition-color-9 { background: #c99a2e; }  /* color10 — jaune doré */
+.finition-color-10 { background: #e47763; } /* color11 — corail */
+.finition-color-11 { background: #9a83bd; } /* color12 — lavande */
+.finition-color-12 { background: #7b8738; } /* color13 — olive */
+.finition-color-13 { background: #5fa8d3; } /* color14 — bleu ciel */
+.finition-color-14 { background: #713f66; color: #f5f5f5; } /* color15 — prune */
+.finition-color-15 { background: #78b89b; } /* color16 — menthe */
+.finition-color-16 { background: #a64b3c; color: #f5f5f5; } /* color17 — brique */
+.finition-color-17 { background: #64748b; color: #f5f5f5; } /* color18 — gris ardoise */
+.finition-color-18 { background: #81543d; color: #f5f5f5; } /* color19 — chocolat */
+.finition-color-19 { background: #4a2c20; color: #f5f5f5; } /* color20 — brun très sombre */

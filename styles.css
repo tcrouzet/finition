@@ -68,6 +68,14 @@
 .finition-burst-3 { background: #fff6cc; color: #1a1a1a; } /* légèrement plus long */
 .finition-burst-4 { background: #ffd9cc; color: #1a1a1a; } /* nettement plus long */
 
+.finition-ternary {
+	border-radius: 3px;
+	padding: 0 0.05em;
+	cursor: help;
+	background: #8b55a2; /* color04 — violet, cf. .finition-color-3 */
+	color: #f5f5f5;
+}
+
 /*
  * Au clic sur une occurrence surlignée, toutes les occurrences du même
  * groupe (même lemme, ou même locution pour la prudence épistémique)

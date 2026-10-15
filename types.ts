@@ -13,7 +13,7 @@
  * (cumuler les surlignages rendrait le texte illisible et serait coûteux
  * à calculer en direct). "none" = aucun surlignage.
  */
-export type FinitionMode = "none" | "repetition" | "hedging" | "stereotype" | "burstiness";
+export type FinitionMode = "none" | "repetition" | "hedging" | "stereotype" | "burstiness" | "ternary";
 
 /** Nombre de classes de couleur disponibles dans styles.css (.finition-color-0 à -19). */
 export const PALETTE_SIZE = 20;

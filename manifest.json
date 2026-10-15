@@ -3,7 +3,7 @@
 	"name": "Finition",
 	"version": "0.1.0",
 	"minAppVersion": "1.4.0",
-	"description": "Un plugin pour fignoler vos textes : traque les répétitions, les stéréotypes, les lieux communs, les phrases de longueur semblable en cascade…",
+	"description": "Un plugin Obsidian pour fignoler vos textes : traque les répétitions, les stéréotypes, les lieux communs, les phrases de longueur semblable en cascade…",
 	"author": "Thierry Crouzet",
 	"authorUrl": "https://tcrouzet.com",
 	"isDesktopOnly": false
