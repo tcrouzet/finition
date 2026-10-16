@@ -6,6 +6,27 @@
  * chargé par Obsidian — ne pas l'éditer à la main, il est régénéré).
  */
 
+/* Grille "Palette" des réglages : juste le sélecteur de couleur + le menu
+   déroulant pour chacune des 16 couleurs, en grille compacte (pas une
+   Setting par ligne : pas de bordure ni de fond empilés). */
+.finition-palette-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+	gap: 0.4em 1em;
+	margin-top: 0.5em;
+}
+/* Couleur, puis le menu déroulant de fonction (qui affiche déjà sa valeur
+   sélectionnée avec ses flèches). */
+.finition-palette-item {
+	display: flex;
+	align-items: center;
+	gap: 0.6em;
+}
+.finition-palette-item select {
+	flex: 1;
+	min-width: 0;
+}
+
 .finition-repeat {
 	border-radius: 3px;
 	padding: 0 0.05em;
@@ -13,19 +34,21 @@
 	color: #1a1a1a;
 }
 
+/* Pas de couleur fixe : voir finition-color-N (cf. palette.css), choisie
+   dans les réglages ("Palette" → "Prudence épistémique"). */
 .finition-hedging {
 	border-radius: 3px;
 	padding: 0 0.05em;
 	cursor: help;
-	background: #e19a2d;
 	color: #1a1a1a;
 }
 
+/* Pas de couleur fixe : voir finition-color-N (cf. palette.css), choisie
+   dans les réglages ("Palette" → "Stéréotypes"). */
 .finition-stereotype {
 	border-radius: 3px;
 	padding: 0 0.05em;
 	cursor: help;
-	background: #3d8f87; /* color09 — vert canard, cf. .finition-color-8 */
 	color: #1a1a1a;
 }
 
@@ -47,12 +70,36 @@
 .finition-burst-3 { background: #fff6cc; color: #1a1a1a; } /* légèrement plus long */
 .finition-burst-4 { background: #ffd9cc; color: #1a1a1a; } /* nettement plus long */
 
+/* Pas de couleur fixe : voir finition-color-N (cf. palette.css), choisie
+   dans les réglages ("Palette" → "Ternaires"). */
 .finition-ternary {
 	border-radius: 3px;
 	padding: 0 0.05em;
 	cursor: help;
-	background: #8b55a2; /* color04 — violet, cf. .finition-color-3 dans palette.css */
-	color: #f5f5f5;
+	color: #1a1a1a;
+}
+
+/*
+ * Pas de couleur fixe : chaque séquence détectée reçoit une couleur
+ * tournante (.finition-color-N, cf. palette.css), comme pour les
+ * répétitions, pour voir d'un coup d'œil quels groupes sont rapprochés
+ * les uns des autres (une séquence = une couleur, un seul groupe par
+ * couleur n'a aucun sens).
+ */
+.finition-cadence {
+	border-radius: 3px;
+	padding: 0 0.05em;
+	cursor: help;
+	color: #1a1a1a;
+}
+
+/* Pas de couleur fixe : voir finition-color-N (cf. palette.css), choisie
+   dans les réglages ("Palette" → "Charnières"). */
+.finition-hinge {
+	border-radius: 3px;
+	padding: 0 0.05em;
+	cursor: help;
+	color: #1a1a1a;
 }
 
 /*
@@ -97,3 +144,5 @@
 	font-family: var(--font-monospace);
 	resize: vertical;
 }
+
+

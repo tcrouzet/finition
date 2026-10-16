@@ -3,6 +3,15 @@
 import { Highlight, PALETTE_SIZE } from "../types";
 import { tokenize } from "./tokenize";
 
+// Un titre Markdown ("#", "##"...) n'est pas une phrase rédigée : un mot répété
+// entre un titre et le corps du texte (ou entre deux titres) ne doit jamais être
+// surligné. On neutralise les lignes de titre en les remplaçant par des espaces
+// de même longueur, pour ne pas décaler les positions des mots restants.
+const MARKDOWN_HEADING_RE = /^#{1,6}[ \t].*$/gm;
+function blankMarkdownHeadings(text: string): string {
+	return text.replace(MARKDOWN_HEADING_RE, (line) => " ".repeat(line.length));
+}
+
 /** Détecte les répétitions lexicales par lemme dans une fenêtre glissante de `span` caractères. */
 export function computeRepetitions(
 	text: string,
@@ -12,7 +21,7 @@ export function computeRepetitions(
 ): Highlight[] {
 	// La tokenisation (découpage en mots + résolution de lemme, élisions
 	// comprises) est partagée avec le mode "stéréotypes" : voir tokenize.ts.
-	const tokens = tokenize(text, lexicon).filter(
+	const tokens = tokenize(blankMarkdownHeadings(text), lexicon).filter(
 		(token) => !functionWords.has(token.form) && !functionWords.has(token.lemma)
 	);
 

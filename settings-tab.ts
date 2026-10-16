@@ -1,6 +1,15 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, ColorComponent, DropdownComponent, PluginSettingTab, Setting } from "obsidian";
 import type FinitionPlugin from "./main";
 import { DEFAULT_SETTINGS, FinitionMode, parseStopWords } from "./types";
+
+type ColorFunctionKey = "hedgingColorIndex" | "stereotypeColorIndex" | "ternaryColorIndex" | "hingeColorIndex";
+
+const COLOR_FUNCTIONS: Array<{ key: ColorFunctionKey; label: string }> = [
+	{ key: "hedgingColorIndex", label: "Atténuation" },
+	{ key: "stereotypeColorIndex", label: "Stéréotypes" },
+	{ key: "ternaryColorIndex", label: "Ternaires" },
+	{ key: "hingeColorIndex", label: "Charnières" },
+];
 
 export class FinitionSettingTab extends PluginSettingTab {
 	plugin: FinitionPlugin;
@@ -18,16 +27,18 @@ export class FinitionSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Mode actif")
 			.setDesc(
-				"Un seul mode à la fois (cumuler les surlignages serait illisible). Équivalent du menu ouvert en cliquant sur la note de musique dans la barre d'état."
+				"Équivalent du menu ouvert en cliquant sur la note de musique dans la barre d'état."
 			)
 			.addDropdown((dropdown) =>
 				dropdown
 					.addOption("none", "Aucun")
 					.addOption("repetition", "Répétitions")
-					.addOption("hedging", "Prudence épistémique")
+					.addOption("hedging", "Atténuation")
 					.addOption("stereotype", "Stéréotypes")
 					.addOption("burstiness", "Burstiness")
 					.addOption("ternary", "Ternaires")
+					.addOption("cadence", "Cadence")
+					.addOption("hinges", "Charnières")
 					.setValue(this.plugin.settings.mode)
 					.onChange(async (value) => {
 						this.plugin.settings.mode = value as FinitionMode;
@@ -50,6 +61,25 @@ export class FinitionSettingTab extends PluginSettingTab {
 						const parsed = Number(value);
 						if (!Number.isNaN(parsed) && parsed > 0) {
 							this.plugin.settings.span = parsed;
+							await this.plugin.saveSettings();
+							this.plugin.refreshAllEditors();
+						}
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Empan de cadence (caractères)")
+			.setDesc("Deux phrases de même structure rythmique séparées de moins de cette distance sont considérées comme une cadence.")
+			.addText((text) => {
+				text.inputEl.type = "number";
+				text.inputEl.min = "1";
+				text
+					.setPlaceholder(String(DEFAULT_SETTINGS.cadenceSpan))
+					.setValue(String(this.plugin.settings.cadenceSpan))
+					.onChange(async (value) => {
+						const parsed = Number(value);
+						if (!Number.isNaN(parsed) && parsed > 0) {
+							this.plugin.settings.cadenceSpan = parsed;
 							await this.plugin.saveSettings();
 							this.plugin.refreshAllEditors();
 						}
@@ -111,7 +141,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Mots-outils (stop words)")
+			.setName("Mots-outils")
 			.setDesc(
 				"Mots exclus de la détection de répétitions (articles, pronoms, prépositions...). Sépare-les par des espaces et/ou des virgules. Modifier cette liste remplace définitivement celle fournie par défaut."
 			)
@@ -131,7 +161,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 		new Setting(containerEl).addButton((button) =>
 			button
 				.setButtonText("Réinitialiser les mots-outils")
-				.setTooltip("Revenir à la liste chargée depuis data/function-words.json")
+				.setTooltip("Revenir à la liste par défaut")
 				.onClick(async () => {
 					this.plugin.settings.customStopWords = null;
 					await this.plugin.loadLexiconData();
@@ -140,5 +170,38 @@ export class FinitionSettingTab extends PluginSettingTab {
 					this.display();
 				})
 		);
+
+		containerEl.createEl("h3", { text: "Palette" });
+
+		// Grille compacte : pour chaque couleur, juste 1) le sélecteur de
+		// couleur natif (cercle, qui affiche la couleur actuelle) puis 2) le
+		// menu déroulant d'association à une fonction (qui affiche lui-même
+		// la valeur sélectionnée avec ses flèches). Pas de code hexa affiché,
+		// pas de Setting (qui empile une bordure/un fond par ligne et donne
+		// cet effet de blocs gris).
+		const grid = containerEl.createDiv({ cls: "finition-palette-grid" });
+
+		this.plugin.settings.palette.forEach((hex, index) => {
+			const assigned = COLOR_FUNCTIONS.find((f) => this.plugin.settings[f.key] === index);
+			const item = grid.createDiv({ cls: "finition-palette-item" });
+
+			new ColorComponent(item).setValue(hex).onChange(async (value) => {
+				this.plugin.settings.palette[index] = value;
+				await this.plugin.saveSettings();
+				this.plugin.refreshAllEditors();
+			});
+
+			const dropdown = new DropdownComponent(item);
+			dropdown.addOption("none", "—");
+			COLOR_FUNCTIONS.forEach((f) => dropdown.addOption(f.key, f.label));
+			dropdown.setValue(assigned ? assigned.key : "none");
+			dropdown.onChange(async (value) => {
+				if (value === "none") return; // retrait : réassigne la fonction à une autre couleur à la place
+				this.plugin.settings[value as ColorFunctionKey] = index;
+				await this.plugin.saveSettings();
+				this.plugin.refreshAllEditors();
+				this.display(); // réaffiche pour mettre à jour les autres menus déroulants (fonction réassignée)
+			});
+		});
 	}
 }

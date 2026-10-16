@@ -16,6 +16,8 @@ import { computeHedgingHighlights } from "./modes/hedging";
 import { computeStereotypeHighlights } from "./modes/stereotype";
 import { computeBurstinessHighlights } from "./modes/burstiness";
 import { computeTernaryHighlights } from "./modes/ternary";
+import { computeCadenceHighlights } from "./modes/cadence";
+import { computeHingeHighlights } from "./modes/hinges";
 
 /** Classe CSS appliquée aux occurrences du lemme actuellement sélectionné au clic. */
 const FOCUS_CLASS = "finition-focused";
@@ -35,11 +37,16 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 		};
 	} else if (runtime.settings.mode === "hedging") {
 		highlights = computeHedgingHighlights(text, runtime.hedgingPhrases);
-		cssClass = (highlight) => (highlight.lemma === focusedLemma ? `finition-hedging ${FOCUS_CLASS}` : "finition-hedging");
+		cssClass = (highlight) => {
+			const base = `finition-hedging finition-color-${runtime.settings.hedgingColorIndex}`;
+			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
+		};
 	} else if (runtime.settings.mode === "stereotype") {
 		highlights = computeStereotypeHighlights(text, runtime.lexicon, runtime.functionWords, runtime.stereotypePatterns);
-		cssClass = (highlight) =>
-			highlight.lemma === focusedLemma ? `finition-stereotype ${FOCUS_CLASS}` : "finition-stereotype";
+		cssClass = (highlight) => {
+			const base = `finition-stereotype finition-color-${runtime.settings.stereotypeColorIndex}`;
+			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
+		};
 	} else if (runtime.settings.mode === "burstiness") {
 		highlights = computeBurstinessHighlights(text, runtime.settings.burstThreshold, runtime.settings.burstToleranceK);
 		cssClass = (highlight) => {
@@ -48,8 +55,22 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 		};
 	} else if (runtime.settings.mode === "ternary") {
 		highlights = computeTernaryHighlights(text);
-		cssClass = (highlight) =>
-			highlight.lemma === focusedLemma ? `finition-ternary ${FOCUS_CLASS}` : "finition-ternary";
+		cssClass = (highlight) => {
+			const base = `finition-ternary finition-color-${runtime.settings.ternaryColorIndex}`;
+			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
+		};
+	} else if (runtime.settings.mode === "cadence") {
+		highlights = computeCadenceHighlights(text, runtime.settings.cadenceSpan, runtime.syntaxHinges);
+		cssClass = (highlight) => {
+			const base = `finition-cadence finition-color-${highlight.colorIndex}`;
+			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
+		};
+	} else if (runtime.settings.mode === "hinges") {
+		highlights = computeHingeHighlights(text, runtime.syntaxHinges);
+		cssClass = (highlight) => {
+			const base = `finition-hinge finition-color-${runtime.settings.hingeColorIndex}`;
+			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
+		};
 	} else {
 		return Decoration.none;
 	}
