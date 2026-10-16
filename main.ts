@@ -13,7 +13,7 @@
 
 import { Menu, MarkdownView, Plugin, setIcon } from "obsidian";
 import { EditorView } from "@codemirror/view";
-import { DEFAULT_SETTINGS, FinitionMode, FinitionRuntime, FinitionSettings, parseStopWords } from "./types";
+import { DEFAULT_PALETTE, DEFAULT_SETTINGS, FinitionMode, FinitionRuntime, FinitionSettings, parseStopWords } from "./types";
 import { finitionEditorExtension } from "./editor-extension";
 import { FinitionSettingTab } from "./settings-tab";
 
@@ -58,6 +58,34 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 	async loadSettings(): Promise<void> {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		if (this.migrateLegacyPaletteOrder()) {
+			await this.saveData(this.settings); // persiste la migration, une seule fois
+		}
+	}
+
+	/**
+	 * Migration automatique, une seule fois : si la palette sauvegardée
+	 * correspond exactement à l'ancien ordre par défaut (celui d'avant la
+	 * mise en progression chromatique), on la remplace par le nouvel ordre.
+	 * Si l'utilisateur a modifié ne serait-ce qu'une couleur, les tableaux
+	 * ne correspondent plus et rien n'est touché — pas de risque d'écraser
+	 * une personnalisation volontaire. Renvoie true si une migration a eu
+	 * lieu (pour savoir s'il faut persister le résultat).
+	 */
+	private migrateLegacyPaletteOrder(): boolean {
+		const legacyOrder = [
+			"#d2edf7", "#ebecec", "#c6ecc3", "#e6c9f2", "#fefda8", "#f9e4bb",
+			"#f6a9c9", "#b1c7f3", "#b6f3ed", "#f5e1a8", "#f5c3bb", "#c1adde",
+			"#e8eec3", "#9ad8fb", "#c9daf2", "#a8e6cf",
+		];
+		const current = this.settings.palette.map((hex) => hex.toLowerCase());
+		const matchesLegacy =
+			current.length === legacyOrder.length && current.every((hex, i) => hex === legacyOrder[i]);
+		if (matchesLegacy) {
+			this.settings.palette = [...DEFAULT_PALETTE];
+			return true;
+		}
+		return false;
 	}
 
 	async saveSettings(): Promise<void> {
@@ -104,9 +132,17 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.syntaxHinges = syntaxHingesData as string[];
 	}
 
-	/** Liste actuelle des mots-outils, triée, pour pré-remplir le champ d'édition. */
+	/**
+	 * Liste actuelle des mots-outils, triée, pour pré-remplir le champ
+	 * d'édition — sans les mots déjà exclus automatiquement par le seuil
+	 * `repetitionMinLength` (pas la peine de les afficher comme "mots-outils"
+	 * puisqu'ils ne seraient de toute façon jamais comptés comme répétition).
+	 */
 	stopWordsAsText(): string {
-		return Array.from(this.functionWords).sort().join(", ");
+		return Array.from(this.functionWords)
+			.filter((word) => word.length > this.settings.repetitionMinLength)
+			.sort()
+			.join(", ");
 	}
 
 	/**
@@ -166,7 +202,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 		menu.addItem((item) =>
 			item
-				.setTitle("Burstiness")
+				.setTitle("Monotonie")
 				.setIcon("activity")
 				.setChecked(this.settings.mode === "burstiness")
 				.onClick(() => this.setMode("burstiness"))
@@ -174,7 +210,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 		menu.addItem((item) =>
 			item
-				.setTitle("Ternaires")
+				.setTitle("Tricolon")
 				.setIcon("git-branch")
 				.setChecked(this.settings.mode === "ternary")
 				.onClick(() => this.setMode("ternary"))

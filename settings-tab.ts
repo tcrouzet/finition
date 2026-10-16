@@ -7,7 +7,7 @@ type ColorFunctionKey = "hedgingColorIndex" | "stereotypeColorIndex" | "ternaryC
 const COLOR_FUNCTIONS: Array<{ key: ColorFunctionKey; label: string }> = [
 	{ key: "hedgingColorIndex", label: "Atténuation" },
 	{ key: "stereotypeColorIndex", label: "Stéréotypes" },
-	{ key: "ternaryColorIndex", label: "Ternaires" },
+	{ key: "ternaryColorIndex", label: "Tricolon" },
 	{ key: "hingeColorIndex", label: "Charnières" },
 ];
 
@@ -35,8 +35,8 @@ export class FinitionSettingTab extends PluginSettingTab {
 					.addOption("repetition", "Répétitions")
 					.addOption("hedging", "Atténuation")
 					.addOption("stereotype", "Stéréotypes")
-					.addOption("burstiness", "Burstiness")
-					.addOption("ternary", "Ternaires")
+					.addOption("burstiness", "Monotonie")
+					.addOption("ternary", "Tricolon")
 					.addOption("cadence", "Cadence")
 					.addOption("hinges", "Charnières")
 					.setValue(this.plugin.settings.mode)
@@ -47,6 +47,21 @@ export class FinitionSettingTab extends PluginSettingTab {
 						this.plugin.refreshAllEditors();
 					})
 			);
+
+		new Setting(containerEl)
+			.setName("Taille maximale de document analysé")
+			.setDesc("Garde-fou de performance : au-delà de cette taille (caractères), le surlignage est désactivé.")
+			.addText((text) =>
+				text.setValue(String(this.plugin.settings.maxDocumentLength)).onChange(async (value) => {
+					const parsed = Number(value);
+					if (!Number.isNaN(parsed) && parsed > 0) {
+						this.plugin.settings.maxDocumentLength = parsed;
+						await this.plugin.saveSettings();
+					}
+				})
+			);
+
+		containerEl.createEl("h3", { text: "Répétition" });
 
 		new Setting(containerEl)
 			.setName("Empan de répétition (caractères)")
@@ -68,6 +83,59 @@ export class FinitionSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
+			.setName("Longueur minimale d'un mot (caractères)")
+			.setDesc("Un mot de cette longueur ou moins n'est jamais compté comme répétition, même s'il revient souvent (ex. \"et\", \"ou\", \"si\").")
+			.addText((text) => {
+				text.inputEl.type = "number";
+				text.inputEl.min = "0";
+				text
+					.setPlaceholder(String(DEFAULT_SETTINGS.repetitionMinLength))
+					.setValue(String(this.plugin.settings.repetitionMinLength))
+					.onChange(async (value) => {
+						const parsed = Number(value);
+						if (!Number.isNaN(parsed) && parsed >= 0) {
+							this.plugin.settings.repetitionMinLength = parsed;
+							await this.plugin.saveSettings();
+							this.plugin.refreshAllEditors();
+							this.display(); // réaffiche les mots-outils sans ceux désormais filtrés par le seuil
+						}
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Mots-outils")
+			.setDesc(
+				"Mots exclus de la détection de répétitions (articles, pronoms, prépositions...). Sépare-les par des espaces et/ou des virgules. Modifier cette liste remplace définitivement celle fournie par défaut."
+			)
+			.setClass("finition-stopwords-setting")
+			.addTextArea((textArea) => {
+				textArea.inputEl.rows = 10;
+				textArea.inputEl.addClass("finition-stop-words-textarea");
+				textArea.setValue(this.plugin.settings.customStopWords ?? this.plugin.stopWordsAsText());
+				textArea.onChange(async (value) => {
+					this.plugin.settings.customStopWords = value;
+					this.plugin.functionWords = parseStopWords(value);
+					await this.plugin.saveSettings();
+					this.plugin.refreshAllEditors();
+				});
+			});
+
+		new Setting(containerEl).addButton((button) =>
+			button
+				.setButtonText("Réinitialiser les mots-outils")
+				.setTooltip("Revenir à la liste par défaut")
+				.onClick(async () => {
+					this.plugin.settings.customStopWords = null;
+					await this.plugin.loadLexiconData();
+					await this.plugin.saveSettings();
+					this.plugin.refreshAllEditors();
+					this.display();
+				})
+		);
+
+		containerEl.createEl("h3", { text: "Cadence" });
+
+		new Setting(containerEl)
 			.setName("Empan de cadence (caractères)")
 			.setDesc("Deux phrases de même structure rythmique séparées de moins de cette distance sont considérées comme une cadence.")
 			.addText((text) => {
@@ -86,7 +154,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 					});
 			});
 
-		containerEl.createEl("h3", { text: "Burstiness" });
+		containerEl.createEl("h3", { text: "Monotonie" });
 
 		new Setting(containerEl)
 			.setName("Longueur minimale d'une série (en phrases)")
@@ -128,50 +196,6 @@ export class FinitionSettingTab extends PluginSettingTab {
 						}
 					});
 			});
-
-		new Setting(containerEl)
-			.setName("Taille maximale de document analysé")
-			.setDesc("Garde-fou de performance : au-delà de cette taille (caractères), le surlignage est désactivé.")
-			.addText((text) =>
-				text.setValue(String(this.plugin.settings.maxDocumentLength)).onChange(async (value) => {
-					const parsed = Number(value);
-					if (!Number.isNaN(parsed) && parsed > 0) {
-						this.plugin.settings.maxDocumentLength = parsed;
-						await this.plugin.saveSettings();
-					}
-				})
-			);
-
-		new Setting(containerEl)
-			.setName("Mots-outils")
-			.setDesc(
-				"Mots exclus de la détection de répétitions (articles, pronoms, prépositions...). Sépare-les par des espaces et/ou des virgules. Modifier cette liste remplace définitivement celle fournie par défaut."
-			)
-			.setClass("finition-stopwords-setting")
-			.addTextArea((textArea) => {
-				textArea.inputEl.rows = 10;
-				textArea.inputEl.addClass("finition-stop-words-textarea");
-				textArea.setValue(this.plugin.settings.customStopWords ?? this.plugin.stopWordsAsText());
-				textArea.onChange(async (value) => {
-					this.plugin.settings.customStopWords = value;
-					this.plugin.functionWords = parseStopWords(value);
-					await this.plugin.saveSettings();
-					this.plugin.refreshAllEditors();
-				});
-			});
-
-		new Setting(containerEl).addButton((button) =>
-			button
-				.setButtonText("Réinitialiser les mots-outils")
-				.setTooltip("Revenir à la liste par défaut")
-				.onClick(async () => {
-					this.plugin.settings.customStopWords = null;
-					await this.plugin.loadLexiconData();
-					await this.plugin.saveSettings();
-					this.plugin.refreshAllEditors();
-					this.display();
-				})
-		);
 
 		containerEl.createEl("h3", { text: "Palette" });
 

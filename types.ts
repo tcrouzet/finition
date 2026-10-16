@@ -28,13 +28,18 @@ export interface Highlight {
 export interface FinitionSettings {
 	mode: FinitionMode;
 	span: number; // empan de répétition, en caractères
+	// Longueur minimale (en caractères) d'un mot pour être compté comme
+	// répétition : un mot de longueur <= ce seuil n'est jamais surligné,
+	// même répété (ex. "et", "ou", "si"...). Par défaut 2 : seuls les mots
+	// d'au moins 3 lettres sont pris en compte.
+	repetitionMinLength: number;
 	debounceMs: number;
 	maxDocumentLength: number; // garde-fou perf
 	// Liste de mots-outils éditée par l'utilisateur, séparés par espace
 	// et/ou virgule. Une fois définie (même vide), elle remplace
 	// entièrement la liste chargée depuis data/function-words.json.
 	customStopWords: string | null;
-	// Mode "Burstiness" : nombre minimal de phrases consécutives de longueur
+	// Mode "Monotonie" : nombre minimal de phrases consécutives de longueur
 	// proche pour former une "série" repérable (voir modes/burstiness.ts).
 	burstThreshold: number;
 	// Tolérance en pourcentage de la longueur moyenne des deux phrases
@@ -90,6 +95,7 @@ export const DEFAULT_PALETTE: string[] = [
 export const DEFAULT_SETTINGS: FinitionSettings = {
 	mode: "repetition",
 	span: 1500,
+	repetitionMinLength: 2,
 	debounceMs: 300,
 	maxDocumentLength: 200_000,
 	customStopWords: null,
@@ -99,7 +105,7 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	hedgingColorIndex: 9, // jaune pastel (même couleur qu'avant, nouvel index)
 	stereotypeColorIndex: 5, // turquoise pastel (même couleur qu'avant, nouvel index)
 	ternaryColorIndex: 14, // violet pastel (même couleur qu'avant, nouvel index)
-	hingeColorIndex: 10, // doré pastel (même couleur qu'avant, nouvel index)
+	hingeColorIndex: 2, // bleu clair pastel
 	palette: DEFAULT_PALETTE,
 };
 

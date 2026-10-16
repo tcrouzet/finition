@@ -17,12 +17,15 @@ export function computeRepetitions(
 	text: string,
 	lexicon: Map<string, string>,
 	functionWords: Set<string>,
-	span: number
+	span: number,
+	minLength: number
 ): Highlight[] {
 	// La tokenisation (découpage en mots + résolution de lemme, élisions
 	// comprises) est partagée avec le mode "stéréotypes" : voir tokenize.ts.
+	// Un mot de longueur <= minLength n'est jamais compté comme répétition
+	// (ex. "et", "ou", "si"...), même s'il n'est pas dans les mots-outils.
 	const tokens = tokenize(blankMarkdownHeadings(text), lexicon).filter(
-		(token) => !functionWords.has(token.form) && !functionWords.has(token.lemma)
+		(token) => token.form.length > minLength && !functionWords.has(token.form) && !functionWords.has(token.lemma)
 	);
 
 	// Un mot est "répété" s'il partage son lemme avec une occurrence

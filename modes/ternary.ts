@@ -1,5 +1,5 @@
 /**
- * Mode "Ternaires" : repère les séquences de trois groupes parallèles,
+ * Mode "Tricolon" : repère les séquences de trois groupes parallèles,
  * séparés par une virgule et/ou "et"/"ou"/"ni", de même structure
  * grammaticale (port de `ternary_char_ranges()` dans
  * script/detector/syntax_depth.py côté unshiter).

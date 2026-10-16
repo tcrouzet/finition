@@ -30,7 +30,13 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 	let cssClass: (highlight: Highlight) => string;
 
 	if (runtime.settings.mode === "repetition") {
-		highlights = computeRepetitions(text, runtime.lexicon, runtime.functionWords, runtime.settings.span);
+		highlights = computeRepetitions(
+			text,
+			runtime.lexicon,
+			runtime.functionWords,
+			runtime.settings.span,
+			runtime.settings.repetitionMinLength
+		);
 		cssClass = (highlight) => {
 			const base = `finition-repeat finition-color-${highlight.colorIndex}`;
 			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;

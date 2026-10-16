@@ -1,5 +1,5 @@
 /**
- * Mode "Burstiness" : repère les séries de phrases consécutives de longueur
+ * Mode "Monotonie" : repère les séries de phrases consécutives de longueur
  * "perceptiblement proche" (en nombre de mots), par analogie avec
  * script/burstiness/ dans unshiter (burst_detect.py, color_scale.py,
  * length_metrics.py, sentence_split.py — mode "regex", sans spaCy).

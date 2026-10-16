@@ -9,12 +9,12 @@ Une icône ♪ apparaît dans la barre d'état en bas d'Obsidian. Cliquer dessus
 - **Répétitions** — détection par lemme sur une fenêtre glissante (réglable), couleurs tournantes
 - **Atténuation** — surligne les locutions de prudence rhétorique (« il semblerait que », « dans une certaine mesure »...)
 - **Stéréotypes** — repère les lieux communs et clichés corporels/émotionnels (« serrer les poings », « le cœur s'emballer »...)
-- **Burstiness** — repère les séries de phrases consécutives de longueur perceptiblement proche, sans dictionnaire
-- **Ternaires** — repère les séquences de trois groupes parallèles séparés par virgule et/ou « et »/« ou »/« ni », de même signature grammaticale
-- **Cadence** — découpe chaque phrase en groupes (séparés par virgule ou mot-charnière) et surligne la phrase ENTIÈRE quand sa séquence de longueurs de groupes (ex. 3, 5, 3 mots) est EXACTEMENT identique, groupe par groupe, à celle d'une autre phrase à proximité — pas juste une longueur totale comparable (voir Burstiness pour ça), mais le même rythme interne, groupe pour groupe
+- **Monotonie** — repère les séries de phrases consécutives de longueur perceptiblement proche, sans dictionnaire
+- **Tricolon** — repère les séquences de trois groupes parallèles séparés par virgule et/ou « et »/« ou »/« ni », de même signature grammaticale
+- **Cadence** — découpe chaque phrase en groupes (séparés par virgule ou mot-charnière) et surligne la phrase ENTIÈRE quand sa séquence de longueurs de groupes (ex. 3, 5, 3 mots) est EXACTEMENT identique, groupe par groupe, à celle d'une autre phrase à proximité — pas juste une longueur totale comparable (voir Monotonie pour ça), mais le même rythme interne, groupe pour groupe
 - **Charnières** — surligne simplement les mots-charnières du texte (« qui », « que », « et », « mais »...), sans comparaison
 
-Chaque mode peut aussi être réglé dans Réglages → Finition (empans, tolérances, mots-outils, et une palette de 16 couleurs entièrement personnalisable, avec association possible d'une couleur à Atténuation/Stéréotypes/Ternaires/Charnières).
+Chaque mode peut aussi être réglé dans Réglages → Finition (empans, tolérances, mots-outils, et une palette de 16 couleurs entièrement personnalisable, avec association possible d'une couleur à Atténuation/Stéréotypes/Tricolon/Charnières).
 
 ## Installation
 
@@ -57,4 +57,4 @@ Le code est découpé en un module par mode dans `plugin/modes/`, orchestrés pa
 ## Limites connues
 
 - Document entier recalculé à chaque frappe (debouncé) ; désactivation automatique au-delà de 200 000 caractères.
-- Mode Ternaires porté sans le filtre spaCy annexe de l'outil Python d'origine, donc légèrement plus de faux positifs sur certaines qualifications binaires (ex. « grand et beau, intelligent »).
+- Mode Tricolon porté sans le filtre spaCy annexe de l'outil Python d'origine, donc légèrement plus de faux positifs sur certaines qualifications binaires (ex. « grand et beau, intelligent »).
