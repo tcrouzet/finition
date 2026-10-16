@@ -4,9 +4,8 @@
 	"description": "Finition — plugin Obsidian d'aide à l'écriture",
 	"main": "main.js",
 	"scripts": {
-		"css": "node build-css.mjs",
-		"dev": "node build-css.mjs && node esbuild.config.mjs",
-		"build": "node build-css.mjs && node esbuild.config.mjs production",
+		"dev": "node esbuild.config.mjs",
+		"build": "node esbuild.config.mjs production",
 		"lint": "eslint ."
 	},
 	"license": "MIT",

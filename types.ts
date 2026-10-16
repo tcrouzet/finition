@@ -37,10 +37,12 @@ export interface FinitionSettings {
 	// Mode "Burstiness" : nombre minimal de phrases consécutives de longueur
 	// proche pour former une "série" repérable (voir modes/burstiness.ts).
 	burstThreshold: number;
-	// Tolérance de la loi de Weber-Fechner (marge perceptible = k·√longueur
-	// moyenne) : plus k est grand, plus deux phrases de longueurs différentes
-	// sont considérées "proches".
-	burstToleranceK: number;
+	// Tolérance en pourcentage de la longueur moyenne des deux phrases
+	// comparées : deux phrases sont "proches" si leur écart (en mots) ne
+	// dépasse pas ce pourcentage de leur longueur moyenne, avec un minimum
+	// absolu d'1 mot (ex. 10 % par défaut : pour deux phrases de 10 mots,
+	// 1 mot d'écart est toléré ; pour deux phrases de 30 mots, 3 mots).
+	burstTolerancePercent: number;
 	// Mode "Cadence" : empan de comparaison entre deux phrases, en
 	// caractères — distinct de `span` (répétitions), car une structure
 	// rythmique se perçoit sur une portée plus courte qu'une répétition de
@@ -60,24 +62,29 @@ export interface FinitionSettings {
 	palette: string[];
 }
 
-/** Valeurs de palette par défaut (16 pastel, reprises de palette.css au 16/10). */
+/**
+ * Valeurs de palette par défaut (16 pastel) : gris en premier, puis une
+ * boucle continue sur le cercle chromatique — bleu → turquoise → vert →
+ * jaune → orange → rouge/saumon → rose → violet → lavande — qui referme la
+ * boucle juste avant de retomber sur le bleu de départ.
+ */
 export const DEFAULT_PALETTE: string[] = [
-	"#d2edf7", // 0 — bleu pastel
-	"#ebecec", // 1 — gris pastel
-	"#c6ecc3", // 2 — vert pastel
-	"#e6c9f2", // 3 — violet pastel
-	"#fefda8", // 4 — jaune pastel
-	"#f9e4bb", // 5 — pêche pastel
-	"#f6a9c9", // 6 — rose pastel
-	"#b1c7f3", // 7 — bleu-mauve pastel
-	"#b6f3ed", // 8 — turquoise pastel
-	"#f5e1a8", // 9 — doré pastel
-	"#f5c3bb", // 10 — saumon pastel
-	"#c1adde", // 11 — lavande pastel
-	"#e8eec3", // 12 — olive pastel
-	"#9ad8fb", // 13 — bleu ciel pastel
-	"#c9daf2", // 14 — bleu clair pastel
-	"#a8e6cf", // 15 — menthe pastel
+	"#ebecec", // 0 — gris pastel
+	"#b1c7f3", // 1 — bleu-mauve pastel
+	"#c9daf2", // 2 — bleu clair pastel
+	"#9ad8fb", // 3 — bleu ciel pastel
+	"#d2edf7", // 4 — bleu pastel
+	"#b6f3ed", // 5 — turquoise pastel
+	"#a8e6cf", // 6 — menthe pastel
+	"#c6ecc3", // 7 — vert pastel
+	"#e8eec3", // 8 — olive pastel
+	"#fefda8", // 9 — jaune pastel
+	"#f5e1a8", // 10 — doré pastel
+	"#f9e4bb", // 11 — pêche pastel
+	"#f5c3bb", // 12 — saumon pastel (rouge)
+	"#f6a9c9", // 13 — rose pastel
+	"#e6c9f2", // 14 — violet pastel
+	"#c1adde", // 15 — lavande pastel
 ];
 
 export const DEFAULT_SETTINGS: FinitionSettings = {
@@ -87,12 +94,12 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	maxDocumentLength: 200_000,
 	customStopWords: null,
 	burstThreshold: 3,
-	burstToleranceK: 1.0,
+	burstTolerancePercent: 10,
 	cadenceSpan: 500,
-	hedgingColorIndex: 4,
-	stereotypeColorIndex: 8,
-	ternaryColorIndex: 3,
-	hingeColorIndex: 9,
+	hedgingColorIndex: 9, // jaune pastel (même couleur qu'avant, nouvel index)
+	stereotypeColorIndex: 5, // turquoise pastel (même couleur qu'avant, nouvel index)
+	ternaryColorIndex: 14, // violet pastel (même couleur qu'avant, nouvel index)
+	hingeColorIndex: 10, // doré pastel (même couleur qu'avant, nouvel index)
 	palette: DEFAULT_PALETTE,
 };
 

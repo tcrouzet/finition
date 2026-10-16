@@ -1,10 +1,13 @@
 #!/bin/bash
 # chmod +x release.sh
-# À lancer depuis plugin/ (là où vivent manifest.json, commit.json, package.json).
+# À lancer depuis plugin/ (là où vivent manifest.json, package.json), dans
+# un dépôt git avec un remote "origin" GitHub déjà configuré. Générique :
+# même script réutilisable tel quel sur n'importe lequel de tes autres
+# plugins, sans fichier de config à maintenir (gh déduit le repo du remote).
 set -e
 
 # Variables
-REPO=$(jq -r '.repo' commit.json)
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 TAG=$(jq -r '.version' manifest.json)
 RELEASE_NAME="$TAG"
 DESCRIPTION="Release $TAG"

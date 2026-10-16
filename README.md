@@ -11,16 +11,36 @@ Une icône ♪ apparaît dans la barre d'état en bas d'Obsidian. Cliquer dessus
 - **Stéréotypes** — repère les lieux communs et clichés corporels/émotionnels (« serrer les poings », « le cœur s'emballer »...)
 - **Burstiness** — repère les séries de phrases consécutives de longueur perceptiblement proche, sans dictionnaire
 - **Ternaires** — repère les séquences de trois groupes parallèles séparés par virgule et/ou « et »/« ou »/« ni », de même signature grammaticale
-- **Cadence** — repère les phrases entières qui partagent une structure identique (même nombre de mots par groupe) quand cette structure se répète à proximité
+- **Cadence** — découpe chaque phrase en groupes (séparés par virgule ou mot-charnière) et surligne la phrase ENTIÈRE quand sa séquence de longueurs de groupes (ex. 3, 5, 3 mots) est EXACTEMENT identique, groupe par groupe, à celle d'une autre phrase à proximité — pas juste une longueur totale comparable (voir Burstiness pour ça), mais le même rythme interne, groupe pour groupe
 - **Charnières** — surligne simplement les mots-charnières du texte (« qui », « que », « et », « mais »...), sans comparaison
 
 Chaque mode peut aussi être réglé dans Réglages → Finition (empans, tolérances, mots-outils, et une palette de 16 couleurs entièrement personnalisable, avec association possible d'une couleur à Atténuation/Stéréotypes/Ternaires/Charnières).
 
 ## Installation
 
-1. Télécharge `main.js`, `manifest.json` et `styles.css` depuis la [dernière release GitHub](https://github.com/tcrouzet/finition/releases).
-2. Crée le dossier `<ton-vault>/.obsidian/plugins/finition/` et copies-y ces trois fichiers (aucun autre fichier n'est nécessaire : les dictionnaires sont inlinés dans `main.js`).
-3. Active le plugin dans Obsidian (Réglages → Plugins communautaires).
+Trois fichiers à récupérer depuis la [dernière release GitHub](https://github.com/tcrouzet/finition/releases) : `main.js`, `manifest.json`, `styles.css`. Aucun autre fichier n'est nécessaire : les dictionnaires sont inlinés dans `main.js`. Remplace `<vault>` ci-dessous par le chemin de ton coffre Obsidian.
+
+### macOS / Linux (Terminal)
+
+```sh
+mkdir -p "<vault>/.obsidian/plugins/finition"
+cd "<vault>/.obsidian/plugins/finition"
+curl -LO https://github.com/tcrouzet/finition/releases/latest/download/main.js
+curl -LO https://github.com/tcrouzet/finition/releases/latest/download/manifest.json
+curl -LO https://github.com/tcrouzet/finition/releases/latest/download/styles.css
+```
+
+### Windows (PowerShell)
+
+```powershell
+New-Item -ItemType Directory -Force -Path "<vault>\.obsidian\plugins\finition"
+Set-Location "<vault>\.obsidian\plugins\finition"
+Invoke-WebRequest -Uri "https://github.com/tcrouzet/finition/releases/latest/download/main.js" -OutFile "main.js"
+Invoke-WebRequest -Uri "https://github.com/tcrouzet/finition/releases/latest/download/manifest.json" -OutFile "manifest.json"
+Invoke-WebRequest -Uri "https://github.com/tcrouzet/finition/releases/latest/download/styles.css" -OutFile "styles.css"
+```
+
+Puis, dans les deux cas : active le plugin dans Obsidian (Réglages → Plugins communautaires → désactiver le mode sans échec si besoin → activer « Finition »).
 
 ## Architecture (bref)
 

@@ -1,6 +1,6 @@
 import { App, ColorComponent, DropdownComponent, PluginSettingTab, Setting } from "obsidian";
 import type FinitionPlugin from "./main";
-import { DEFAULT_SETTINGS, FinitionMode, parseStopWords } from "./types";
+import { DEFAULT_PALETTE, DEFAULT_SETTINGS, FinitionMode, parseStopWords } from "./types";
 
 type ColorFunctionKey = "hedgingColorIndex" | "stereotypeColorIndex" | "ternaryColorIndex" | "hingeColorIndex";
 
@@ -86,8 +86,10 @@ export class FinitionSettingTab extends PluginSettingTab {
 					});
 			});
 
+		containerEl.createEl("h3", { text: "Burstiness" });
+
 		new Setting(containerEl)
-			.setName("Burstiness — longueur minimale d'une série")
+			.setName("Longueur minimale d'une série (en phrases)")
 			.setDesc("Nombre minimal de phrases consécutives de longueur proche pour former une série repérable.")
 			.addText((text) => {
 				text.inputEl.type = "number";
@@ -106,21 +108,21 @@ export class FinitionSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
-			.setName("Burstiness — tolérance")
+			.setName("Tolérance (% de la longueur de phrase)")
 			.setDesc(
-				"Marge de longueur tolérée entre deux phrases voisines pour les considérer 'proches' (plus la valeur est grande, plus la tolérance est large)."
+				"Deux phrases voisines sont considérées 'proches' si leur écart (en mots) ne dépasse pas ce pourcentage de la moyenne de LEURS DEUX longueurs à elles (pas de la moyenne du document) — avec un minimum d'1 mot. Ex. 10 % : phrases de 10 et 10 mots → moyenne 10 → 1 mot d'écart toléré ; phrases de 28 et 32 mots → moyenne 30 → 3 mots tolérés."
 			)
 			.addText((text) => {
 				text.inputEl.type = "number";
-				text.inputEl.min = "0.1";
-				text.inputEl.step = "0.1";
+				text.inputEl.min = "1";
+				text.inputEl.step = "1";
 				text
-					.setPlaceholder(String(DEFAULT_SETTINGS.burstToleranceK))
-					.setValue(String(this.plugin.settings.burstToleranceK))
+					.setPlaceholder(String(DEFAULT_SETTINGS.burstTolerancePercent))
+					.setValue(String(this.plugin.settings.burstTolerancePercent))
 					.onChange(async (value) => {
 						const parsed = Number(value);
 						if (!Number.isNaN(parsed) && parsed > 0) {
-							this.plugin.settings.burstToleranceK = parsed;
+							this.plugin.settings.burstTolerancePercent = parsed;
 							await this.plugin.saveSettings();
 							this.plugin.refreshAllEditors();
 						}
@@ -175,10 +177,15 @@ export class FinitionSettingTab extends PluginSettingTab {
 
 		// Grille compacte : pour chaque couleur, juste 1) le sélecteur de
 		// couleur natif (cercle, qui affiche la couleur actuelle) puis 2) le
-		// menu déroulant d'association à une fonction (qui affiche lui-même
-		// la valeur sélectionnée avec ses flèches). Pas de code hexa affiché,
-		// pas de Setting (qui empile une bordure/un fond par ligne et donne
-		// cet effet de blocs gris).
+		// menu déroulant natif d'association à une fonction (qui affiche
+		// lui-même la valeur sélectionnée avec ses flèches — standard, pas de
+		// composant maison). Pas de code hexa affiché, pas de Setting (qui
+		// empile une bordure/un fond par ligne et donne cet effet de blocs
+		// gris). Remplissage en COLONNES (grid-auto-flow: column dans le CSS)
+		// pour que l'ordre de lecture naturel (de haut en bas dans une
+		// colonne, puis la colonne suivante) corresponde à l'ordre réel du
+		// tableau, donc à la progression chromatique — un remplissage par
+		// LIGNES ferait sauter d'une teinte à l'autre sans logique visible.
 		const grid = containerEl.createDiv({ cls: "finition-palette-grid" });
 
 		this.plugin.settings.palette.forEach((hex, index) => {
@@ -203,5 +210,17 @@ export class FinitionSettingTab extends PluginSettingTab {
 				this.display(); // réaffiche pour mettre à jour les autres menus déroulants (fonction réassignée)
 			});
 		});
+
+		new Setting(containerEl).addButton((button) =>
+			button
+				.setButtonText("Réinitialiser la palette")
+				.setTooltip("Revenir aux 16 couleurs par défaut, en progression chromatique")
+				.onClick(async () => {
+					this.plugin.settings.palette = [...DEFAULT_PALETTE];
+					await this.plugin.saveSettings();
+					this.plugin.refreshAllEditors();
+					this.display();
+				})
+		);
 	}
 }

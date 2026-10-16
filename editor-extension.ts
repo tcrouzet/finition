@@ -48,9 +48,9 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
 		};
 	} else if (runtime.settings.mode === "burstiness") {
-		highlights = computeBurstinessHighlights(text, runtime.settings.burstThreshold, runtime.settings.burstToleranceK);
+		highlights = computeBurstinessHighlights(text, runtime.settings.burstThreshold, runtime.settings.burstTolerancePercent);
 		cssClass = (highlight) => {
-			const base = `finition-burst finition-burst-${highlight.colorIndex}`;
+			const base = `finition-burst finition-color-${highlight.colorIndex}`;
 			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
 		};
 	} else if (runtime.settings.mode === "ternary") {

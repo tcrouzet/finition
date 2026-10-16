@@ -1,46 +1,27 @@
-/* Fichier généré par build-css.mjs à partir de palette.css + styles.base.css. Ne pas éditer directement. */
-
 /*
- * Palette de couleurs du mode "Répétitions" — FICHIER À TOI, JAMAIS TOUCHÉ
- * PAR L'AGENT. Modifie les couleurs ici librement, aucune autre édition de
- * styles.base.css ne viendra l'écraser.
- *
- * 16 couleurs pastel douces (type Antidote), choisies à partir de ta
- * palette du 16/10. Si tu ajoutes/retires des couleurs, mets aussi à jour
- * PALETTE_SIZE dans types.ts pour que le nombre corresponde.
- */
-.finition-color-0 { background: #d2edf7; }  /* bleu pastel */
-.finition-color-1 { background: #ebecec; }  /* gris pastel */
-.finition-color-2 { background: #c6ecc3; }  /* vert pastel */
-.finition-color-3 { background: #e6c9f2; }  /* violet pastel */
-.finition-color-4 { background: #fefda8; }  /* jaune pastel */
-.finition-color-5 { background: #f9e4bb; }  /* pêche pastel */
-.finition-color-6 { background: #f6a9c9; }  /* rose pastel */
-.finition-color-7 { background: #b1c7f3; }  /* bleu-mauve pastel */
-.finition-color-8 { background: #b6f3ed; }  /* turquoise pastel */
-.finition-color-9 { background: #f5e1a8; }  /* doré pastel */
-.finition-color-10 { background: #f5c3bb; } /* saumon pastel */
-.finition-color-11 { background: #c1adde; } /* lavande pastel */
-.finition-color-12 { background: #e8eec3; } /* olive pastel */
-.finition-color-13 { background: #9ad8fb; } /* bleu ciel pastel */
-.finition-color-14 { background: #c9daf2; } /* bleu clair pastel */
-.finition-color-15 { background: #a8e6cf; } /* menthe pastel */
-
-/*
- * Styles du plugin "Finition" — tout SAUF la palette de couleurs du mode
- * Répétitions, qui vit à part dans palette.css (fichier que l'agent ne
- * touche jamais). Ce fichier-ci est concaténé à palette.css par
- * `npm run build:css` pour produire styles.css (le fichier réellement
- * chargé par Obsidian — ne pas l'éditer à la main, il est régénéré).
+ * Styles du plugin "Finition". Fichier édité directement (plus de
+ * concaténation palette.css + styles.base.css : les couleurs de la palette
+ * sont injectées dynamiquement au runtime par applyPalette() dans main.ts,
+ * depuis les réglages Obsidian, jamais depuis ce fichier CSS statique).
  */
 
-/* Lignes "Palette" des réglages : pas de nom/texte, juste le sélecteur de
-   couleur + le menu déroulant, l'un à côté de l'autre, sans espace vide. */
-.finition-palette-row .setting-item-info {
-	display: none;
+/* Palette des réglages : une seule colonne verticale, une couleur par
+   ligne, strictement dans l'ordre du tableau `palette` (donc la
+   progression chromatique) — aucune grille, aucune ambiguïté de lecture. */
+.finition-palette-grid {
+	display: flex;
+	flex-direction: column;
+	gap: 0.3em;
+	margin-top: 0.5em;
 }
-.finition-palette-row .setting-item-control {
-	justify-content: flex-start;
+.finition-palette-item {
+	display: flex;
+	align-items: center;
+	gap: 0.6em;
+}
+.finition-palette-item select {
+	flex: 1;
+	min-width: 0;
 }
 
 .finition-repeat {
@@ -50,8 +31,8 @@
 	color: #1a1a1a;
 }
 
-/* Pas de couleur fixe : voir finition-color-N (cf. palette.css), choisie
-   dans les réglages ("Palette" → "Prudence épistémique"). */
+/* Pas de couleur fixe : voir .finition-color-N (injectée au runtime par
+   applyPalette()), choisie dans les réglages ("Palette" → "Atténuation"). */
 .finition-hedging {
 	border-radius: 3px;
 	padding: 0 0.05em;
@@ -59,8 +40,8 @@
 	color: #1a1a1a;
 }
 
-/* Pas de couleur fixe : voir finition-color-N (cf. palette.css), choisie
-   dans les réglages ("Palette" → "Stéréotypes"). */
+/* Pas de couleur fixe : voir .finition-color-N (injectée au runtime par
+   applyPalette()), choisie dans les réglages ("Palette" → "Stéréotypes"). */
 .finition-stereotype {
 	border-radius: 3px;
 	padding: 0 0.05em;
@@ -69,25 +50,21 @@
 }
 
 /*
- * Palette fixe à 5 teintes, reprise de COLOR_SCALE dans
- * script/burstiness/config.py (unshiter). Contrairement à .finition-color-N
- * (couleurs tournantes par groupe), ces 5 classes ont un SENS : l'indice 2
- * (gris) est toujours la médiane locale de la série de phrases détectée,
- * 0-1 = plus court (bleu, vert), 3-4 = plus long (jaune, rouge).
- * Surligne la phrase entière, pas juste un mot : padding/radius adaptés.
+ * Burstiness surligne la phrase entière avec les couleurs de la palette
+ * réglable (.finition-color-N, injectée au runtime par applyPalette() dans
+ * main.ts) : la phrase à la médiane de sa série reçoit l'indice central
+ * (8 sur 16), les phrases plus courtes/longues s'en écartent par pas de 2
+ * (voir modes/burstiness.ts, colorsForRun()).
  */
 .finition-burst {
+	border-radius: 3px;
+	padding: 0 0.05em;
 	cursor: help;
+	color: #1a1a1a;
 }
 
-.finition-burst-0 { background: #cfe2ff; color: #1a1a1a; } /* nettement plus court */
-.finition-burst-1 { background: #d9f2d9; color: #1a1a1a; } /* légèrement plus court */
-.finition-burst-2 { background: #eeeeee; color: #1a1a1a; } /* référence (médiane locale) */
-.finition-burst-3 { background: #fff6cc; color: #1a1a1a; } /* légèrement plus long */
-.finition-burst-4 { background: #ffd9cc; color: #1a1a1a; } /* nettement plus long */
-
-/* Pas de couleur fixe : voir finition-color-N (cf. palette.css), choisie
-   dans les réglages ("Palette" → "Ternaires"). */
+/* Pas de couleur fixe : voir .finition-color-N (injectée au runtime par
+   applyPalette()), choisie dans les réglages ("Palette" → "Ternaires"). */
 .finition-ternary {
 	border-radius: 3px;
 	padding: 0 0.05em;
@@ -97,10 +74,10 @@
 
 /*
  * Pas de couleur fixe : chaque séquence détectée reçoit une couleur
- * tournante (.finition-color-N, cf. palette.css), comme pour les
- * répétitions, pour voir d'un coup d'œil quels groupes sont rapprochés
- * les uns des autres (une séquence = une couleur, un seul groupe par
- * couleur n'a aucun sens).
+ * tournante (.finition-color-N, injectée au runtime par applyPalette()),
+ * comme pour les répétitions, pour voir d'un coup d'œil quels groupes sont
+ * rapprochés les uns des autres (une séquence = une couleur, un seul
+ * groupe par couleur n'a aucun sens).
  */
 .finition-cadence {
 	border-radius: 3px;
@@ -109,8 +86,8 @@
 	color: #1a1a1a;
 }
 
-/* Pas de couleur fixe : voir finition-color-N (cf. palette.css), choisie
-   dans les réglages ("Palette" → "Charnières"). */
+/* Pas de couleur fixe : voir .finition-color-N (injectée au runtime par
+   applyPalette()), choisie dans les réglages ("Palette" → "Charnières"). */
 .finition-hinge {
 	border-radius: 3px;
 	padding: 0 0.05em;
@@ -120,9 +97,9 @@
 
 /*
  * Au clic sur une occurrence surlignée, toutes les occurrences du même
- * groupe (même lemme, ou même locution pour la prudence épistémique)
- * basculent en fond noir / texte blanc, par-dessus leur couleur habituelle.
- * Reclic pour désélectionner.
+ * groupe (même lemme, ou même locution pour l'atténuation) basculent en
+ * fond noir / texte blanc, par-dessus leur couleur habituelle. Reclic pour
+ * désélectionner.
  */
 .finition-focused {
 	background: #000000 !important;
@@ -160,5 +137,3 @@
 	font-family: var(--font-monospace);
 	resize: vertical;
 }
-
-
