@@ -16,6 +16,28 @@ Une icône ♪ apparaît dans la barre d'état en bas d'Obsidian. Cliquer dessus
 
 Chaque mode peut aussi être réglé dans Réglages → Finition (empans, tolérances, mots-outils, et une palette de 16 couleurs entièrement personnalisable, avec association possible d'une couleur à Atténuation/Stéréotypes/Tricolon/Charnières).
 
+## Ortho-typo IA
+
+Une entrée séparée du menu ♪ ("Ortho-typo IA") envoie le texte **sélectionné** à Claude (API Anthropic) pour une relecture orthographique, grammaticale et stylistique. Nécessite une clé API Anthropic, à renseigner dans Réglages → Finition.
+
+- Le texte est découpé en tronçons par paragraphe entier (jamais coupé au milieu d'un paragraphe), envoyés un par un.
+- **Le document n'est jamais modifié automatiquement.** Les corrections proposées s'affichent en couleur (texte original barré en rouge, proposition en vert) comme de simples commentaires visuels.
+- Cliquer sur une suggestion (sa partie rouge ou verte) l'applique réellement au document — et seulement à ce moment-là. Les autres suggestions en attente restent inchangées.
+- "Ortho-typo IA : effacer les suggestions en attente" (palette de commandes, ou bouton dans les réglages) efface les suggestions non validées sans toucher au document.
+- Le prompt de correction est entièrement éditable dans les réglages.
+
+## Ponctuation
+
+Une entrée séparée du menu ♪ ("Ponctuation") corrige, immédiatement et sans validation (règles objectives, pas un jugement), **toute la note** :
+
+- Espace insécable avant `!` `?` `:` `»` et après `«`.
+- Tiret de dialogue en début de ligne normalisé en em dash (—) + insécable (jamais un simple `-`, pour ne pas casser les listes Markdown).
+- Tirets d'incise dans le texte (– ... –) : insécable après le premier, avant le second.
+- Apostrophes droites (`'`) → typographiques (`’`).
+- Jamais plus de deux sauts de ligne consécutifs, sauf entre deux entrées d'une liste où un seul est conservé.
+
+Blocs de code, code inline, liens Markdown/wiki, URLs et horaires sont protégés (jamais modifiés).
+
 ## Installation
 
 Trois fichiers à récupérer depuis la [dernière release GitHub](https://github.com/tcrouzet/finition/releases) : `main.js`, `manifest.json`, `styles.css`. Aucun autre fichier n'est nécessaire : les dictionnaires sont inlinés dans `main.js`. Remplace `<vault>` ci-dessous par le chemin de ton coffre Obsidian.

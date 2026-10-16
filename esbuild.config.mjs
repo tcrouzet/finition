@@ -35,6 +35,11 @@ const context = await esbuild.context({
 	treeShaking: true,
 	outfile: "main.js",
 	minify: prod,
+	// Le prompt par défaut d'Ortho-typo IA (ai/prompt-revision.md) est
+	// inliné comme texte dans main.js au build, exactement comme les
+	// dictionnaires JSON : un seul fichier à distribuer, pas de fichier .md
+	// à copier séparément pour l'utilisateur final.
+	loader: { ".md": "text" },
 });
 
 if (prod) {

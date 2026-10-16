@@ -5,6 +5,59 @@
  * depuis les réglages Obsidian, jamais depuis ce fichier CSS statique).
  */
 
+/* --- Grammalecte --------------------------------------------------------- */
+
+.finition-grammalecte-spelling {
+	text-decoration: underline wavy #e05252;
+	text-decoration-thickness: 2px;
+	cursor: pointer;
+}
+
+.finition-grammalecte-grammar {
+	text-decoration: underline wavy #4a90d9;
+	text-decoration-thickness: 2px;
+	cursor: pointer;
+}
+
+.finition-grammalecte-popup {
+	position: fixed;
+	z-index: 1000;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	box-shadow: var(--shadow-l);
+	padding: 0.5em;
+	max-width: 320px;
+	font-size: 0.9em;
+}
+
+.finition-grammalecte-popup-message {
+	margin-bottom: 0.4em;
+	color: var(--text-muted);
+}
+
+.finition-grammalecte-popup-suggestions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.3em;
+	margin-bottom: 0.4em;
+}
+
+.finition-grammalecte-popup-suggestions button {
+	padding: 0.15em 0.5em;
+	border-radius: 4px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	cursor: pointer;
+}
+
+.finition-grammalecte-popup-ignore {
+	background: var(--background-modifier-border);
+	border-radius: 4px;
+	padding: 0.15em 0.5em;
+	cursor: pointer;
+}
+
 /* Palette des réglages : une seule colonne verticale, une couleur par
    ligne, strictement dans l'ordre du tableau `palette` (donc la
    progression chromatique) — aucune grille, aucune ambiguïté de lecture. */
@@ -136,4 +189,23 @@
 	min-height: 220px;
 	font-family: var(--font-monospace);
 	resize: vertical;
+}
+
+/*
+ * Suggestions "Ortho-typo IA" : purement visuelles, le document n'est pas
+ * modifié tant que l'utilisateur ne clique pas sur l'une des deux parties
+ * (rouge = texte original à retirer, vert = texte proposé, inséré comme
+ * widget — pas du texte réel du document). Voir ai/ai-extension.ts.
+ */
+.finition-ai-del {
+	text-decoration: line-through;
+	color: #c0392b;
+	cursor: pointer;
+}
+
+.finition-ai-ins {
+	text-decoration: underline;
+	color: #1e8449;
+	cursor: pointer;
+	margin-left: 0.15em;
 }

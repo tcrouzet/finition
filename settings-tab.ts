@@ -2,13 +2,19 @@ import { App, ColorComponent, DropdownComponent, PluginSettingTab, Setting } fro
 import type FinitionPlugin from "./main";
 import { DEFAULT_PALETTE, DEFAULT_SETTINGS, FinitionMode, parseStopWords } from "./types";
 
-type ColorFunctionKey = "hedgingColorIndex" | "stereotypeColorIndex" | "ternaryColorIndex" | "hingeColorIndex";
+type ColorFunctionKey =
+	| "hedgingColorIndex"
+	| "stereotypeColorIndex"
+	| "ternaryColorIndex"
+	| "hingeColorIndex"
+	| "grammalecteColorIndex";
 
 const COLOR_FUNCTIONS: Array<{ key: ColorFunctionKey; label: string }> = [
 	{ key: "hedgingColorIndex", label: "Atténuation" },
 	{ key: "stereotypeColorIndex", label: "Stéréotypes" },
 	{ key: "ternaryColorIndex", label: "Tricolon" },
 	{ key: "hingeColorIndex", label: "Charnières" },
+	{ key: "grammalecteColorIndex", label: "Grammalecte" },
 ];
 
 export class FinitionSettingTab extends PluginSettingTab {
@@ -196,6 +202,144 @@ export class FinitionSettingTab extends PluginSettingTab {
 						}
 					});
 			});
+
+		containerEl.createEl("h3", { text: "Grammalecte" });
+
+		new Setting(containerEl)
+			.setName("Dictionnaire")
+			.setDesc("Orthographe classique ou rectifications de 1990. Ne prend effet qu'au prochain lancement de Grammalecte (menu ♪).")
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOption("fr-classic", "Classique")
+					.addOption("fr-reform", "Réforme 1990")
+					.setValue(this.plugin.settings.grammalecteDictionary)
+					.onChange(async (value) => {
+						this.plugin.settings.grammalecteDictionary = value as "fr-classic" | "fr-reform";
+						await this.plugin.saveSettings();
+					});
+			});
+
+		containerEl.createEl("h3", { text: "Ortho-typo IA" });
+
+		const apiKeyDesc = document.createDocumentFragment();
+		apiKeyDesc.appendChild(
+			document.createTextNode(
+				"Nécessaire pour utiliser « Ortho-typo IA » (menu ♪). Stockée en clair dans data.json, comme la plupart des plugins IA d'Obsidian. "
+			)
+		);
+		const apiKeyLink = document.createElement("a");
+		apiKeyLink.textContent = "Comment obtenir une clé API";
+		apiKeyLink.href = "https://platform.claude.com/docs/en/get-api-key";
+		apiKeyLink.target = "_blank";
+		apiKeyLink.rel = "noopener";
+		apiKeyDesc.appendChild(apiKeyLink);
+
+		new Setting(containerEl)
+			.setName("Clé API Anthropic")
+			.setDesc(apiKeyDesc)
+			.addText((text) => {
+				text.inputEl.type = "password";
+				text
+					.setPlaceholder("sk-ant-...")
+					.setValue(this.plugin.settings.aiApiKey)
+					.onChange(async (value) => {
+						this.plugin.settings.aiApiKey = value.trim();
+						await this.plugin.saveSettings();
+					});
+			});
+
+		const modelDesc = document.createDocumentFragment();
+		modelDesc.appendChild(document.createTextNode("Modèle Claude à utiliser. "));
+		const modelLink = document.createElement("a");
+		modelLink.textContent = "Liste des modèles disponibles";
+		modelLink.href = "https://platform.claude.com/docs/en/models/overview";
+		modelLink.target = "_blank";
+		modelLink.rel = "noopener";
+		modelDesc.appendChild(modelLink);
+
+		const AI_MODEL_PRESETS: Array<{ value: string; label: string }> = [
+			{ value: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" },
+			{ value: "claude-haiku-5-5", label: "Claude Haiku 5.5" },
+		];
+		const CUSTOM_MODEL_VALUE = "__custom__";
+		const isPreset = AI_MODEL_PRESETS.some((p) => p.value === this.plugin.settings.aiModel);
+
+		new Setting(containerEl)
+			.setName("Modèle")
+			.setDesc(modelDesc)
+			.addDropdown((dropdown) => {
+				for (const preset of AI_MODEL_PRESETS) {
+					dropdown.addOption(preset.value, preset.label);
+				}
+				dropdown.addOption(CUSTOM_MODEL_VALUE, "Autre (saisir un identifiant)…");
+				dropdown
+					.setValue(isPreset ? this.plugin.settings.aiModel : CUSTOM_MODEL_VALUE)
+					.onChange(async (value) => {
+						if (value !== CUSTOM_MODEL_VALUE) {
+							this.plugin.settings.aiModel = value;
+							await this.plugin.saveSettings();
+						}
+						this.display(); // affiche/masque le champ de saisie libre
+					});
+			});
+
+		if (!isPreset) {
+			new Setting(containerEl)
+				.setName("Identifiant du modèle personnalisé")
+				.setDesc("Identifiant exact tel que documenté par Anthropic (ex. claude-sonnet-4-5-20250929).")
+				.addText((text) =>
+					text
+						.setPlaceholder(DEFAULT_SETTINGS.aiModel)
+						.setValue(this.plugin.settings.aiModel)
+						.onChange(async (value) => {
+							this.plugin.settings.aiModel = value.trim() || DEFAULT_SETTINGS.aiModel;
+							await this.plugin.saveSettings();
+						})
+				);
+		}
+
+		new Setting(containerEl)
+			.setName("Taille des tronçons (caractères)")
+			.setDesc("Le texte sélectionné est découpé par paragraphe entier (jamais coupé au milieu) en tronçons d'environ cette taille avant d'être envoyé à l'IA.")
+			.addText((text) => {
+				text.inputEl.type = "number";
+				text.inputEl.min = "500";
+				text
+					.setPlaceholder(String(DEFAULT_SETTINGS.aiChunkSize))
+					.setValue(String(this.plugin.settings.aiChunkSize))
+					.onChange(async (value) => {
+						const parsed = Number(value);
+						if (!Number.isNaN(parsed) && parsed > 0) {
+							this.plugin.settings.aiChunkSize = parsed;
+							await this.plugin.saveSettings();
+						}
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Prompt de révision")
+			.setDesc("Instructions envoyées à l'IA pour chaque tronçon. Modifiable librement.")
+			.setClass("finition-stopwords-setting")
+			.addTextArea((textArea) => {
+				textArea.inputEl.rows = 14;
+				textArea.inputEl.addClass("finition-stop-words-textarea");
+				textArea.setValue(this.plugin.settings.aiPrompt);
+				textArea.onChange(async (value) => {
+					this.plugin.settings.aiPrompt = value;
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl).addButton((button) =>
+			button
+				.setButtonText("Réinitialiser le prompt")
+				.setTooltip("Revenir au prompt par défaut")
+				.onClick(async () => {
+					this.plugin.settings.aiPrompt = DEFAULT_SETTINGS.aiPrompt;
+					await this.plugin.saveSettings();
+					this.display();
+				})
+		);
 
 		containerEl.createEl("h3", { text: "Palette" });
 

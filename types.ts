@@ -15,6 +15,11 @@
  */
 export type FinitionMode = "none" | "repetition" | "hedging" | "stereotype" | "burstiness" | "ternary" | "cadence" | "hinges";
 
+// Prompt par défaut d'Ortho-typo IA, édité directement dans ai/prompt-revision.md
+// (pas en dur dans le code) — inliné comme texte au build par esbuild (voir
+// esbuild.config.mjs, loader: { ".md": "text" }).
+import DEFAULT_AI_PROMPT from "./ai/prompt-revision.md";
+
 /** Nombre de classes de couleur disponibles dans styles.css (.finition-color-0 à -19). */
 export const PALETTE_SIZE = 16;
 
@@ -65,6 +70,28 @@ export interface FinitionSettings {
 	// toucher palette.css à la main. Appliquée en direct par main.ts via une
 	// feuille de style injectée (voir applyPalette()).
 	palette: string[];
+
+	// --- Révision IA (Claude) ----------------------------------------------
+	// Clé API Anthropic, stockée en clair dans data.json comme la quasi-
+	// totalité des plugins IA de l'écosystème Obsidian (pas de coffre-fort
+	// chiffré natif disponible pour un plugin tiers).
+	aiApiKey: string;
+	aiModel: string;
+	// Taille maximale d'un tronçon envoyé à l'IA, en caractères (le texte est
+	// découpé par paragraphes, comme dans le pipeline Python d'origine).
+	aiChunkSize: number;
+	aiMaxTokens: number;
+	// Prompt système envoyé à l'IA, éditable sans toucher au code.
+	aiPrompt: string;
+
+	// --- Grammalecte (orthographe / grammaire) ------------------------------
+	// Dictionnaire utilisé par le moteur orthographique : "fr-classic"
+	// (orthographe traditionnelle) ou "fr-reform" (rectifications de 1990).
+	// Fichiers correspondants dans data/grammalecte/_dictionaries/.
+	grammalecteDictionary: "fr-classic" | "fr-reform";
+	// Index dans settings.palette utilisé comme fond coloré derrière les
+	// erreurs Grammalecte, en plus du soulignement ondulé rouge/bleu.
+	grammalecteColorIndex: number;
 }
 
 /**
@@ -107,6 +134,13 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	ternaryColorIndex: 14, // violet pastel (même couleur qu'avant, nouvel index)
 	hingeColorIndex: 2, // bleu clair pastel
 	palette: DEFAULT_PALETTE,
+	aiApiKey: "",
+	aiModel: "claude-sonnet-5-5",
+	aiChunkSize: 5000,
+	aiMaxTokens: 8000,
+	aiPrompt: DEFAULT_AI_PROMPT,
+	grammalecteDictionary: "fr-classic",
+	grammalecteColorIndex: 9,
 };
 
 /** Découpe une liste saisie par l'utilisateur, séparée par espaces et/ou virgules. */
