@@ -154,15 +154,7 @@ function collectStructuralCandidates(text: string, getCategory: GetCategory): St
 		if (!clause.trim()) continue;
 		sentences.push({ range: trimRange(text, startRaw, endRaw), text: clause });
 	}
-	const signatures = sentenceStructureSignatures(
-		sentences.map((s) => s.text),
-		getCategory
-	);
-	// sentenceStructureSignatures() peut renvoyer MOINS de signatures que de
-	// phrases en entrée (une phrase sans aucun token reconnu est sautée côté
-	// Python/TS) : on ne peut donc pas réassocier par index direct. On
-	// requalifie par un second passage phrase par phrase à la place, plus
-	// simple et sans ambiguïté bien que légèrement redondant en calcul.
+	// L'encodage phrase par phrase conserve les plages des phrases reconnues.
 	const candidates: StructuralCandidate[] = [];
 	for (const sentence of sentences) {
 		const [signature] = sentenceStructureSignatures([sentence.text], getCategory);

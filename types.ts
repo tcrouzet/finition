@@ -13,7 +13,7 @@
  * (cumuler les surlignages rendrait le texte illisible et serait coûteux
  * à calculer en direct). "none" = aucun surlignage.
  */
-export type FinitionMode = "none" | "repetition" | "hedging" | "stereotype" | "burstiness" | "ternary" | "cadence" | "hinges";
+export type FinitionMode = "none" | "repetition" | "hedging" | "stereotype" | "burstiness" | "ternary" | "cadence" | "hinges" | "tic-ia";
 
 // Prompts "système" d'Ortho-typo IA, édités directement dans ai/prompt-*.md
 // (pas en dur dans le code) — inlinés comme texte au build par esbuild (voir
@@ -76,10 +76,12 @@ export interface Highlight {
 	to: number;
 	lemma: string;
 	colorIndex: number;
+	title?: string;
 }
 
 export interface FinitionSettings {
 	mode: FinitionMode;
+	debugMode: boolean;
 	span: number; // empan de répétition, en caractères
 	// Longueur minimale (en caractères) d'un mot pour être compté comme
 	// répétition : un mot de longueur <= ce seuil n'est jamais surligné,
@@ -208,6 +210,7 @@ export const DEFAULT_PALETTE: string[] = [
 
 export const DEFAULT_SETTINGS: FinitionSettings = {
 	mode: "repetition",
+	debugMode: false,
 	span: 1500,
 	repetitionMinLength: 2,
 	debounceMs: 300,
@@ -282,6 +285,8 @@ export function addWordToDictionaryText(raw: string, word: string): string {
  * ça permet de tester un mode isolément.
  */
 export interface FinitionRuntime {
+	updateAnalysisHighlights: (view: import("@codemirror/view").EditorView, highlights: Highlight[], pending: boolean) => void;
+	updateTicIAStats: (view: import("@codemirror/view").EditorView, tagged: number, total: number, pending: boolean) => void;
 	settings: FinitionSettings;
 	lexicon: Map<string, string>;
 	functionWords: Set<string>;

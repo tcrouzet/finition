@@ -126,7 +126,9 @@ function doLexicalCategories(oParam) {
 				}
 			}
 			if (!category) category = fallback;
-			result[word] = category;
+			const alternatives = [...new Set(aMorph.map(categorizeMorph).filter(Boolean))];
+			if (aMorph.some((morph) => /:A\b/.test(morph)) && !alternatives.includes("adjectif")) alternatives.push("adjectif");
+			result[word] = [category, ...alternatives.filter((candidate) => candidate !== category)].join("|");
 		} catch (e) {
 			result[word] = "";
 		}

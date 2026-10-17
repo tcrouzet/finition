@@ -12,9 +12,9 @@
  * calque dans l'éditeur en cours évite tout risque d'interférer avec la
  * frappe).
  *
- * Découpage en groupes IDENTIQUE à modes/ternary.ts : virgules et, pour une
- * énumération imbriquée après un verbe, coordination finale « et/ou/ni »,
- * puis fusion des groupes commençant par une préposition nue — les deux modules appellent ensuite
+ * Découpage en groupes IDENTIQUE à modes/ternary.ts : virgules et
+ * coordinations « et/ou/ni » entre membres d'une énumération parallèle,
+ * puis fusion des seules continuations d'un complément nominal — les deux modules appellent ensuite
  * analyzeClause() groupe par groupe et tricolonMembership() sur le résultat,
  * EXACTEMENT comme modes/ternary.ts, pour que Structure et Tricolons
  * s'accordent toujours, sans aller-retour de capture d'écran. Chaque groupe
@@ -25,9 +25,7 @@
 import { sentenceRanges, trimRange } from "./clause-split";
 import {
 	GetCategory,
-	alignNominalEnumeration,
-	analyzeClause,
-	leadingCadratifCount,
+	analyzeSentenceStructure,
 	structureGroupRanges,
 	tricolonMembership,
 } from "./structure-signature";
@@ -58,10 +56,7 @@ export function buildStructureReport(text: string, getCategory: GetCategory): st
 		const groupRanges = structureGroupRanges(text, sentenceStart, sentenceEnd, getCategory);
 		if (groupRanges.length === 0) continue;
 
-		const analyses = alignNominalEnumeration(
-			groupRanges.map(([from, to]) => analyzeClause(text.slice(from, to), getCategory)),
-			leadingCadratifCount(text, groupRanges, getCategory)
-		);
+		const analyses = analyzeSentenceStructure(text, sentenceStart, sentenceEnd, getCategory);
 		if (analyses.every((analysis) => analysis.displayTokens.length === 0)) continue; // aucune structure reconnaissable
 
 		const membership = tricolonMembership(analyses);
@@ -75,7 +70,11 @@ export function buildStructureReport(text: string, getCategory: GetCategory): st
 		sentenceIndex++;
 		lines.push(`${sentenceIndex}. ${sentence}`);
 		lines.push("");
-		lines.push(`${renderedGroups.join(", ")}.`);
+		const signature = renderedGroups.map((group, index) => {
+			const separator = index === 0 ? "" : group === ":" || renderedGroups[index - 1] === ":" ? " " : ", ";
+			return separator + group;
+		}).join("");
+		lines.push(`${signature}.`);
 		lines.push("");
 	}
 

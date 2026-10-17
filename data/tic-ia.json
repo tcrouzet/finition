@@ -1,0 +1,2686 @@
+{
+  "source": "temp/tic-ia.md",
+  "description": "Dictionnaire extensible de formulations, lemmes et familles syntaxiques. Les marqueurs sont des indices stylistiques, jamais une preuve d'origine IA. Les règles manuelles restent exclues du score.",
+  "settings": {
+    "comparisonSpan": 1000,
+    "similarMinimum": 3,
+    "similarMinimumWords": 6,
+    "fragmentMaximumWords": 5,
+    "paragraphTolerance": 0.1
+  },
+  "rules": [
+    {
+      "id": "01",
+      "category": "syntaxe",
+      "label": "Fausse opposition",
+      "detector": "pattern",
+      "window": 2,
+      "patterns": [
+        "(?:ce|c')\\s*n[' ]est\\s+pas.+(?:c'est|mais)"
+      ],
+      "dictionary": {
+        "frames": [
+          [
+            "ce n'est pas",
+            "c'est"
+          ],
+          [
+            "ce ne sont pas",
+            "ce sont"
+          ],
+          [
+            "ce n'était pas",
+            "c'était"
+          ],
+          [
+            "ce n'étaient pas",
+            "c'étaient"
+          ],
+          [
+            "il ne s'agit pas",
+            "il s'agit"
+          ],
+          [
+            "il ne s'agit pas",
+            "mais"
+          ],
+          [
+            "non pas",
+            "mais"
+          ],
+          [
+            "pas",
+            "mais"
+          ],
+          [
+            "loin de",
+            "au contraire"
+          ],
+          [
+            "ne consiste pas",
+            "consiste"
+          ],
+          [
+            "ne réside pas",
+            "réside"
+          ],
+          [
+            "n'est plus",
+            "devient"
+          ],
+          [
+            "ne se limite pas",
+            "s'étend"
+          ],
+          [
+            "plutôt que",
+            "c'est"
+          ]
+        ],
+        "expressions": [
+          "ce n'est pas tant",
+          "il serait réducteur de",
+          "ce serait une erreur de réduire",
+          "ne se résume pas à",
+          "ne saurait se réduire à"
+        ],
+        "requireFrame": true
+      }
+    },
+    {
+      "id": "02",
+      "category": "syntaxe",
+      "label": "Négation corrective",
+      "detector": "pattern",
+      "window": 2,
+      "patterns": [
+        "(?:non\\s+)?pas\\s+(?:seulement\\s+)?parce\\s+qu(?:e\\s|').+mais\\s+(?:(?:simplement|surtout)\\s+)?parce\\s+qu(?:e\\s|').+"
+      ],
+      "dictionary": {
+        "frames": [
+          [
+            "pas parce que",
+            "mais parce que"
+          ],
+          [
+            "pas parce qu'",
+            "mais parce qu'"
+          ],
+          [
+            "non parce que",
+            "mais parce que"
+          ],
+          [
+            "non parce qu'",
+            "mais parce qu'"
+          ],
+          [
+            "pas par",
+            "mais par"
+          ],
+          [
+            "non par",
+            "mais par"
+          ],
+          [
+            "pas pour",
+            "mais pour"
+          ],
+          [
+            "non pour",
+            "mais pour"
+          ],
+          [
+            "pas faute de",
+            "mais par"
+          ],
+          [
+            "non faute de",
+            "mais faute de"
+          ],
+          [
+            "pas en raison de",
+            "mais en raison de"
+          ],
+          [
+            "pas à cause de",
+            "mais grâce à"
+          ],
+          [
+            "pas seulement parce que",
+            "surtout parce que"
+          ],
+          [
+            "non pas tant par",
+            "que par"
+          ],
+          [
+            "moins par",
+            "que par"
+          ]
+        ],
+        "requireFrame": true
+      }
+    },
+    {
+      "id": "03",
+      "category": "syntaxe",
+      "label": "Double négation et révélation",
+      "detector": "pattern",
+      "window": 2,
+      "patterns": [
+        "n[' ]est\\s+ni.+ni.+c'est"
+      ],
+      "dictionary": {
+        "frames": [
+          [
+            "ni",
+            "ni",
+            "c'est"
+          ],
+          [
+            "ni",
+            "ni",
+            "ce sont"
+          ],
+          [
+            "ni",
+            "ni",
+            "il s'agit"
+          ],
+          [
+            "ni",
+            "ni",
+            "en réalité"
+          ],
+          [
+            "ni",
+            "ni",
+            "mais"
+          ],
+          [
+            "pas",
+            "pas",
+            "mais"
+          ],
+          [
+            "ni",
+            "ni",
+            "autre chose"
+          ],
+          [
+            "ni",
+            "ni",
+            "plutôt"
+          ],
+          [
+            "n'est ni",
+            "c'était"
+          ],
+          [
+            "n'était ni",
+            "c'est"
+          ]
+        ],
+        "requireFrame": true
+      }
+    },
+    {
+      "id": "04",
+      "category": "syntaxe",
+      "label": "Construction en miroir",
+      "detector": "pattern",
+      "patterns": [
+        "moins\\s+de.+plus\\s+de",
+        "plus\\s+de.+moins\\s+de"
+      ],
+      "dictionary": {
+        "frames": [
+          [
+            "moins de",
+            "plus de"
+          ],
+          [
+            "plus de",
+            "moins de"
+          ],
+          [
+            "moins de",
+            "davantage de"
+          ],
+          [
+            "davantage de",
+            "moins de"
+          ],
+          [
+            "moins d'",
+            "plus d'"
+          ],
+          [
+            "plus d'",
+            "moins d'"
+          ],
+          [
+            "moins",
+            "davantage"
+          ],
+          [
+            "davantage",
+            "moins"
+          ],
+          [
+            "moins",
+            "mieux"
+          ],
+          [
+            "moins",
+            "plus"
+          ],
+          [
+            "plus",
+            "moins"
+          ],
+          [
+            "non seulement",
+            "mais aussi"
+          ],
+          [
+            "non seulement",
+            "mais encore"
+          ],
+          [
+            "pas seulement",
+            "également"
+          ],
+          [
+            "ne se contente pas de",
+            "va jusqu'à"
+          ]
+        ],
+        "requireFrame": true
+      },
+      "window": 2
+    },
+    {
+      "id": "05",
+      "category": "syntaxe",
+      "label": "Symétrie inversée",
+      "detector": "inversion",
+      "dictionary": {
+        "connectors": [
+          "mais",
+          "pourtant",
+          "cependant",
+          "toutefois",
+          "en revanche",
+          "à l'inverse",
+          "inversement",
+          "tandis que",
+          "alors que",
+          "quand",
+          ";"
+        ],
+        "stopWords": [
+          "notre",
+          "votre",
+          "leurs",
+          "cette",
+          "aussi",
+          "encore",
+          "toujours",
+          "jamais",
+          "même",
+          "chaque",
+          "tout",
+          "tous",
+          "toute",
+          "toutes",
+          "ainsi",
+          "désormais"
+        ],
+        "frames": [
+          [
+            "les uns",
+            "les autres"
+          ],
+          [
+            "l'homme",
+            "le monde"
+          ],
+          [
+            "le monde",
+            "l'homme"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "06",
+      "category": "syntaxe",
+      "label": "Gradation ternaire",
+      "detector": "tricolon",
+      "scope": "verbal",
+      "dictionary": {
+        "connectors": [
+          "et",
+          "puis",
+          "ensuite",
+          "enfin",
+          "d'abord",
+          "d'abord que",
+          "après",
+          "pour finir",
+          "finalement",
+          "à la fin",
+          "avant tout",
+          "dans un premier temps",
+          "dans un deuxième temps",
+          "dans un troisième temps"
+        ],
+        "roles": [
+          "SUJET VERBE",
+          "SUJET VERBE COMPLÉMENT",
+          "VERBE",
+          "VERBE COMPLÉMENT"
+        ],
+        "minimum": 3
+      }
+    },
+    {
+      "id": "07",
+      "category": "syntaxe",
+      "label": "Répétition anaphorique",
+      "detector": "anaphora",
+      "minimum": 3,
+      "dictionary": {
+        "expressions": [
+          "il faut",
+          "il est temps de",
+          "nous devons",
+          "nous voulons",
+          "nous pouvons",
+          "je veux",
+          "je crois",
+          "je refuse",
+          "j'ai vu",
+          "j'ai compris",
+          "c'est",
+          "ce sont",
+          "sans",
+          "ni",
+          "pas de",
+          "chaque jour",
+          "toujours plus",
+          "un monde où",
+          "là où",
+          "ceux qui",
+          "celles qui",
+          "on ne",
+          "il y a",
+          "parce que"
+        ],
+        "minimum": 3
+      }
+    },
+    {
+      "id": "08",
+      "category": "syntaxe",
+      "label": "Question suivie d’une réponse",
+      "detector": "question-answer",
+      "dictionary": {
+        "expressions": [
+          "parce que",
+          "parce qu'",
+          "car",
+          "c'est",
+          "ce sont",
+          "la réponse",
+          "la raison",
+          "tout simplement",
+          "simplement",
+          "précisément",
+          "en fait",
+          "en réalité",
+          "évidemment",
+          "assurément",
+          "bien sûr",
+          "oui",
+          "non",
+          "absolument",
+          "certainement",
+          "cela tient à",
+          "cela s'explique par",
+          "il suffit de",
+          "pour une raison",
+          "pour comprendre",
+          "voici pourquoi",
+          "voici comment"
+        ],
+        "questions": [
+          "pourquoi",
+          "comment",
+          "que faire",
+          "à quoi bon",
+          "est-ce",
+          "peut-on",
+          "faut-il",
+          "doit-on",
+          "qu'est-ce",
+          "quelle",
+          "quel",
+          "qui",
+          "où",
+          "quand",
+          "combien"
+        ]
+      }
+    },
+    {
+      "id": "09",
+      "category": "syntaxe",
+      "label": "Concession automatique",
+      "detector": "pattern",
+      "patterns": [
+        "certes.+mais",
+        "bien\\s+que.+(?:néanmoins|cependant|toutefois)"
+      ],
+      "dictionary": {
+        "frames": [
+          [
+            "certes",
+            "mais"
+          ],
+          [
+            "certes",
+            "pourtant"
+          ],
+          [
+            "certes",
+            "cependant"
+          ],
+          [
+            "bien que",
+            "néanmoins"
+          ],
+          [
+            "bien que",
+            "cependant"
+          ],
+          [
+            "quoique",
+            "néanmoins"
+          ],
+          [
+            "quoique",
+            "pourtant"
+          ],
+          [
+            "même si",
+            "mais"
+          ],
+          [
+            "même si",
+            "il reste"
+          ],
+          [
+            "s'il est vrai que",
+            "il n'en demeure pas moins"
+          ],
+          [
+            "il est vrai que",
+            "mais"
+          ],
+          [
+            "on pourrait penser",
+            "pourtant"
+          ],
+          [
+            "malgré",
+            "il convient"
+          ],
+          [
+            "en dépit de",
+            "il reste"
+          ],
+          [
+            "tout en reconnaissant",
+            "il faut"
+          ],
+          [
+            "aussi",
+            "soit",
+            "il reste"
+          ]
+        ],
+        "expressions": [
+          "il n'en demeure pas moins que",
+          "il n'en reste pas moins que",
+          "encore faut-il",
+          "cela étant dit",
+          "cela dit",
+          "tout bien considéré",
+          "pour autant",
+          "il serait toutefois réducteur"
+        ],
+        "requireFrame": true
+      },
+      "window": 2
+    },
+    {
+      "id": "10",
+      "category": "syntaxe",
+      "label": "Structure binaire",
+      "detector": "binary",
+      "window": 2,
+      "dictionary": {
+        "frames": [
+          [
+            "d'un côté",
+            "de l'autre"
+          ],
+          [
+            "d'un côté",
+            "d'un autre côté"
+          ],
+          [
+            "d'un côté",
+            "de l'autre côté"
+          ],
+          [
+            "d'une part",
+            "d'autre part"
+          ],
+          [
+            "d'une part",
+            "de l'autre"
+          ],
+          [
+            "d'un bord",
+            "de l'autre"
+          ],
+          [
+            "d'un côté",
+            "à l'opposé"
+          ],
+          [
+            "les uns",
+            "les autres"
+          ],
+          [
+            "les unes",
+            "les autres"
+          ],
+          [
+            "l'un",
+            "l'autre"
+          ],
+          [
+            "l'une",
+            "l'autre"
+          ],
+          [
+            "certains",
+            "d'autres"
+          ],
+          [
+            "certaines",
+            "d'autres"
+          ],
+          [
+            "pour certains",
+            "pour d'autres"
+          ],
+          [
+            "tantôt",
+            "tantôt"
+          ],
+          [
+            "parfois",
+            "parfois"
+          ],
+          [
+            "soit",
+            "soit"
+          ],
+          [
+            "ou bien",
+            "ou bien"
+          ],
+          [
+            "autant",
+            "autant"
+          ],
+          [
+            "tel",
+            "tel"
+          ],
+          [
+            "là où",
+            "ici"
+          ],
+          [
+            "sur le plan",
+            "sur le plan"
+          ],
+          [
+            "à la fois",
+            "et"
+          ],
+          [
+            "non seulement",
+            "mais aussi"
+          ],
+          [
+            "non seulement",
+            "mais encore"
+          ],
+          [
+            "aussi bien",
+            "que"
+          ],
+          [
+            "entre",
+            "et"
+          ],
+          [
+            "ceux-ci",
+            "ceux-là"
+          ],
+          [
+            "celles-ci",
+            "celles-là"
+          ],
+          [
+            "les premiers",
+            "les seconds"
+          ],
+          [
+            "les premières",
+            "les secondes"
+          ],
+          [
+            "les premiers",
+            "les autres"
+          ],
+          [
+            "pour les uns",
+            "pour les autres"
+          ],
+          [
+            "pour les unes",
+            "pour les autres"
+          ],
+          [
+            "d'abord",
+            "ensuite"
+          ],
+          [
+            "d'abord",
+            "puis"
+          ],
+          [
+            "premièrement",
+            "deuxièmement"
+          ],
+          [
+            "ici",
+            "là"
+          ],
+          [
+            "ici",
+            "ailleurs"
+          ],
+          [
+            "hier",
+            "aujourd'hui"
+          ],
+          [
+            "autrefois",
+            "désormais"
+          ],
+          [
+            "avant",
+            "maintenant"
+          ],
+          [
+            "sur un versant",
+            "sur l'autre"
+          ],
+          [
+            "sur un plan",
+            "sur un autre"
+          ],
+          [
+            "en apparence",
+            "en réalité"
+          ],
+          [
+            "en théorie",
+            "en pratique"
+          ],
+          [
+            "en principe",
+            "dans les faits"
+          ],
+          [
+            "les mots",
+            "les actes"
+          ],
+          [
+            "les promesses",
+            "les résultats"
+          ],
+          [
+            "les avantages",
+            "les inconvénients"
+          ],
+          [
+            "les bénéfices",
+            "les risques"
+          ],
+          [
+            "pas seulement",
+            "mais aussi"
+          ],
+          [
+            "pas seulement",
+            "mais encore"
+          ],
+          [
+            "non pas",
+            "mais"
+          ],
+          [
+            "non",
+            "mais"
+          ],
+          [
+            "autant de",
+            "que de"
+          ],
+          [
+            "moins de",
+            "plus de"
+          ],
+          [
+            "plus de",
+            "moins de"
+          ],
+          [
+            "plus",
+            "moins"
+          ],
+          [
+            "moins",
+            "plus"
+          ],
+          [
+            "ni",
+            "ni"
+          ],
+          [
+            "ou",
+            "ou"
+          ],
+          [
+            "tout à la fois",
+            "et"
+          ],
+          [
+            "à certains égards",
+            "à d'autres égards"
+          ],
+          [
+            "en même temps",
+            "et"
+          ],
+          [
+            "aussi",
+            "que"
+          ],
+          [
+            "là où",
+            "tandis que"
+          ]
+        ],
+        "connectors": [
+          "mais",
+          "tandis que",
+          "tandis qu'",
+          "alors que",
+          "alors qu'",
+          "cependant",
+          "pourtant",
+          "toutefois",
+          "en revanche",
+          "à l'inverse",
+          "inversement",
+          "au contraire",
+          "à l'opposé",
+          "contrairement à",
+          "par opposition à",
+          ";"
+        ],
+        "minimumWords": 3,
+        "requireFrame": true
+      }
+    },
+    {
+      "id": "11",
+      "category": "syntaxe",
+      "label": "Fragments emphatiques",
+      "detector": "fragments",
+      "minimum": 3,
+      "dictionary": {
+        "expressions": [
+          "une rupture",
+          "un vertige",
+          "une évidence",
+          "un silence",
+          "une absence",
+          "un vide",
+          "rien",
+          "tout",
+          "encore",
+          "jamais",
+          "toujours",
+          "personne",
+          "impossible",
+          "trop tard",
+          "sans un mot",
+          "sans un bruit",
+          "pas un geste",
+          "pas un souffle",
+          "pas une réponse",
+          "pas même",
+          "et puis",
+          "juste cela",
+          "seulement ça"
+        ],
+        "minimum": 3,
+        "maximumWords": 5
+      }
+    },
+    {
+      "id": "12",
+      "category": "syntaxe",
+      "label": "Reformulation insistante",
+      "detector": "pattern",
+      "patterns": [
+        "autrement\\s+dit",
+        "en\\s+d'autres\\s+termes"
+      ],
+      "dictionary": {
+        "expressions": [
+          "autrement dit",
+          "en d'autres termes",
+          "pour le dire autrement",
+          "pour le formuler autrement",
+          "pour reformuler",
+          "pour dire les choses autrement",
+          "dit autrement",
+          "formulé autrement",
+          "plus simplement",
+          "en termes plus simples",
+          "en termes simples",
+          "pour faire simple",
+          "en clair",
+          "concrètement",
+          "cela signifie que",
+          "cela veut dire que",
+          "c'est-à-dire",
+          "ce qui revient à dire",
+          "autrement formulé",
+          "si l'on préfère",
+          "si vous préférez",
+          "pour le dire simplement",
+          "pour être plus précis",
+          "en un mot",
+          "en une phrase",
+          "pour résumer",
+          "en résumé"
+        ]
+      }
+    },
+    {
+      "id": "13",
+      "category": "syntaxe",
+      "label": "Montée en généralité",
+      "detector": "pattern",
+      "patterns": [
+        "derrière.+se\\s+cache.+(?:enjeu|question|réalité).+profond"
+      ],
+      "dictionary": {
+        "expressions": [
+          "au-delà des apparences",
+          "au-delà de cette question",
+          "au-delà de ce constat",
+          "derrière cette question",
+          "derrière ces chiffres",
+          "derrière cette apparente",
+          "sous cette apparente",
+          "un enjeu plus profond",
+          "une question plus fondamentale",
+          "une réalité plus profonde",
+          "quelque chose de plus profond",
+          "ce qui se joue ici",
+          "ce qui est en jeu",
+          "il ne s'agit pas simplement",
+          "cela révèle quelque chose",
+          "cela nous dit quelque chose",
+          "nous invite à repenser",
+          "invite à interroger",
+          "questionne notre rapport à",
+          "interroge notre capacité à",
+          "touche à l'essence même",
+          "révèle une vérité profonde"
+        ],
+        "frames": [
+          [
+            "derrière",
+            "se cache"
+          ],
+          [
+            "au-delà",
+            "se dessine"
+          ],
+          [
+            "sous",
+            "se joue"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "14",
+      "category": "syntaxe",
+      "label": "Balancement proportionnel",
+      "detector": "pattern",
+      "patterns": [
+        "(?:^|[,;:])\\s*plus\\s+.+,\\s*plus\\s+.+",
+        "(?:^|[,;:])\\s*moins\\s+.+,\\s*moins\\s+.+"
+      ],
+      "dictionary": {
+        "frames": [
+          [
+            "plus",
+            "plus"
+          ],
+          [
+            "moins",
+            "moins"
+          ],
+          [
+            "plus",
+            "moins"
+          ],
+          [
+            "moins",
+            "plus"
+          ],
+          [
+            "mieux",
+            "plus"
+          ],
+          [
+            "plus",
+            "mieux"
+          ],
+          [
+            "davantage",
+            "moins"
+          ],
+          [
+            "à mesure que",
+            "davantage"
+          ],
+          [
+            "à mesure que",
+            "moins"
+          ],
+          [
+            "à mesure que",
+            "plus"
+          ],
+          [
+            "au fur et à mesure que",
+            "plus"
+          ],
+          [
+            "d'autant plus",
+            "que"
+          ],
+          [
+            "d'autant moins",
+            "que"
+          ],
+          [
+            "autant",
+            "autant"
+          ],
+          [
+            "plus on",
+            "plus on"
+          ],
+          [
+            "moins on",
+            "moins on"
+          ]
+        ],
+        "requireBoundary": true,
+        "requireFrame": true
+      },
+      "window": 2
+    },
+    {
+      "id": "15",
+      "category": "syntaxe",
+      "label": "Structure en escalier",
+      "detector": "pattern",
+      "window": 3,
+      "patterns": [
+        "pas\\s+seulement.+pas\\s+simplement.+mais"
+      ],
+      "dictionary": {
+        "frames": [
+          [
+            "pas seulement",
+            "pas simplement",
+            "mais"
+          ],
+          [
+            "pas seulement",
+            "pas uniquement",
+            "mais"
+          ],
+          [
+            "pas uniquement",
+            "pas simplement",
+            "mais"
+          ],
+          [
+            "ni seulement",
+            "ni simplement",
+            "mais"
+          ],
+          [
+            "pas",
+            "pas",
+            "mais"
+          ],
+          [
+            "non pas",
+            "non plus",
+            "mais"
+          ],
+          [
+            "d'abord",
+            "ensuite",
+            "enfin"
+          ],
+          [
+            "non seulement",
+            "mais aussi",
+            "surtout"
+          ],
+          [
+            "plus qu'",
+            "plus qu'",
+            "c'est"
+          ],
+          [
+            "au-delà",
+            "au-delà",
+            "c'est"
+          ]
+        ],
+        "expressions": [
+          "et surtout",
+          "plus encore",
+          "mieux encore",
+          "bien plus encore",
+          "mais avant tout"
+        ],
+        "requireFrame": true
+      }
+    },
+    {
+      "id": "16",
+      "category": "lexique",
+      "label": "À l’ère de",
+      "detector": "pattern",
+      "patterns": [
+        "à\\s+l'ère\\s+(?:de|du|des)"
+      ],
+      "dictionary": {
+        "expressions": [
+          "à l'ère de",
+          "à l'ère du",
+          "à l'ère des",
+          "à l'heure de",
+          "à l'heure du",
+          "à l'heure des",
+          "à l'aube de",
+          "à l'aube du",
+          "à l'aube d'une",
+          "à l'orée de",
+          "au seuil de",
+          "au temps de",
+          "en ces temps de",
+          "en cette époque de",
+          "dans une époque où",
+          "dans une ère où",
+          "dans cette ère de",
+          "dans le contexte actuel",
+          "dans le contexte contemporain",
+          "à l'ère numérique",
+          "à l'ère digitale",
+          "dans un monde en mutation",
+          "aujourd'hui plus que jamais",
+          "plus que jamais aujourd'hui"
+        ]
+      }
+    },
+    {
+      "id": "17",
+      "category": "lexique",
+      "label": "Dans un monde où",
+      "detector": "pattern",
+      "patterns": [
+        "dans\\s+un\\s+monde\\s+où"
+      ],
+      "dictionary": {
+        "expressions": [
+          "dans un monde où",
+          "dans un monde en constante évolution",
+          "dans un monde en perpétuelle évolution",
+          "dans un monde toujours plus",
+          "dans un monde de plus en plus",
+          "dans un monde hyperconnecté",
+          "dans un monde globalisé",
+          "dans un monde interconnecté",
+          "dans une société où",
+          "dans une société toujours plus",
+          "dans une société en mutation",
+          "dans un environnement où",
+          "dans un contexte où",
+          "dans un paysage où",
+          "à une époque où",
+          "dans une époque où",
+          "au sein d'une société",
+          "au sein d'un monde",
+          "face aux défis de notre époque",
+          "face aux enjeux contemporains"
+        ]
+      }
+    },
+    {
+      "id": "18",
+      "category": "lexique",
+      "label": "Injonction impersonnelle",
+      "detector": "pattern",
+      "patterns": [
+        "il\\s+est\\s+essentiel\\s+de"
+      ],
+      "dictionary": {
+        "expressions": [
+          "il est essentiel de",
+          "il est crucial de",
+          "il est fondamental de",
+          "il est primordial de",
+          "il est indispensable de",
+          "il est impératif de",
+          "il est nécessaire de",
+          "il est capital de",
+          "il est vital de",
+          "il est important de",
+          "il paraît essentiel de",
+          "il semble essentiel de",
+          "il apparaît essentiel de",
+          "il apparaît indispensable de",
+          "il devient indispensable de",
+          "il s'avère nécessaire de",
+          "il s'avère essentiel de",
+          "il nous faut",
+          "nous devons impérativement",
+          "nous devons absolument",
+          "il est de notre responsabilité de",
+          "force est de reconnaître la nécessité de"
+        ],
+        "qualifiers": [
+          "essentiel",
+          "crucial",
+          "fondamental",
+          "primordial",
+          "indispensable",
+          "impératif",
+          "nécessaire",
+          "capital",
+          "vital"
+        ]
+      }
+    },
+    {
+      "id": "19",
+      "category": "lexique",
+      "label": "Précaution académique",
+      "detector": "pattern",
+      "patterns": [
+        "il\\s+convient\\s+de\\s+souligner"
+      ],
+      "dictionary": {
+        "expressions": [
+          "il convient de souligner",
+          "il convient de noter",
+          "il convient de rappeler",
+          "il convient de préciser",
+          "il convient de mentionner",
+          "il importe de souligner",
+          "il importe de rappeler",
+          "il importe de noter",
+          "il faut souligner",
+          "il faut noter",
+          "il faut rappeler",
+          "il y a lieu de souligner",
+          "il est utile de rappeler",
+          "il est utile de préciser",
+          "il mérite d'être souligné",
+          "il mérite d'être rappelé",
+          "on ne saurait ignorer",
+          "on ne peut ignorer",
+          "il serait opportun de",
+          "il serait judicieux de",
+          "il semble pertinent de",
+          "il convient de garder à l'esprit"
+        ]
+      }
+    },
+    {
+      "id": "20",
+      "category": "lexique",
+      "label": "Évidence proclamée",
+      "detector": "pattern",
+      "patterns": [
+        "force\\s+est\\s+de\\s+constater"
+      ],
+      "dictionary": {
+        "expressions": [
+          "force est de constater",
+          "force est de reconnaître",
+          "force est d'admettre",
+          "tout porte à croire",
+          "tout laisse à penser",
+          "tout indique que",
+          "il va sans dire",
+          "cela va sans dire",
+          "il est indéniable que",
+          "il est incontestable que",
+          "il est évident que",
+          "il ne fait aucun doute que",
+          "il ne fait pas de doute que",
+          "nul ne peut nier",
+          "nul ne saurait nier",
+          "on ne peut que constater",
+          "nous ne pouvons que constater",
+          "un constat s'impose",
+          "une évidence s'impose",
+          "à l'évidence",
+          "de toute évidence",
+          "incontestablement",
+          "indéniablement"
+        ]
+      }
+    },
+    {
+      "id": "21",
+      "category": "lexique",
+      "label": "Au cœur de",
+      "detector": "pattern",
+      "patterns": [
+        "au\\s+c(?:œ|oe)ur\\s+(?:de|du|des)"
+      ],
+      "dictionary": {
+        "expressions": [
+          "au cœur de",
+          "au cœur du",
+          "au cœur des",
+          "au centre de",
+          "au centre du",
+          "au centre des",
+          "à la croisée de",
+          "à la croisée des",
+          "au carrefour de",
+          "au carrefour des",
+          "à l'intersection de",
+          "à l'intersection des",
+          "à la confluence de",
+          "à la confluence des",
+          "au confluent de",
+          "au confluent des",
+          "au fondement de",
+          "à la base de",
+          "au sein de",
+          "au sein du",
+          "au sein des",
+          "dans les rouages de",
+          "dans les méandres de",
+          "dans les arcanes de"
+        ]
+      }
+    },
+    {
+      "id": "22",
+      "category": "lexique",
+      "label": "Véritable",
+      "detector": "pattern",
+      "patterns": [
+        "véritables?"
+      ],
+      "dictionary": {
+        "lemmas": [
+          "véritable",
+          "authentique",
+          "réel",
+          "profond",
+          "indéniable",
+          "incontestable",
+          "remarquable",
+          "exceptionnel",
+          "extraordinaire",
+          "formidable",
+          "incroyable",
+          "saisissant",
+          "frappant",
+          "inédit",
+          "sans précédent"
+        ],
+        "expressions": [
+          "une véritable révolution",
+          "un véritable tournant",
+          "un authentique bouleversement",
+          "une profonde transformation",
+          "sans précédent",
+          "à nul autre pareil",
+          "d'une ampleur inédite",
+          "d'une portée considérable",
+          "rien de moins que",
+          "pas moins que",
+          "à proprement parler",
+          "au sens le plus fort"
+        ]
+      }
+    },
+    {
+      "id": "23",
+      "category": "lexique",
+      "label": "Inflation d’importance",
+      "detector": "pattern",
+      "patterns": [
+        "crucia(?:l|ux|le|les)",
+        "fondamenta(?:l|ux|le|les)",
+        "incontournables?"
+      ],
+      "dictionary": {
+        "lemmas": [
+          "crucial",
+          "fondamental",
+          "incontournable",
+          "essentiel",
+          "primordial",
+          "capital",
+          "vital",
+          "décisif",
+          "déterminant",
+          "majeur",
+          "stratégique",
+          "indispensable",
+          "central",
+          "impératif",
+          "cardinal",
+          "névralgique",
+          "structurant",
+          "substantiel",
+          "considérable"
+        ],
+        "expressions": [
+          "de la plus haute importance",
+          "d'une importance capitale",
+          "d'une importance cruciale",
+          "un rôle clé",
+          "un enjeu clé",
+          "la pierre angulaire",
+          "un pilier essentiel",
+          "un levier majeur",
+          "une priorité absolue",
+          "un enjeu de taille",
+          "un tournant décisif",
+          "un point névralgique",
+          "au premier plan"
+        ]
+      }
+    },
+    {
+      "id": "24",
+      "category": "lexique",
+      "label": "Complexité affichée",
+      "detector": "pattern",
+      "patterns": [
+        "complexes?",
+        "nuancé(?:e)?s?",
+        "multidimensionnel(?:le)?s?"
+      ],
+      "dictionary": {
+        "lemmas": [
+          "complexe",
+          "nuancé",
+          "multidimensionnel",
+          "multifactoriel",
+          "multiforme",
+          "protéiforme",
+          "multidisciplinaire",
+          "transversal",
+          "systémique",
+          "holistique",
+          "pluriel",
+          "ambivalent",
+          "paradoxal",
+          "dialectique",
+          "interdisciplinaire",
+          "multidirectionnel",
+          "composite",
+          "plurivoque",
+          "multifacette"
+        ],
+        "expressions": [
+          "dans toute sa complexité",
+          "dans toute sa diversité",
+          "sous de multiples facettes",
+          "aux multiples facettes",
+          "à plusieurs niveaux",
+          "à plusieurs échelles",
+          "une approche globale",
+          "une approche holistique",
+          "une lecture nuancée",
+          "une réalité plurielle",
+          "un phénomène complexe",
+          "un faisceau de facteurs",
+          "un ensemble de paramètres",
+          "une multitude de dimensions"
+        ]
+      }
+    },
+    {
+      "id": "25",
+      "category": "lexique",
+      "label": "Métaphores de découverte",
+      "detector": "pattern",
+      "patterns": [
+        "explor(?:er|e|es|ons|ez|ent|é|ée|és|ées|ait)",
+        "plong(?:er|e|eons|ez|ent)\\s+dans",
+        "navigu(?:er|e|ons|ez|ent)"
+      ],
+      "dictionary": {
+        "lemmas": [
+          "explorer",
+          "approfondir",
+          "décrypter",
+          "décortiquer",
+          "naviguer",
+          "sonder",
+          "arpenter",
+          "parcourir",
+          "cheminer",
+          "découvrir",
+          "dévoiler",
+          "révéler",
+          "éclairer",
+          "appréhender",
+          "scruter",
+          "ausculter",
+          "pénétrer",
+          "démêler"
+        ],
+        "expressions": [
+          "plonger dans",
+          "se plonger dans",
+          "plonger au cœur de",
+          "plonger au cœur du",
+          "plonger au cœur des",
+          "s'immerger dans",
+          "partir à la découverte de",
+          "ouvrir les portes de",
+          "lever le voile sur",
+          "percer les mystères de",
+          "percer les secrets de",
+          "mettre en lumière",
+          "jeter un éclairage sur",
+          "jeter les bases de",
+          "partir à la rencontre de",
+          "naviguer dans les méandres de",
+          "au fil de cette exploration"
+        ]
+      }
+    },
+    {
+      "id": "26",
+      "category": "lexique",
+      "label": "Verbes de transformation",
+      "detector": "pattern",
+      "patterns": [
+        "façonn(?:er|e|es|ons|ez|ent|é|ée|és|ées)",
+        "redéfini(?:r|t|ssent|ssons|ssez)",
+        "réinvent(?:er|e|es|ons|ez|ent|é|ée|és|ées)"
+      ],
+      "dictionary": {
+        "lemmas": [
+          "façonner",
+          "redéfinir",
+          "réinventer",
+          "transformer",
+          "remodeler",
+          "reconfigurer",
+          "révolutionner",
+          "repenser",
+          "refonder",
+          "renouveler",
+          "réimaginer",
+          "métamorphoser",
+          "bouleverser",
+          "recomposer",
+          "réorganiser",
+          "réorienter",
+          "redessiner",
+          "restructurer",
+          "reconsidérer",
+          "impulser",
+          "catalyser",
+          "dynamiser"
+        ],
+        "expressions": [
+          "ouvrir de nouvelles perspectives",
+          "ouvrir de nouveaux horizons",
+          "changer la donne",
+          "rebattre les cartes",
+          "dessiner les contours de",
+          "jeter les bases de",
+          "poser les jalons de",
+          "donner un nouvel élan",
+          "faire émerger",
+          "amorcer un tournant",
+          "marquer un tournant",
+          "entrer dans une nouvelle ère"
+        ]
+      }
+    },
+    {
+      "id": "27",
+      "category": "lexique",
+      "label": "Abstractions récurrentes",
+      "detector": "pattern",
+      "patterns": [
+        "écosystèmes?",
+        "paysages?",
+        "dynamiques?"
+      ],
+      "dictionary": {
+        "lemmas": [
+          "écosystème",
+          "paysage",
+          "dynamique",
+          "paradigme",
+          "synergie",
+          "levier",
+          "enjeu",
+          "problématique",
+          "dimension",
+          "perspective",
+          "approche",
+          "processus",
+          "dispositif",
+          "articulation",
+          "interaction",
+          "résilience",
+          "durabilité",
+          "inclusivité",
+          "transversalité",
+          "innovation",
+          "transformation",
+          "mutation",
+          "complexité",
+          "opportunité"
+        ],
+        "expressions": [
+          "le paysage contemporain",
+          "un écosystème en mutation",
+          "une dynamique nouvelle",
+          "un nouveau paradigme",
+          "une approche intégrée",
+          "une approche transversale",
+          "une démarche globale",
+          "les enjeux de demain",
+          "les défis contemporains",
+          "au service de",
+          "dans une logique de",
+          "en termes de",
+          "à travers le prisme de"
+        ]
+      }
+    },
+    {
+      "id": "28",
+      "category": "lexique",
+      "label": "Rapprochements vagues",
+      "detector": "pattern",
+      "patterns": [
+        "résonn(?:er|e|es|ons|ez|ent)",
+        "(?:faire|fait|font|faisait)\\s+écho"
+      ],
+      "dictionary": {
+        "lemmas": [
+          "résonner",
+          "résonance",
+          "écho",
+          "converger",
+          "dialoguer",
+          "entrecroiser",
+          "interconnecter"
+        ],
+        "expressions": [
+          "faire écho",
+          "entrer en résonance",
+          "entrer en résonance avec",
+          "trouver un écho",
+          "trouver une résonance",
+          "résonner avec",
+          "résonner dans",
+          "dialoguer avec",
+          "entrer en dialogue avec",
+          "établir un parallèle",
+          "faire le parallèle",
+          "entrer en correspondance",
+          "trouver un prolongement",
+          "rejoindre les préoccupations",
+          "se répondre mutuellement",
+          "des résonances profondes",
+          "un écho particulier"
+        ]
+      }
+    },
+    {
+      "id": "29",
+      "category": "lexique",
+      "label": "Métaphores relationnelles",
+      "detector": "pattern",
+      "patterns": [
+        "tiss(?:er|e|ons|ent)\\s+des\\s+liens",
+        "cré(?:er|e|ons|ent)\\s+des\\s+ponts"
+      ],
+      "dictionary": {
+        "lemmas": [
+          "interconnexion",
+          "synergie",
+          "passerelle",
+          "décloisonnement"
+        ],
+        "expressions": [
+          "tisser des liens",
+          "tisser un lien",
+          "tisser une toile",
+          "tisser un réseau",
+          "tisser des relations",
+          "créer des ponts",
+          "construire des ponts",
+          "bâtir des ponts",
+          "jeter des ponts",
+          "établir des passerelles",
+          "créer des passerelles",
+          "faire le lien",
+          "établir un lien",
+          "nouer des liens",
+          "renforcer les liens",
+          "relier les disciplines",
+          "connecter les idées",
+          "croiser les regards",
+          "croiser les perspectives",
+          "faire dialoguer",
+          "mettre en relation",
+          "mettre en réseau",
+          "décloisonner les savoirs",
+          "favoriser les échanges"
+        ]
+      }
+    },
+    {
+      "id": "30",
+      "category": "lexique",
+      "label": "Conclusion prévisible",
+      "detector": "pattern",
+      "patterns": [
+        "en\\s+fin\\s+de\\s+compte",
+        "en\\s+définitive"
+      ],
+      "dictionary": {
+        "expressions": [
+          "en fin de compte",
+          "en définitive",
+          "en dernière analyse",
+          "en dernière instance",
+          "au bout du compte",
+          "finalement",
+          "en conclusion",
+          "pour conclure",
+          "pour finir",
+          "pour terminer",
+          "en somme",
+          "somme toute",
+          "tout compte fait",
+          "tout bien considéré",
+          "au final",
+          "en fin d'analyse",
+          "en guise de conclusion",
+          "pour résumer",
+          "en résumé",
+          "en synthèse",
+          "l'essentiel à retenir",
+          "retenons que",
+          "ce qu'il faut retenir",
+          "une chose demeure",
+          "une certitude demeure",
+          "le bilan est clair"
+        ]
+      }
+    },
+    {
+      "id": "31",
+      "category": "rhétorique",
+      "label": "Nuance obligatoire",
+      "detector": "manual",
+      "reason": "La pertinence d’une réserve demande une lecture du sens et des affirmations.",
+      "dictionary": {
+        "expressions": [
+          "il faut toutefois nuancer",
+          "il convient de nuancer",
+          "à nuancer",
+          "cela mérite d'être nuancé",
+          "il faut relativiser",
+          "ce constat doit être tempéré",
+          "cependant",
+          "néanmoins",
+          "toutefois",
+          "pour autant",
+          "cela étant",
+          "sous réserve de",
+          "sans pour autant",
+          "encore faut-il",
+          "cela ne signifie pas que",
+          "il serait réducteur de",
+          "gardons-nous de conclure",
+          "il existe des exceptions",
+          "tout dépend du contexte",
+          "la réalité est plus nuancée"
+        ],
+        "lemmas": [
+          "nuancer",
+          "relativiser",
+          "tempérer",
+          "réserve",
+          "exception",
+          "précaution"
+        ]
+      }
+    },
+    {
+      "id": "32",
+      "category": "rhétorique",
+      "label": "Fausse profondeur",
+      "detector": "manual",
+      "reason": "Une banalité ne peut être établie par la seule syntaxe.",
+      "dictionary": {
+        "expressions": [
+          "une vérité profonde",
+          "une vérité essentielle",
+          "une évidence oubliée",
+          "une leçon fondamentale",
+          "un paradoxe saisissant",
+          "une révélation",
+          "au-delà des apparences",
+          "derrière cette simplicité",
+          "ce simple constat révèle",
+          "une réalité plus profonde",
+          "le véritable enjeu se situe",
+          "tout est lié",
+          "rien n'est jamais simple",
+          "chaque détail compte",
+          "tout est question de perspective",
+          "le silence en dit long",
+          "ce qui semble banal",
+          "sous une apparente banalité",
+          "bien plus qu'une simple",
+          "plus qu'une simple"
+        ],
+        "lemmas": [
+          "profondeur",
+          "essence",
+          "authenticité",
+          "vérité",
+          "révélation",
+          "paradoxe"
+        ]
+      }
+    },
+    {
+      "id": "33",
+      "category": "rhétorique",
+      "label": "Conclusion morale",
+      "detector": "manual",
+      "reason": "Une leçon universelle demande une analyse du propos et de sa conclusion.",
+      "dictionary": {
+        "expressions": [
+          "une leçon de vie",
+          "une leçon universelle",
+          "nous rappelle que",
+          "nous enseigne que",
+          "nous invite à réfléchir",
+          "il nous appartient de",
+          "à nous de",
+          "c'est à chacun de nous",
+          "notre responsabilité collective",
+          "ce qui nous rend humains",
+          "notre humanité commune",
+          "apprendre à vivre ensemble",
+          "devenir meilleurs",
+          "faire preuve d'humanité",
+          "la dignité humaine",
+          "les valeurs qui nous unissent",
+          "un monde plus juste",
+          "un avenir meilleur",
+          "ne jamais oublier",
+          "l'essentiel est ailleurs"
+        ],
+        "lemmas": [
+          "humanité",
+          "dignité",
+          "solidarité",
+          "responsabilité",
+          "humilité",
+          "compassion",
+          "sagesse"
+        ]
+      }
+    },
+    {
+      "id": "34",
+      "category": "rhétorique",
+      "label": "Optimisme de clôture",
+      "detector": "manual",
+      "reason": "Le caractère artificiel de l’optimisme dépend du contexte.",
+      "dictionary": {
+        "expressions": [
+          "l'avenir reste à écrire",
+          "l'avenir nous appartient",
+          "un avenir prometteur",
+          "un avenir meilleur",
+          "un avenir radieux",
+          "des lendemains meilleurs",
+          "il reste de l'espoir",
+          "tout reste possible",
+          "rien n'est perdu",
+          "le meilleur reste à venir",
+          "de belles perspectives",
+          "de nouvelles opportunités",
+          "saisir les opportunités",
+          "transformer les défis en opportunités",
+          "relever ensemble les défis",
+          "construire ensemble",
+          "ensemble nous pouvons",
+          "à condition de",
+          "il ne tient qu'à nous",
+          "une lueur d'espoir",
+          "des raisons d'espérer",
+          "un horizon s'ouvre"
+        ],
+        "lemmas": [
+          "espoir",
+          "prometteur",
+          "optimisme",
+          "opportunité",
+          "résilience",
+          "renaissance"
+        ]
+      }
+    },
+    {
+      "id": "35",
+      "category": "rhétorique",
+      "label": "Synthèse systématique",
+      "detector": "manual",
+      "reason": "Détecter une répétition d’arguments nécessite leur comparaison sémantique.",
+      "dictionary": {
+        "expressions": [
+          "en résumé",
+          "pour résumer",
+          "en synthèse",
+          "pour synthétiser",
+          "en somme",
+          "pour conclure",
+          "en conclusion",
+          "comme nous l'avons vu",
+          "nous avons vu que",
+          "comme nous l'avons montré",
+          "comme nous l'avons souligné",
+          "revenons sur",
+          "retenons trois points",
+          "les principaux enseignements",
+          "ce qu'il faut retenir",
+          "au terme de cette analyse",
+          "à la lumière de ces éléments",
+          "ces différents éléments",
+          "en réunissant ces perspectives"
+        ],
+        "lemmas": [
+          "synthèse",
+          "bilan",
+          "récapitulation",
+          "enseignement",
+          "conclusion"
+        ]
+      }
+    },
+    {
+      "id": "36",
+      "category": "rhétorique",
+      "label": "Équilibre artificiel",
+      "detector": "manual",
+      "reason": "La symétrie formelle seule ne permet pas de juger l’équilibre artificiel.",
+      "dictionary": {
+        "frames": [
+          [
+            "les avantages",
+            "les inconvénients"
+          ],
+          [
+            "les bénéfices",
+            "les risques"
+          ],
+          [
+            "les forces",
+            "les faiblesses"
+          ],
+          [
+            "les opportunités",
+            "les menaces"
+          ],
+          [
+            "d'un côté",
+            "de l'autre"
+          ],
+          [
+            "d'une part",
+            "d'autre part"
+          ],
+          [
+            "autant",
+            "autant"
+          ],
+          [
+            "si",
+            "en revanche"
+          ]
+        ],
+        "expressions": [
+          "un juste équilibre",
+          "trouver le bon équilibre",
+          "concilier les exigences",
+          "peser le pour et le contre",
+          "une approche équilibrée",
+          "une vision équilibrée",
+          "une perspective équilibrée",
+          "à la fois des avantages et des limites",
+          "entre promesses et risques",
+          "entre opportunités et défis",
+          "ni tout blanc ni tout noir",
+          "chaque médaille a son revers"
+        ],
+        "lemmas": [
+          "équilibre",
+          "symétrie",
+          "compromis",
+          "ambivalence",
+          "conciliation"
+        ]
+      }
+    },
+    {
+      "id": "37",
+      "category": "rhétorique",
+      "label": "Dramatisation anodine",
+      "detector": "manual",
+      "reason": "Il faut mesurer l’écart entre la situation décrite et sa dramatisation.",
+      "dictionary": {
+        "lemmas": [
+          "bouleversement",
+          "révolution",
+          "séisme",
+          "tsunami",
+          "cataclysme",
+          "déflagration",
+          "rupture",
+          "tournant",
+          "spectaculaire",
+          "radical",
+          "vertigineux",
+          "fulgurant",
+          "abyssal",
+          "inédit",
+          "historique",
+          "monumental"
+        ],
+        "expressions": [
+          "un changement de paradigme",
+          "rien ne sera plus jamais comme avant",
+          "tout bascule",
+          "tout change",
+          "rebattre toutes les cartes",
+          "un tournant historique",
+          "une révolution silencieuse",
+          "une onde de choc",
+          "un véritable séisme",
+          "une transformation sans précédent",
+          "un bouleversement majeur",
+          "une mutation profonde",
+          "les lignes bougent",
+          "les cartes sont rebattues"
+        ]
+      }
+    },
+    {
+      "id": "38",
+      "category": "rhétorique",
+      "label": "Généralisation abstraite",
+      "detector": "manual",
+      "reason": "L’absence de situations concrètes ne se déduit pas d’un seul mot abstrait.",
+      "dictionary": {
+        "lemmas": [
+          "enjeu",
+          "paradigme",
+          "dynamique",
+          "système",
+          "société",
+          "humanité",
+          "mutation",
+          "perspective",
+          "dimension",
+          "transformation",
+          "évolution",
+          "émergence",
+          "résilience",
+          "durabilité",
+          "complexité",
+          "processus",
+          "problématique",
+          "transition",
+          "modernité",
+          "contemporanéité"
+        ],
+        "expressions": [
+          "notre rapport au monde",
+          "notre manière d'être au monde",
+          "les enjeux de notre époque",
+          "les défis de demain",
+          "la condition humaine",
+          "les mutations contemporaines",
+          "la société dans son ensemble",
+          "à l'échelle de la société",
+          "de façon générale",
+          "d'une manière générale",
+          "plus largement",
+          "à un niveau plus global",
+          "une dimension universelle"
+        ]
+      }
+    },
+    {
+      "id": "39",
+      "category": "rhétorique",
+      "label": "Empathie automatique",
+      "detector": "pattern",
+      "patterns": [
+        "je\\s+comprends\\s+que\\s+cela\\s+puisse\\s+être\\s+frustrant"
+      ],
+      "dictionary": {
+        "expressions": [
+          "je comprends votre frustration",
+          "je comprends ta frustration",
+          "je comprends votre inquiétude",
+          "je comprends votre préoccupation",
+          "je comprends votre point de vue",
+          "je comprends ce que vous ressentez",
+          "je comprends ce que tu ressens",
+          "je comprends que cela puisse être frustrant",
+          "je comprends que ce soit difficile",
+          "je comprends parfaitement",
+          "c'est tout à fait compréhensible",
+          "votre inquiétude est légitime",
+          "votre inquiétude est parfaitement légitime",
+          "votre frustration est légitime",
+          "vos préoccupations sont légitimes",
+          "votre ressenti est valide",
+          "il est normal de ressentir",
+          "vous n'êtes pas seul",
+          "tu n'es pas seul",
+          "je suis désolé que vous",
+          "cela doit être difficile",
+          "je reconnais que cela",
+          "merci de partager",
+          "merci pour votre confiance",
+          "je vous entends",
+          "votre question est pertinente",
+          "c'est une excellente question"
+        ]
+      }
+    },
+    {
+      "id": "40",
+      "category": "rhétorique",
+      "label": "Précaution permanente",
+      "detector": "pattern",
+      "patterns": [
+        "il\\s+est\\s+important\\s+de\\s+noter\\s+que"
+      ],
+      "dictionary": {
+        "expressions": [
+          "il est important de noter que",
+          "il est important de souligner que",
+          "il est important de rappeler que",
+          "il est important de préciser que",
+          "il est utile de noter que",
+          "il convient de garder à l'esprit",
+          "gardons à l'esprit",
+          "gardez à l'esprit",
+          "n'oublions pas que",
+          "n'oubliez pas que",
+          "rappelons que",
+          "précisons que",
+          "notons que",
+          "soulignons que",
+          "il faut garder à l'esprit",
+          "il faut prendre en compte",
+          "il importe de rappeler",
+          "il est à noter que",
+          "une précision s'impose",
+          "une réserve s'impose",
+          "il serait prudent de",
+          "il convient de rester prudent",
+          "sous toutes réserves",
+          "avec les précautions nécessaires",
+          "sans prétendre à l'exhaustivité"
+        ]
+      }
+    },
+    {
+      "id": "41",
+      "category": "rhétorique",
+      "label": "Question finale artificielle",
+      "detector": "pattern",
+      "position": "last",
+      "patterns": [
+        "et\\s+si\\s+la\\s+véritable\\s+question\\s+était\\s+ailleurs"
+      ],
+      "dictionary": {
+        "expressions": [
+          "et si la véritable question",
+          "et si la vraie question",
+          "et si le véritable enjeu",
+          "et si le vrai enjeu",
+          "et si nous changions",
+          "et si nous repensions",
+          "et si nous osions",
+          "et si tout commençait",
+          "et si finalement",
+          "et si au fond",
+          "et si la réponse",
+          "sommes-nous prêts à",
+          "serons-nous capables de",
+          "saurons-nous",
+          "jusqu'où sommes-nous prêts",
+          "à nous de choisir",
+          "quel avenir voulons-nous",
+          "quelle société voulons-nous",
+          "quel monde voulons-nous",
+          "n'est-il pas temps de",
+          "n'est-ce pas là",
+          "et vous qu'en pensez-vous",
+          "qu'en pensez-vous",
+          "la question reste ouverte"
+        ],
+        "end": "?"
+      }
+    },
+    {
+      "id": "42",
+      "category": "rhétorique",
+      "label": "Ouverture creuse",
+      "detector": "pattern",
+      "patterns": [
+        "une\\s+chose\\s+est\\s+certaine.+le\\s+débat\\s+ne\\s+fait\\s+que\\s+commencer"
+      ],
+      "dictionary": {
+        "frames": [
+          [
+            "une chose est certaine",
+            "ne fait que commencer"
+          ],
+          [
+            "une certitude demeure",
+            "tout reste"
+          ],
+          [
+            "une chose est sûre",
+            "reste à"
+          ],
+          [
+            "une seule certitude",
+            "reste à"
+          ],
+          [
+            "le débat",
+            "reste ouvert"
+          ],
+          [
+            "l'histoire",
+            "reste à écrire"
+          ],
+          [
+            "l'avenir",
+            "reste à construire"
+          ]
+        ],
+        "expressions": [
+          "le débat ne fait que commencer",
+          "la réflexion ne fait que commencer",
+          "l'aventure ne fait que commencer",
+          "le chemin ne fait que commencer",
+          "tout reste à inventer",
+          "tout reste à construire",
+          "tout reste à écrire",
+          "les possibilités sont infinies",
+          "les perspectives sont immenses",
+          "l'avenir nous le dira",
+          "seul l'avenir nous le dira",
+          "la suite reste à écrire",
+          "une nouvelle page s'ouvre",
+          "le champ des possibles est ouvert",
+          "le débat reste ouvert"
+        ]
+      }
+    },
+    {
+      "id": "43",
+      "category": "composition",
+      "label": "Liste ternaire",
+      "detector": "tricolon",
+      "scope": "all",
+      "dictionary": {
+        "connectors": [
+          "et",
+          "ou",
+          "ni",
+          "puis",
+          "ensuite",
+          "enfin",
+          "d'abord",
+          "tantôt",
+          "soit",
+          "aussi",
+          "de plus",
+          "par ailleurs",
+          "en outre",
+          "sans",
+          "avec",
+          "à",
+          "de",
+          "pour",
+          "loin de",
+          "près de"
+        ],
+        "roles": [
+          "NOM",
+          "COMPLÉMENT",
+          "CADRATIF",
+          "SUJET VERBE",
+          "SUJET VERBE COMPLÉMENT",
+          "VERBE",
+          "VERBE COMPLÉMENT",
+          "SUBORDONNÉE"
+        ],
+        "minimum": 3
+      }
+    },
+    {
+      "id": "44",
+      "category": "composition",
+      "label": "Paragraphes de longueur homogène",
+      "detector": "paragraphs",
+      "minimum": 3,
+      "dictionary": {
+        "measure": "nombre de mots par paragraphe",
+        "minimum": 3,
+        "minimumWords": 20,
+        "tolerance": 0.1,
+        "exclusions": [
+          "titres Markdown",
+          "frontmatter",
+          "blocs de code",
+          "paragraphes vides"
+        ]
+      }
+    },
+    {
+      "id": "45",
+      "category": "composition",
+      "label": "Titres explicatifs",
+      "detector": "manual",
+      "reason": "La correspondance exacte entre titre et contenu demande une lecture sémantique.",
+      "dictionary": {
+        "expressions": [
+          "comprendre les enjeux",
+          "les défis à relever",
+          "les perspectives d'avenir",
+          "les principaux avantages",
+          "les principales limites",
+          "un regard sur",
+          "une analyse de",
+          "vers une meilleure compréhension",
+          "les clés pour comprendre",
+          "les fondements de",
+          "les implications de",
+          "les enjeux de",
+          "les perspectives de",
+          "les avantages et les inconvénients",
+          "un équilibre à trouver",
+          "les étapes essentielles",
+          "ce qu'il faut retenir",
+          "conclusion et perspectives"
+        ],
+        "lemmas": [
+          "introduction",
+          "contexte",
+          "enjeux",
+          "défis",
+          "analyse",
+          "implications",
+          "perspectives",
+          "recommandations",
+          "conclusion"
+        ]
+      }
+    },
+    {
+      "id": "46",
+      "category": "composition",
+      "label": "Transition scolaire",
+      "detector": "pattern",
+      "patterns": [
+        "mais\\s+ce\\s+n'est\\s+pas\\s+tout",
+        "allons\\s+plus\\s+loin"
+      ],
+      "dictionary": {
+        "expressions": [
+          "mais ce n'est pas tout",
+          "ce n'est pas tout",
+          "allons plus loin",
+          "pour aller plus loin",
+          "poussons la réflexion",
+          "poursuivons la réflexion",
+          "approfondissons cette question",
+          "examinons maintenant",
+          "voyons maintenant",
+          "penchons-nous sur",
+          "intéressons-nous à",
+          "passons à",
+          "abordons maintenant",
+          "explorons maintenant",
+          "regardons de plus près",
+          "regardons cela de plus près",
+          "entrons dans le détail",
+          "entrons dans le vif du sujet",
+          "revenons à",
+          "avant d'aller plus loin",
+          "après avoir exploré",
+          "cela nous amène à",
+          "cela nous conduit à",
+          "une question se pose alors",
+          "reste à comprendre",
+          "reste à savoir",
+          "il convient maintenant de",
+          "prenons un peu de recul",
+          "changeons de perspective",
+          "faisons un pas de côté"
+        ]
+      }
+    },
+    {
+      "id": "47",
+      "category": "composition",
+      "label": "Exemple générique",
+      "detector": "pattern",
+      "patterns": [
+        "prenons\\s+l'exemple\\s+d'une?\\s+(?:entreprise|personne|organisation)"
+      ],
+      "dictionary": {
+        "expressions": [
+          "prenons l'exemple de",
+          "prenons l'exemple d'une",
+          "prenons le cas de",
+          "prenons le cas d'une",
+          "considérons le cas de",
+          "considérons l'exemple de",
+          "imaginons une entreprise",
+          "imaginons une association",
+          "imaginons une organisation",
+          "imaginons une personne",
+          "imaginons un individu",
+          "imaginons un instant",
+          "supposons qu'une entreprise",
+          "supposons qu'une personne",
+          "à titre d'exemple",
+          "pour illustrer ce propos",
+          "pour illustrer cette idée",
+          "pour illustrer ce point",
+          "un exemple concret",
+          "un exemple parlant",
+          "un exemple emblématique",
+          "une illustration concrète",
+          "voici un exemple",
+          "en guise d'illustration",
+          "cela peut se traduire par",
+          "pensons à une entreprise",
+          "pensons par exemple à"
+        ]
+      }
+    },
+    {
+      "id": "48",
+      "category": "composition",
+      "label": "Métaphore filée convenue",
+      "detector": "manual",
+      "reason": "Voyage, lumière ou danse peuvent être littéraux ; leur seule présence ne suffit pas.",
+      "dictionary": {
+        "lemmas": [
+          "voyage",
+          "chemin",
+          "cheminement",
+          "horizon",
+          "lumière",
+          "ombre",
+          "phare",
+          "boussole",
+          "cap",
+          "océan",
+          "vague",
+          "courant",
+          "navigation",
+          "danse",
+          "ballet",
+          "mosaïque",
+          "tapisserie",
+          "tissu",
+          "fil",
+          "tissage",
+          "symphonie",
+          "partition",
+          "orchestre",
+          "pont",
+          "passerelle",
+          "jardin",
+          "graine",
+          "racine",
+          "arbre",
+          "fleur",
+          "puzzle",
+          "kaléidoscope"
+        ],
+        "expressions": [
+          "un voyage au cœur de",
+          "le chemin à parcourir",
+          "une lueur dans l'obscurité",
+          "une lumière dans la nuit",
+          "guider nos pas",
+          "une boussole pour",
+          "le fil conducteur",
+          "tisser la trame",
+          "une mosaïque de",
+          "une danse entre",
+          "une symphonie de",
+          "les graines du changement",
+          "les racines de notre",
+          "naviguer en eaux troubles",
+          "garder le cap",
+          "dessiner un nouvel horizon"
+        ]
+      }
+    },
+    {
+      "id": "49",
+      "category": "composition",
+      "label": "Progression trop parfaite",
+      "detector": "manual",
+      "reason": "L’enchaînement problème, analyse, solution, espoir nécessite une analyse du texte entier.",
+      "dictionary": {
+        "stages": [
+          [
+            "problème",
+            "défi",
+            "difficulté",
+            "constat",
+            "crise",
+            "obstacle",
+            "enjeu"
+          ],
+          [
+            "analyse",
+            "comprendre",
+            "examiner",
+            "explorer",
+            "identifier",
+            "décrypter"
+          ],
+          [
+            "solution",
+            "réponse",
+            "proposition",
+            "recommandation",
+            "stratégie",
+            "piste",
+            "remède"
+          ],
+          [
+            "espoir",
+            "avenir",
+            "promesse",
+            "perspective",
+            "opportunité",
+            "ensemble",
+            "possible"
+          ]
+        ],
+        "expressions": [
+          "face à ce défi",
+          "pour comprendre ce phénomène",
+          "plusieurs pistes se dessinent",
+          "la solution réside dans",
+          "il nous appartient désormais",
+          "transformer les défis en opportunités",
+          "construire un avenir meilleur",
+          "le chemin est encore long mais"
+        ]
+      }
+    },
+    {
+      "id": "50",
+      "category": "composition",
+      "label": "Chute sentencieuse",
+      "detector": "pattern",
+      "position": "last",
+      "patterns": [
+        "car\\s+au\\s+fond.+ce\\s+qui\\s+compte.+notre\\s+humanité"
+      ],
+      "dictionary": {
+        "frames": [
+          [
+            "au fond",
+            "ce qui compte"
+          ],
+          [
+            "au bout du compte",
+            "l'essentiel"
+          ],
+          [
+            "en définitive",
+            "notre humanité"
+          ],
+          [
+            "en fin de compte",
+            "ce qui nous"
+          ],
+          [
+            "car finalement",
+            "nous sommes"
+          ],
+          [
+            "ce qui importe",
+            "c'est notre"
+          ],
+          [
+            "la véritable richesse",
+            "réside dans"
+          ],
+          [
+            "la vraie force",
+            "réside dans"
+          ]
+        ],
+        "expressions": [
+          "ce qui nous rend humains",
+          "notre humanité commune",
+          "notre commune humanité",
+          "notre capacité à faire société",
+          "notre capacité à vivre ensemble",
+          "c'est là toute la beauté de",
+          "c'est là tout le sens de",
+          "telle est la véritable leçon",
+          "la véritable richesse se trouve",
+          "ce qui compte vraiment",
+          "l'essentiel reste",
+          "l'essentiel réside dans",
+          "la vraie question est celle de",
+          "notre responsabilité à tous",
+          "il nous appartient d'écrire la suite",
+          "ensemble nous pouvons changer",
+          "le reste nous appartient"
+        ]
+      }
+    }
+  ],
+  "dictionaryPolicy": "expressions : variantes littérales et lemmatisées ; lemmas : mots ou locutions fléchis via Morphalou ; frames : marqueurs ordonnés séparés par du contenu ; connectors : articulations soumises à un contrôle syntaxique ; règles manual : indices à examiner, sans détection automatique du sens. requireFrame : les expressions seules ne déclenchent pas la règle ; il faut une construction complète. Les dictionnaires des détecteurs structurels complètent les règles générales sans imposer un vocabulaire à leurs membres."
+}

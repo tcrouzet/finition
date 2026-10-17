@@ -19,7 +19,7 @@ interface AnthropicCallResult {
 	error: string | null;
 }
 
-async function callAnthropic(opts: AnthropicCallOptions): Promise<AnthropicCallResult> {
+export async function callAnthropic(opts: AnthropicCallOptions): Promise<AnthropicCallResult> {
 	try {
 		const response = await requestUrl({
 			url: "https://api.anthropic.com/v1/messages",

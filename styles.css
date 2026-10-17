@@ -141,11 +141,16 @@
 
 /* Pas de couleur fixe : voir .finition-color-N (injectée au runtime par
    applyPalette()), choisie dans les réglages ("Palette" → "Ternaires"). */
-.finition-ternary {
+.finition-ternary,
+.finition-tic-ia {
 	border-radius: 3px;
 	padding: 0 0.05em;
 	cursor: help;
 	color: #1a1a1a;
+}
+
+.finition-tic-ia {
+	cursor: pointer;
 }
 
 /*
@@ -184,12 +189,45 @@
 }
 
 .finition-status-bar-item {
+	display: flex;
+	align-items: center;
+	gap: 4px;
 	cursor: pointer;
 	opacity: 0.5;
 }
 
+.finition-next-occurrence {
+	padding: 0;
+}
+
+.finition-next-occurrence[hidden],
+.finition-analysis-count[hidden] {
+	display: none;
+}
+
 .finition-status-bar-item.finition-status-bar-active {
 	opacity: 1;
+}
+
+.finition-synonyms li {
+	margin-block: var(--size-4-2);
+}
+
+.finition-synonyms-drag-handle {
+	cursor: move;
+	touch-action: none;
+	user-select: none;
+}
+
+.finition-synonyms-footer {
+	flex-shrink: 0;
+}
+
+.finition-synonym-replace {
+	white-space: normal;
+	height: auto;
+	text-align: left;
+	margin-inline-end: var(--size-4-2);
 }
 
 /*

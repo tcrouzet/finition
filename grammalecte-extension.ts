@@ -136,11 +136,13 @@ function buildDecorations(view: EditorView, plugin: FinitionPlugin): DecorationS
 	const builder = new RangeSetBuilder<Decoration>();
 	const docLength = view.state.doc.length;
 	const errors = [...plugin.grammalecteErrors].sort((a, b) => a.nStart - b.nStart);
+	const highlights: { from: number }[] = [];
 
 	const colorClass = `finition-color-${plugin.settings.grammalecteColorIndex}`;
 
 	for (const err of errors) {
 		if (err.nStart < 0 || err.nEnd > docLength || err.nStart >= err.nEnd) continue;
+		highlights.push({ from: err.nStart });
 		const underlineClass = err.sType === "orthographe" ? "finition-grammalecte-spelling" : "finition-grammalecte-grammar";
 		builder.add(
 			err.nStart,
@@ -151,6 +153,7 @@ function buildDecorations(view: EditorView, plugin: FinitionPlugin): DecorationS
 			})
 		);
 	}
+	plugin.updateGrammalecteHighlights(view, highlights);
 	return builder.finish();
 }
 
@@ -205,6 +208,7 @@ export function finitionGrammalecteExtension(plugin: FinitionPlugin) {
 							const idx = plugin.grammalecteErrors.indexOf(resolvedErr);
 							if (idx !== -1) plugin.grammalecteErrors.splice(idx, 1);
 							plugin.grammalecteErrorsVersion++;
+							plugin.refreshAllEditors();
 						},
 						(word) => {
 							void plugin.addWordToGrammalecteDictionary(word);

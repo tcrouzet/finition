@@ -10,6 +10,7 @@
 
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
+import { Notice } from "obsidian";
 import { FinitionRuntime, Highlight } from "./types";
 import { computeRepetitions } from "./modes/repetition";
 import { computeHedgingHighlights } from "./modes/hedging";
@@ -19,15 +20,21 @@ import { computeTernaryHighlights } from "./modes/ternary";
 import { computeCadenceHighlights, computeCadenceHighlightsStructural } from "./modes/cadence";
 import { structureCategoryWords } from "./modes/structure-signature";
 import { computeHingeHighlights } from "./modes/hinges";
+import { analyzeTicIA } from "./modes/tic-ia";
 
 /** Classe CSS appliquée aux occurrences du lemme actuellement sélectionné au clic. */
 const FOCUS_CLASS = "finition-focused";
 
 function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLemma: string | null): DecorationSet {
 	const text = view.state.doc.toString();
-	if (text.length > runtime.settings.maxDocumentLength) return Decoration.none;
+	if (text.length > runtime.settings.maxDocumentLength) {
+		runtime.updateAnalysisHighlights(view, [], false);
+		if (runtime.settings.mode === "tic-ia") runtime.updateTicIAStats(view, 0, 0, true);
+		return Decoration.none;
+	}
 
 	let highlights: Highlight[];
+	let pending = false;
 	let cssClass: (highlight: Highlight) => string;
 
 	if (runtime.settings.mode === "repetition") {
@@ -71,7 +78,9 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 		const getCategory = (word: string) => runtime.wordCategoryCache.get(word.toLowerCase()) ?? "";
 		highlights = computeTernaryHighlights(text, getCategory);
 
-		runtime.ensureWordCategories(structureCategoryWords(text));
+		const words = structureCategoryWords(text);
+		pending = words.some((word) => !runtime.wordCategoryCache.has(word));
+		runtime.ensureWordCategories(words);
 
 		cssClass = (highlight) => {
 			// Une couleur par tricolon détecté (comme Cadence/Répétitions),
@@ -91,12 +100,25 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 			const getCategory = (word: string) => runtime.wordCategoryCache.get(word.toLowerCase()) ?? "";
 			highlights = computeCadenceHighlightsStructural(text, runtime.settings.cadenceSpan, getCategory);
 
-			runtime.ensureWordCategories(structureCategoryWords(text));
+			const words = structureCategoryWords(text);
+			pending = words.some((word) => !runtime.wordCategoryCache.has(word));
+			runtime.ensureWordCategories(words);
 		} else {
 			highlights = computeCadenceHighlights(text, runtime.settings.cadenceSpan, runtime.syntaxHinges);
 		}
 		cssClass = (highlight) => {
 			const base = `finition-cadence finition-color-${highlight.colorIndex}`;
+			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
+		};
+	} else if (runtime.settings.mode === "tic-ia") {
+		const categoryWords = structureCategoryWords(text);
+		const pending = categoryWords.some((word) => !runtime.wordCategoryCache.has(word));
+		const analysis = pending ? null : analyzeTicIA(text, (word) => runtime.wordCategoryCache.get(word.toLowerCase()) ?? "", runtime.lexicon);
+		highlights = analysis?.highlights ?? [];
+		runtime.updateTicIAStats(view, analysis?.taggedSentences ?? 0, analysis?.totalSentences ?? 0, pending);
+		runtime.ensureWordCategories(categoryWords);
+		cssClass = (highlight) => {
+			const base = `finition-tic-ia finition-color-${highlight.colorIndex}`;
 			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
 		};
 	} else if (runtime.settings.mode === "hinges") {
@@ -106,10 +128,12 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
 		};
 	} else {
+		runtime.updateAnalysisHighlights(view, [], false);
 		return Decoration.none;
 	}
 
 	highlights.sort((a, b) => a.from - b.from);
+	runtime.updateAnalysisHighlights(view, highlights, pending);
 	const builder = new RangeSetBuilder<Decoration>();
 	for (const highlight of highlights) {
 		builder.add(
@@ -119,7 +143,7 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 				class: cssClass(highlight),
 				// data-finition-lemma permet d'identifier, au clic, quel groupe
 				// de répétition sélectionner (voir handleClick ci-dessous).
-				attributes: { title: highlight.lemma, "data-finition-lemma": highlight.lemma },
+				attributes: { title: highlight.title ?? highlight.lemma, "data-finition-lemma": highlight.lemma },
 			})
 		);
 	}
@@ -178,6 +202,7 @@ export function finitionEditorExtension(runtime: FinitionRuntime) {
 			}
 
 			destroy() {
+				if (this.timer !== null) window.clearTimeout(this.timer);
 				this.view.dom.removeEventListener("click", this.handleClick);
 			}
 
@@ -188,6 +213,7 @@ export function finitionEditorExtension(runtime: FinitionRuntime) {
 				this.lastSettingsVersion = runtime.settingsVersion;
 				this.lastWordCategoryCacheVersion = runtime.wordCategoryCacheVersion;
 				const view = update.view;
+				if (update.docChanged) runtime.updateAnalysisHighlights(view, [], true);
 				if (this.timer !== null) window.clearTimeout(this.timer);
 				// Un changement de réglages ou l'arrivée de nouvelles
 				// catégories Grammalecte doit s'appliquer immédiatement ;
@@ -203,6 +229,19 @@ export function finitionEditorExtension(runtime: FinitionRuntime) {
 		},
 		{
 			decorations: (instance) => instance.decorations,
+			eventHandlers: {
+				mousedown(event: MouseEvent, view: EditorView) {
+					if (runtime.settings.mode !== "tic-ia" || event.button !== 0) return;
+					const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
+					if (position === null) return;
+					// Le DOM peut être remplacé au placement du curseur en Live Preview.
+					this.decorations.between(position, position, (from, to, decoration) => {
+						const { attributes } = decoration.spec as { attributes?: Record<string, string> };
+						const title = attributes?.title;
+						if (from <= position && position < to && title) new Notice(`Tic IA : ${title}`, 8000);
+					});
+				},
+			},
 		}
 	);
 }

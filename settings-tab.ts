@@ -60,12 +60,19 @@ export class FinitionSettingTab extends PluginSettingTab {
 					.addOption("hinges", "Charnières")
 					.setValue(this.plugin.settings.mode)
 					.onChange(async (value) => {
-						this.plugin.settings.mode = value as FinitionMode;
-						await this.plugin.saveSettings();
-						this.plugin.updateStatusBarIcon();
-						this.plugin.refreshAllEditors();
+						if (this.plugin.settings.mode !== value) await this.plugin.setMode(value as FinitionMode);
 					})
 			);
+
+		new Setting(containerEl)
+			.setName("Mode debug")
+			.setDesc("Structure : afficher l’entrée du menu et la commande d’analyse.")
+			.addToggle((toggle) => toggle
+				.setValue(this.plugin.settings.debugMode)
+				.onChange(async (value) => {
+					this.plugin.settings.debugMode = value;
+					await this.plugin.saveSettings();
+				}));
 
 		new Setting(containerEl)
 			.setName("Taille maximale de document analysé")

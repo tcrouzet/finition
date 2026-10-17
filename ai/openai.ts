@@ -22,7 +22,7 @@ interface OpenAICallResult {
 	error: string | null;
 }
 
-async function callOpenAI(opts: OpenAICallOptions): Promise<OpenAICallResult> {
+export async function callOpenAI(opts: OpenAICallOptions): Promise<OpenAICallResult> {
 	try {
 		const response = await requestUrl({
 			url: "https://api.openai.com/v1/chat/completions",

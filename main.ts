@@ -21,6 +21,7 @@ import {
 	FinitionMode,
 	FinitionRuntime,
 	FinitionSettings,
+	Highlight,
 	parseGrammalecteDictionary,
 	parseStopWords,
 } from "./types";
@@ -33,11 +34,13 @@ import { cleanTypography } from "./ai/clean";
 import { reviseChunkWithRetryAnthropic } from "./ai/anthropic";
 import { reviseChunkWithRetryOpenAI } from "./ai/openai";
 import { detectProvider } from "./ai/provider";
+import { runSynonyms } from "./ai/synonyms";
 import { fixPunctuationSpacing, fixBlankLinesProtected } from "./modes/punctuation";
 import { GrammalecteEngine, GrammalecteError } from "./modes/grammalecte";
 import { finitionGrammalecteExtension } from "./grammalecte-extension";
 import { buildStructureReport } from "./modes/structure-report";
 import { structureCategoryWords } from "./modes/structure-signature";
+import { AnalysisNavigation } from "./ui/analysis-navigation";
 
 // Les dictionnaires ne sont PAS lus depuis un dossier data/ à côté de
 // main.js : ils sont importés comme n'importe quel module TypeScript et
@@ -62,6 +65,9 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	// savoir qu'elle doit recalculer ses décorations immédiatement.
 	settingsVersion = 0;
 	private statusBarItem: HTMLElement | null = null;
+	private analysisNavigation: AnalysisNavigation | null = null;
+	private ticIAPercentage: HTMLElement | null = null;
+	private ticIAStats = new WeakMap<EditorView, { doc: EditorView["state"]["doc"]; tagged: number; total: number; pending: boolean }>();
 
 	// Suggestions "Ortho-typo IA" en attente de validation (clic). Vivent
 	// uniquement en mémoire, jamais persistées : elles ne modifient le
@@ -94,11 +100,18 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		await this.loadSettings();
 		this.loadLexiconData();
 		this.applyPalette();
+		this.setupStatusBarItem();
 		this.registerEditorExtension(finitionEditorExtension(this));
 		this.registerEditorExtension(finitionAIExtension(this));
 		this.registerEditorExtension(finitionGrammalecteExtension(this));
 		this.addSettingTab(new FinitionSettingTab(this.app, this));
-		this.setupStatusBarItem();
+		this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.updateStatusBarIcon()));
+
+		this.addCommand({
+			id: "synonymes-ia",
+			name: "Synonymes IA : proposer des synonymes de la sélection",
+			callback: () => runSynonyms(this.app, this.settings),
+		});
 
 		this.addCommand({
 			id: "finition-punctuation-fix",
@@ -118,11 +131,16 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.addCommand({
 			id: "finition-structure-report",
 			name: "Structure : générer le rapport d'analyse syntaxique",
-			callback: () => this.runStructureReport(),
+			checkCallback: (checking) => {
+				if (!this.settings.debugMode) return false;
+				if (!checking) void this.runStructureReport();
+				return true;
+			},
 		});
 	}
 
 	onunload(): void {
+		this.analysisNavigation?.destroy();
 		for (let index = 0; index < this.settings.palette.length; index++) {
 			document.body.style.removeProperty(`--finition-color-${index}`);
 		}
@@ -142,6 +160,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		// systématiquement les entrées pour obtenir un tableau indépendant.
 		this.settings.savedPrompts = (this.settings.savedPrompts ?? []).map((p) => ({ ...p }));
 		let needsPersist = this.ensureBuiltinPrompts();
+		if (this.settings.mode === "tic-ia") {
+			this.settings.mode = "ternary";
+			needsPersist = true;
+		}
 		if (this.reconcileActivePrompt()) {
 			needsPersist = true;
 		}
@@ -290,18 +312,47 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.statusBarItem.addClass("finition-status-bar-item");
 		this.statusBarItem.setAttribute("aria-label", "Finition");
 		setIcon(this.statusBarItem, "music");
+		this.ticIAPercentage = this.statusBarItem.createSpan();
+		this.analysisNavigation = new AnalysisNavigation(this, this.statusBarItem);
 		this.updateStatusBarIcon();
-		this.statusBarItem.addEventListener("click", (evt) => this.showModeMenu(evt));
+		this.registerDomEvent(this.statusBarItem, "click", (evt) => this.showModeMenu(evt));
 	}
 
 	updateStatusBarIcon(): void {
 		this.statusBarItem?.toggleClass("finition-status-bar-active", this.settings.mode !== "none");
+		const stats = this.activeTicIAStats();
+		this.ticIAPercentage?.setText(this.settings.mode === "tic-ia" ? ` ${stats && !stats.pending ? `${(stats.total ? stats.tagged * 100 / stats.total : 0).toFixed(1)} %` : "…"}` : "");
+		this.statusBarItem?.setAttribute("aria-label", this.settings.mode === "tic-ia" && stats
+			? `Tic IA : ${stats.tagged}/${stats.total} phrases avec des procédés à relire. Ce score n'est pas une probabilité d'origine IA.` : "Finition");
+		this.analysisNavigation?.refresh();
+	}
+
+	updateAnalysisHighlights(view: EditorView, highlights: Highlight[], pending: boolean): void {
+		this.analysisNavigation?.update(view, highlights, pending);
+	}
+
+	updateGrammalecteHighlights(view: EditorView, highlights: Pick<Highlight, "from">[]): void {
+		this.analysisNavigation?.updateGrammalecte(view, highlights);
+	}
+
+	updateTicIAStats(view: EditorView, tagged: number, total: number, pending: boolean): void {
+		this.ticIAStats.set(view, { doc: view.state.doc, tagged, total, pending });
+		this.updateStatusBarIcon();
+	}
+
+	private activeTicIAStats() {
+		const markdown = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const view = (markdown?.editor as { cm?: EditorView } | undefined)?.cm;
+		if (!view) return undefined;
+		const stats = this.ticIAStats.get(view);
+		return stats?.doc === view.state.doc ? stats : undefined;
 	}
 
 	/** Change de mode, en désactivant systématiquement les autres (exclusif). */
 	async setMode(mode: FinitionMode): Promise<void> {
 		// Recliquer sur le mode déjà actif l'éteint (retour à "none").
 		this.settings.mode = this.settings.mode === mode ? "none" : mode;
+		this.analysisNavigation?.requestFirst();
 		await this.saveSettings();
 		this.updateStatusBarIcon();
 		this.refreshAllEditors();
@@ -377,6 +428,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		);
 
 		menu.addItem((item) =>
+			item.setTitle("Synonymes IA").setIcon("book-open").onClick(() => runSynonyms(this.app, this.settings))
+		);
+
+		menu.addItem((item) =>
 			item
 				.setTitle("Ponctuation")
 				.setIcon("quote")
@@ -391,12 +446,14 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				.onClick(() => this.toggleGrammalecte())
 		);
 
-		menu.addItem((item) =>
-			item
-				.setTitle("Structure")
-				.setIcon("list-tree")
-				.onClick(() => this.runStructureReport())
-		);
+		if (this.settings.debugMode) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Structure")
+					.setIcon("list-tree")
+					.onClick(() => this.runStructureReport())
+			);
+		}
 
 		menu.addSeparator();
 

@@ -22,7 +22,7 @@ export interface Chunk {
 // Une "rupture de paragraphe" = une ou plusieurs lignes vides. Capturée pour
 // rattacher la rupture au paragraphe qui la précède (le découpage par
 // tranches [start, end) couvre alors tout le texte sans trou).
-const PARAGRAPH_BREAK_RE = /\n[ \t]*\n+/g;
+const PARAGRAPH_BREAK_RE = /\r?\n[ \t]*(?:\r?\n)+/g;
 
 export function splitIntoChunks(text: string, maxSize: number): Chunk[] {
 	if (text.length === 0) return [];

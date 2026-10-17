@@ -1,19 +1,18 @@
 /**
  * Mode "Tricolons" : repère les suites de 3 groupes consécutifs (séparés par
- * une virgule), À L'INTÉRIEUR D'UNE MÊME PHRASE, dont la signature
+ * une virgule et/ou une coordination), À L'INTÉRIEUR D'UNE MÊME PHRASE, dont la signature
  * syntaxique est identique — voir tricolonMembership() dans
  * structure-signature.ts pour l'algorithme exact, PARTAGÉ avec la commande
  * "Structure" (modes/structure-report.ts) pour que les deux s'accordent
  * toujours sur le même résultat.
  *
- * Découpage aligné sur celui de la commande Structure : uniquement la
- * virgule, à l'intérieur d'une phrase (sentenceRanges(), jamais coupée sur
+ * Découpage aligné sur celui de la commande Structure : virgules et
+ * coordinations d'énumération, à l'intérieur d'une phrase (sentenceRanges(), jamais coupée sur
  * ";:—–", et qui ignore désormais toute ponctuation encore à l'intérieur
- * de guillemets ouverts — voir clause-split.ts), puis fusion des groupes
- * commençant par une préposition nue avec le groupe précédent (voir
- * startsWithBarePreposition()). Une coordination finale « et/ou/ni » n'est
- * scindée que lorsqu'elle ferme une énumération nominale imbriquée après un
- * verbe ; les coordinations ordinaires restent intactes.
+ * de guillemets ouverts — voir clause-split.ts). Seules les continuations
+ * d'un même complément nominal sont fusionnées ; les groupes détachés restent
+ * distincts. Les listes de plus de trois membres ne sont
+ * jamais découpées en tricolons.
  *
  * Avertissement honnête : reconnaître un VRAI tricolon rhétorique (parallèle
  * de SENS, pas seulement de grammaire) à partir de seules catégories
@@ -24,9 +23,7 @@
 import { Highlight, PALETTE_SIZE } from "../types";
 import { sentenceRanges } from "./clause-split";
 import {
-	alignNominalEnumeration,
-	analyzeClause,
-	leadingCadratifCount,
+	analyzeSentenceStructure,
 	structureGroupRanges,
 	tricolonMembership,
 	GetCategory,
@@ -53,10 +50,7 @@ export function tricolonRuns(text: string, getCategory: GetCategory): TricolonRu
 		const groupRanges = structureGroupRanges(text, sentenceStart, sentenceEnd, getCategory);
 		if (groupRanges.length < 3) continue;
 
-		const parallelKeys = alignNominalEnumeration(
-			groupRanges.map(([from, to]) => analyzeClause(text.slice(from, to), getCategory)),
-			leadingCadratifCount(text, groupRanges, getCategory)
-		);
+		const parallelKeys = analyzeSentenceStructure(text, sentenceStart, sentenceEnd, getCategory);
 		const membership = tricolonMembership(parallelKeys);
 
 		// Regroupe les plages des groupes partageant le même groupId en un

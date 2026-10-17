@@ -6,9 +6,21 @@
 # plugins, sans fichier de config à maintenir (gh déduit le repo du remote).
 set -e
 
+# Arbre propre exigé (le script commite lui-même le bump)
+[ -z "$(git status --porcelain)" ] || { echo "Arbre git non propre" >&2; exit 1; }
+
+# Incrément automatique du patch : 0.5.0 -> 0.5.1
+CURRENT=$(jq -r '.version' manifest.json)
+TAG="${CURRENT%.*}.$(( ${CURRENT##*.} + 1 ))"
+MIN_APP=$(jq -r '.minAppVersion' manifest.json)
+
+jq --arg v "$TAG" '.version = $v' manifest.json > manifest.tmp && mv manifest.tmp manifest.json
+jq --arg v "$TAG" '.version = $v' package.json > package.tmp && mv package.tmp package.json
+[ -f versions.json ] && jq --arg v "$TAG" --arg m "$MIN_APP" '. + {($v): $m}' versions.json > versions.tmp && mv versions.tmp versions.json
+
+
 # Variables
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
-TAG=$(jq -r '.version' manifest.json)
 RELEASE_NAME="$TAG"
 DESCRIPTION="Release $TAG"
 FILES=("main.js" "manifest.json" "styles.css")

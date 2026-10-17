@@ -54,7 +54,7 @@ export const BLOCK_BREAK_RE = /\n[ \t]*\n+|(?:^|\n)[ \t]*#{1,6}[ \t][^\n]*(?:\n|
 //    qu'elle continue après le guillemet (bug remonté sur du texte réel).
 // 3. Suivi direct d'un guillemet ouvrant (nouvelle réplique qui s'enchaîne).
 export const SENTENCE_SEPARATOR_RE =
-	/[.!?…](?:[ \u00A0]*[»”"]+(?:\s+|$)|(?!\s*[»”"])(?:\s+|$)|(?=[«“]))/;
+	/[.!?…](?:[ \u00A0\u202F]*[»”"]+(?:\s+|$)|(?!\s*[»”"])(?:\s+|$)|(?=[«“]))/;
 // Bornes de proposition à l'intérieur d'une phrase.
 export const CLAUSE_SEPARATOR_RE = /[;:—–]/;
 
@@ -65,7 +65,7 @@ function sentenceRangesWithin(text: string, start: number, end: number): Array<[
 	let cursor = start;
 	let match: RegExpExecArray | null;
 	while ((match = separator.exec(slice)) !== null) {
-		ranges.push([cursor, start + match.index + 1]);
+		ranges.push([cursor, start + match.index + match[0].trimEnd().length]);
 		cursor = start + match.index + match[0].length;
 	}
 	ranges.push([cursor, end]);
