@@ -81,7 +81,7 @@ export interface ReviseResult {
  * d'erreur, pour que l'appelant puisse en informer l'utilisateur au lieu de
  * laisser croire silencieusement qu'"aucune correction" n'était nécessaire.
  */
-export async function reviseChunkWithRetry(
+export async function reviseChunkWithRetryAnthropic(
 	chunk: string,
 	system: string,
 	opts: { apiKey: string; model: string; maxTokens: number }

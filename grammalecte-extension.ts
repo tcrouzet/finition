@@ -34,7 +34,8 @@ function openPopup(
 	view: EditorView,
 	err: GrammalecteError,
 	coords: { left: number; bottom: number },
-	onResolved: (err: GrammalecteError) => void
+	onResolved: (err: GrammalecteError) => void,
+	onAddToDictionary: (word: string) => void
 ): void {
 	closePopup();
 
@@ -68,17 +69,37 @@ function openPopup(
 		popup.appendChild(list);
 	}
 
+	const actions = document.createElement("div");
+	actions.className = "finition-grammalecte-popup-actions";
+
+	// "Ajouter au dictionnaire" : uniquement pour les erreurs d'orthographe
+	// (mot isolé absent du dictionnaire, ex. nom propre ou néologisme) — une
+	// erreur de grammaire porte sur un groupe de mots, pas un mot unique à
+	// mémoriser comme "correct".
+	if (err.sType === "orthographe" && err.sValue) {
+		const dictBtn = document.createElement("button");
+		dictBtn.className = "finition-grammalecte-popup-dictionary";
+		dictBtn.textContent = "Ajouter au dictionnaire";
+		dictBtn.addEventListener("click", () => {
+			onAddToDictionary(err.sValue as string);
+			closePopup();
+		});
+		actions.appendChild(dictBtn);
+	}
+
 	const ignoreBtn = document.createElement("button");
 	ignoreBtn.className = "finition-grammalecte-popup-ignore";
 	ignoreBtn.textContent = "Ignorer";
 	ignoreBtn.addEventListener("click", () => {
 		// "Ignorer" doit aussi faire disparaître le soulignement, sinon on
 		// peut re-cliquer indéfiniment sur la même erreur sans jamais
-		// pouvoir s'en débarrasser visuellement.
+		// pouvoir s'en débarrasser visuellement. Contrairement à "Ajouter au
+		// dictionnaire", ça ne concerne QUE cette occurrence précise.
 		onResolved(err);
 		closePopup();
 	});
-	popup.appendChild(ignoreBtn);
+	actions.appendChild(ignoreBtn);
+	popup.appendChild(actions);
 
 	document.body.appendChild(popup);
 	activePopup = popup;
@@ -176,11 +197,19 @@ export function finitionGrammalecteExtension(plugin: FinitionPlugin) {
 					if (!err) return;
 					evt.preventDefault();
 					const rect = target.getBoundingClientRect();
-					openPopup(view, err, { left: rect.left, bottom: rect.bottom }, (resolvedErr) => {
-						const idx = plugin.grammalecteErrors.indexOf(resolvedErr);
-						if (idx !== -1) plugin.grammalecteErrors.splice(idx, 1);
-						plugin.grammalecteErrorsVersion++;
-					});
+					openPopup(
+						view,
+						err,
+						{ left: rect.left, bottom: rect.bottom },
+						(resolvedErr) => {
+							const idx = plugin.grammalecteErrors.indexOf(resolvedErr);
+							if (idx !== -1) plugin.grammalecteErrors.splice(idx, 1);
+							plugin.grammalecteErrorsVersion++;
+						},
+						(word) => {
+							void plugin.addWordToGrammalecteDictionary(word);
+						}
+					);
 				},
 			},
 		}

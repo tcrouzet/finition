@@ -1,113 +1,109 @@
 /**
- * Mode "Tricolon" : repère les séquences de trois groupes parallèles,
- * séparés par une virgule et/ou "et"/"ou"/"ni", de même structure
- * grammaticale (port de `ternary_char_ranges()` dans
- * script/detector/syntax_depth.py côté unshiter).
+ * Mode "Tricolons" : repère les suites de 3 groupes consécutifs (séparés par
+ * une virgule), À L'INTÉRIEUR D'UNE MÊME PHRASE, dont la signature
+ * syntaxique est identique — voir tricolonMembership() dans
+ * structure-signature.ts pour l'algorithme exact, PARTAGÉ avec la commande
+ * "Structure" (modes/structure-report.ts) pour que les deux s'accordent
+ * toujours sur le même résultat.
  *
- * Contrairement à l'original Python, aucune analyse syntaxique spaCy n'est
- * disponible ici : le filtre annexe `_ternary_is_binary_qualification`
- * (qui écarte les cas où le 1er groupe n'est qu'un adjectif+adverbe
- * qualifiant les deux groupes suivants, ex. « grand et beau, intelligent »)
- * n'est pas porté. Quelques faux positifs supplémentaires sont donc
- * possibles sur ce cas précis — le reste de l'algorithme (comparaison de
- * "signature grammaticale" des groupes : déterminant / préposition /
- * pronom / relatif / auxiliaire / mot plein) est identique à l'original.
+ * Découpage aligné sur celui de la commande Structure : uniquement la
+ * virgule, à l'intérieur d'une phrase (sentenceRanges(), jamais coupée sur
+ * ";:—–", et qui ignore désormais toute ponctuation encore à l'intérieur
+ * de guillemets ouverts — voir clause-split.ts), puis fusion des groupes
+ * commençant par une préposition nue avec le groupe précédent (voir
+ * startsWithBarePreposition()). Une coordination finale « et/ou/ni » n'est
+ * scindée que lorsqu'elle ferme une énumération nominale imbriquée après un
+ * verbe ; les coordinations ordinaires restent intactes.
+ *
+ * Avertissement honnête : reconnaître un VRAI tricolon rhétorique (parallèle
+ * de SENS, pas seulement de grammaire) à partir de seules catégories
+ * grammaticales reste un problème difficile ; cette heuristique ne prétend
+ * pas y parvenir parfaitement sur toutes les phrases littéraires.
  */
 
-import { Highlight } from "../types";
-import { WORD_RE, clauseRanges, trimRange } from "./clause-split";
+import { Highlight, PALETTE_SIZE } from "../types";
+import { sentenceRanges } from "./clause-split";
+import {
+	alignNominalEnumeration,
+	analyzeClause,
+	leadingCadratifCount,
+	structureGroupRanges,
+	tricolonMembership,
+	GetCategory,
+} from "./structure-signature";
 
-type Category = "DET" | "PREP" | "PRON" | "REL" | "AUX" | "WORD";
+/** Une suite d'exactement 3 groupes consécutifs de même structure. */
+export interface TricolonRun {
+	from: number;
+	to: number;
+}
 
-const DETERMINERS = new Set([
-	"le", "la", "les", "un", "une", "des", "du", "ce", "cet", "cette", "ces",
-	"mon", "ma", "mes", "ton", "ta", "tes", "son", "sa", "ses",
-	"notre", "nos", "votre", "vos", "leur", "leurs",
-]);
-const PREPOSITIONS = new Set([
-	"à", "de", "dans", "par", "pour", "en", "vers", "avec", "sans", "sous",
-	"sur", "chez", "entre", "devant", "derrière",
-]);
-const PRONOUNS = new Set([
-	"je", "tu", "il", "elle", "on", "nous", "vous", "ils", "elles",
-	"me", "te", "se", "moi", "toi", "lui", "eux",
-]);
-const RELATIVES = new Set(["qui", "que", "quoi", "dont", "où", "lequel", "laquelle", "lesquels", "lesquelles"]);
-const AUXILIARIES = new Set([
-	"être", "avoir", "ai", "as", "a", "avons", "avez", "ont",
-	"suis", "es", "est", "sommes", "êtes", "sont",
-]);
+/**
+ * Détecte tous les tricolons (groupes de 3, voir en-tête du fichier) dans
+ * tout le texte, phrase par phrase.
+ */
+export function tricolonRuns(text: string, getCategory: GetCategory): TricolonRun[] {
+	const runs: TricolonRun[] = [];
 
-/** Catégorie grammaticale d'un mot (éventuellement élidé : "l'", "qu'"...). */
-function wordSignature(rawWord: string): Category[] {
-	const word = rawWord.toLowerCase().replace(/’/g, "'");
-	const result: Category[] = [];
-	let body = word;
-	const apostropheIndex = word.indexOf("'");
-	if (apostropheIndex !== -1) {
-		const prefix = word.slice(0, apostropheIndex);
-		const remainder = word.slice(apostropheIndex + 1);
-		if (remainder.length > 0) {
-			if (prefix === "l") result.push("DET");
-			else if (prefix === "d") result.push("PREP");
-			else if (prefix === "j" || prefix === "m" || prefix === "t" || prefix === "s" || prefix === "n") result.push("PRON");
-			else if (prefix === "qu") result.push("REL");
-			body = remainder;
+	for (const [sentenceStart, sentenceEnd] of sentenceRanges(text)) {
+		const sentence = text.slice(sentenceStart, sentenceEnd);
+		if (/^#{1,6}[ \t]/.test(sentence.trim())) continue; // pas un titre
+		if (!sentence.includes(",")) continue; // court-circuit : pas de virgule, pas de tricolon possible
+
+		const groupRanges = structureGroupRanges(text, sentenceStart, sentenceEnd, getCategory);
+		if (groupRanges.length < 3) continue;
+
+		const parallelKeys = alignNominalEnumeration(
+			groupRanges.map(([from, to]) => analyzeClause(text.slice(from, to), getCategory)),
+			leadingCadratifCount(text, groupRanges, getCategory)
+		);
+		const membership = tricolonMembership(parallelKeys);
+
+		// Regroupe les plages des groupes partageant le même groupId en un
+		// seul surlignage par tricolon détecté. Chaque groupe apporte sa
+		// propre plage EFFECTIVE (highlightFrom/highlightTo, voir
+		// analyzeClause()) plutôt que sa plage BRUTE : un
+		// groupe réduit "after" (ex. "j'ai ri COMME un idiot") ne contribue
+		// que sa partie après la charnière, un groupe réduit "before" (ex.
+		// "tordu COMME un arbre qui a grandi...") que sa partie avant —
+		// jamais l'introduction commune ou l'élaboration subordonnée, qui
+		// ne font pas partie du parallélisme même si elles appartiennent
+		// grammaticalement au même groupe virgule. Seuls le DÉBUT du
+		// premier groupe et la FIN du dernier groupe d'un même tricolon
+		// délimitent le surlignage final (tout ce qui est entre les deux,
+		// virgules incluses, reste visuellement englobé).
+		let currentGroupId: number | null = null;
+		let currentFrom = 0;
+		let currentTo = 0;
+		for (let i = 0; i < groupRanges.length; i++) {
+			const groupId = membership[i]?.groupId ?? null;
+			const key = parallelKeys[i];
+			const effectiveFrom = groupRanges[i][0] + key.highlightFrom;
+			const effectiveTo = groupRanges[i][0] + key.highlightTo;
+			if (groupId !== currentGroupId) {
+				if (currentGroupId !== null) runs.push({ from: currentFrom, to: currentTo });
+				currentGroupId = groupId;
+				currentFrom = effectiveFrom;
+			}
+			currentTo = effectiveTo;
 		}
+		if (currentGroupId !== null) runs.push({ from: currentFrom, to: currentTo });
 	}
-	if (DETERMINERS.has(body)) result.push("DET");
-	else if (PREPOSITIONS.has(body)) result.push("PREP");
-	else if (PRONOUNS.has(body)) result.push("PRON");
-	else if (RELATIVES.has(body)) result.push("REL");
-	else if (AUXILIARIES.has(body)) result.push("AUX");
-	else result.push("WORD");
-	return result;
+
+	return runs;
 }
 
-/** Signature grammaticale complète d'un groupe (concaténation de ses mots). */
-function groupSignature(group: string): Category[] {
-	const signature: Category[] = [];
-	WORD_RE.lastIndex = 0;
-	let match: RegExpExecArray | null;
-	while ((match = WORD_RE.exec(group)) !== null) {
-		signature.push(...wordSignature(match[0]));
-	}
-	return signature;
-}
-
-function sameSignature(a: Category[], b: Category[]): boolean {
-	return a.length === b.length && a.every((value, index) => value === b[index]);
-}
-
-// Séparateur entre les trois groupes d'une séquence ternaire : virgule
-// et/ou "et"/"ou"/"ni" (insensible à la casse).
-const GROUP_SEPARATOR_RE = /\s*(?:,|\b(?:et|ou|ni)\b)\s*/gi;
-
-/** Détecte les séquences ternaires et retourne leurs plages de caractères. */
-export function ternaryCharRanges(text: string): Array<[number, number]> {
-	const ranges: Array<[number, number]> = [];
-	for (const [clauseStartRaw, clauseEndRaw] of clauseRanges(text)) {
-		const clause = text.slice(clauseStartRaw, clauseEndRaw);
-		if (!clause.includes(",")) continue; // court-circuit : pas de virgule, pas de ternaire possible
-		const groups = clause.split(GROUP_SEPARATOR_RE);
-		if (groups.length !== 3) continue;
-		const signatures = groups.map(groupSignature);
-		const [first, second, third] = signatures;
-		if (second.length === 0 || !sameSignature(second, third)) continue;
-		const suffix = first.slice(Math.max(0, first.length - second.length));
-		if (!sameSignature(suffix, second)) continue;
-
-		ranges.push(trimRange(text, clauseStartRaw, clauseEndRaw));
-	}
-	return ranges;
-}
-
-/** Point d'entrée pour editor-extension.ts : une séquence ternaire = un surlignage. */
-export function computeTernaryHighlights(text: string): Highlight[] {
-	return ternaryCharRanges(text).map(([from, to], index) => ({
+/**
+ * Point d'entrée pour editor-extension.ts : chaque tricolon détecté devient
+ * un surlignage. `colorIndex` boucle sur la palette (comme Cadence et
+ * Répétitions) pour que deux tricolons voisins restent visuellement
+ * distincts.
+ */
+export function computeTernaryHighlights(text: string, getCategory: GetCategory): Highlight[] {
+	return tricolonRuns(text, getCategory).map(({ from, to }, index) => ({
 		from,
 		to,
 		lemma: `ternary-${index}`,
-		colorIndex: 0,
+		colorIndex: index % PALETTE_SIZE,
 	}));
 }

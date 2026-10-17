@@ -1,9 +1,25 @@
 /*
  * Styles du plugin "Finition". Fichier édité directement (plus de
  * concaténation palette.css + styles.base.css : les couleurs de la palette
- * sont injectées dynamiquement au runtime par applyPalette() dans main.ts,
- * depuis les réglages Obsidian, jamais depuis ce fichier CSS statique).
+ * viennent des variables actualisées par applyPalette() dans main.ts.
  */
+
+.finition-color-0 { background: var(--finition-color-0); }
+.finition-color-1 { background: var(--finition-color-1); }
+.finition-color-2 { background: var(--finition-color-2); }
+.finition-color-3 { background: var(--finition-color-3); }
+.finition-color-4 { background: var(--finition-color-4); }
+.finition-color-5 { background: var(--finition-color-5); }
+.finition-color-6 { background: var(--finition-color-6); }
+.finition-color-7 { background: var(--finition-color-7); }
+.finition-color-8 { background: var(--finition-color-8); }
+.finition-color-9 { background: var(--finition-color-9); }
+.finition-color-10 { background: var(--finition-color-10); }
+.finition-color-11 { background: var(--finition-color-11); }
+.finition-color-12 { background: var(--finition-color-12); }
+.finition-color-13 { background: var(--finition-color-13); }
+.finition-color-14 { background: var(--finition-color-14); }
+.finition-color-15 { background: var(--finition-color-15); }
 
 /* --- Grammalecte --------------------------------------------------------- */
 
@@ -51,7 +67,14 @@
 	cursor: pointer;
 }
 
-.finition-grammalecte-popup-ignore {
+.finition-grammalecte-popup-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.3em;
+}
+
+.finition-grammalecte-popup-ignore,
+.finition-grammalecte-popup-dictionary {
 	background: var(--background-modifier-border);
 	border-radius: 4px;
 	padding: 0.15em 0.5em;
@@ -186,7 +209,10 @@
 
 .finition-stop-words-textarea {
 	width: 100%;
-	min-height: 220px;
+	/* Réduit depuis 220px : la zone n'a pas besoin d'être aussi haute pour
+	   rester lisible, et le panneau de réglages devenait trop long une fois
+	   le dictionnaire personnel Grammalecte ajouté en plus des mots-outils. */
+	min-height: 110px;
 	font-family: var(--font-monospace);
 	resize: vertical;
 }

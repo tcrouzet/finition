@@ -30,6 +30,9 @@ onmessage = function (e) {
 			case "parse":
 				doParse(oParam);
 				break;
+			case "lexicalCategories":
+				doLexicalCategories(oParam);
+				break;
 			default:
 				postMessage(createResponse(sCommand, "Commande inconnue: " + sCommand, true));
 		}
@@ -65,6 +68,70 @@ function doInit(oParam) {
 
 	bInitDone = true;
 	postMessage(createResponse("init", true, false));
+}
+
+// Déduit une catégorie grammaticale lisible (en français, comme dans
+// stats.py côté Python) à partir d'une chaîne de morphologie brute
+// renvoyée par graphspell (ex. ":V3e:ind:impa:3s", ":N:f:s"...). On ne
+// cherche que la présence d'un marqueur de catégorie connu, peu importe sa
+// position exacte dans la chaîne — contrairement au lemme, la catégorie
+// n'a pas besoin d'un découpage précis.
+function categorizeMorph(sMorph) {
+	// Un participe (passé "élevé", "né", "fini", "tendu", "ri"... ou
+	// présent) est AMBIGU hors contexte : employé seul il fonctionne comme
+	// un ADJECTIF ("un homme né à Paris", "un imbécile fini"), mais juste
+	// après un auxiliaire (avoir/être conjugué) il fait partie du même
+	// groupe VERBAL, pas un complément à part ("j'ai ri" = un seul verbe
+	// composé, pas VERBE+COMPLÉMENT). On ne peut pas trancher ici, sans le
+	// contexte de la phrase : on renvoie donc une catégorie à part,
+	// "participe", et c'est categorizeStructureWords() (structure-
+	// signature.ts) qui choisit verbe/adjectif selon le mot précédent.
+	// Tags Dicollecte des participes (voir lexgraph_fr.js / dTag) : ":Q" =
+	// participe passé, ":P" = participe présent — PAS ":par", qui n'existe
+	// pas dans ce jeu d'étiquettes (bug précédent : la règle ne matchait
+	// jamais, d'où les participes catégorisés "verbe" sans distinction).
+	// On détecte ça AVANT la règle générale "toute forme verbale = verbe"
+	// ci-dessous, car une entrée participe porte aussi un tag de groupe
+	// verbal (ex. ":V1_:Q:m:s").
+	if (/:Q\b/.test(sMorph) || /:P\b/.test(sMorph)) return "participe";
+	if (/:V\d/.test(sMorph) || /:V0[ea]/.test(sMorph)) return "verbe";
+	if (/:N\b/.test(sMorph) || /:M[12P]\b/.test(sMorph)) return "nom";
+	if (/:A\b/.test(sMorph)) return "adjectif";
+	if (/:W\b/.test(sMorph)) return "adverbe";
+	if (/:R\w*\b/.test(sMorph)) return "préposition";
+	if (/:D\w*\b/.test(sMorph)) return "déterminant";
+	if (/:O\w*\b/.test(sMorph)) return "pronom";
+	if (/:C[cs]?\b/.test(sMorph)) return "conjonction";
+	return "";
+}
+
+function doLexicalCategories(oParam) {
+	if (!bInitDone) {
+		postMessage(createResponse("lexicalCategories", "Moteur non initialisé.", true));
+		return;
+	}
+	const words = oParam.words || [];
+	const result = {};
+	for (const word of words) {
+		try {
+			const aMorph = gc_engine.oSpellChecker.getMorph(word) || [];
+			let category = "";
+			let fallback = "";
+			for (const sMorph of aMorph) {
+				const candidate = categorizeMorph(sMorph);
+				if (!fallback && candidate) fallback = candidate;
+				if (candidate === "participe") {
+					category = candidate;
+					break;
+				}
+			}
+			if (!category) category = fallback;
+			result[word] = category;
+		} catch (e) {
+			result[word] = "";
+		}
+	}
+	postMessage(createResponse("lexicalCategories", result, false));
 }
 
 function doParse(oParam) {
@@ -125,6 +192,7 @@ function doParse(oParam) {
 					sRuleId: "spelling",
 					sMessage: "Mot absent du dictionnaire : " + oToken.sValue,
 					aSuggestions: aSuggestions,
+					sValue: oToken.sValue,
 				});
 			}
 		}

@@ -15,10 +15,58 @@
  */
 export type FinitionMode = "none" | "repetition" | "hedging" | "stereotype" | "burstiness" | "ternary" | "cadence" | "hinges";
 
-// Prompt par défaut d'Ortho-typo IA, édité directement dans ai/prompt-revision.md
-// (pas en dur dans le code) — inliné comme texte au build par esbuild (voir
-// esbuild.config.mjs, loader: { ".md": "text" }).
-import DEFAULT_AI_PROMPT from "./ai/prompt-revision.md";
+// Prompts "système" d'Ortho-typo IA, édités directement dans ai/prompt-*.md
+// (pas en dur dans le code) — inlinés comme texte au build par esbuild (voir
+// esbuild.config.mjs, loader: { ".md": "text" }). Chaque fichier commence par
+// une ligne "name: Nom affiché dans le menu déroulant" suivie du prompt
+// lui-même ; voir parsePromptFile() ci-dessous pour la séparation des deux
+// (la ligne "name:" ne doit JAMAIS être envoyée à l'IA).
+//
+// Pour ajouter un nouveau prompt système : créer ai/prompt-xxx.md (en
+// commençant par "name: ..."), l'importer ci-dessous, et l'ajouter au
+// tableau BUILTIN_PROMPT_RAWS. Esbuild ne sachant pas importer un dossier
+// entier par motif (pas de glob), cette liste doit être tenue à jour à la
+// main — mais c'est la SEULE étape : tout le reste (menu déroulant,
+// protection contre la suppression, réinjection si l'entrée a disparu de
+// data.json) suit automatiquement depuis ce tableau.
+import RAW_PROMPT_CORRECTIONS from "./ai/prompt-corrections.md";
+import RAW_PROMPT_REVISION from "./ai/prompt-revision.md";
+
+const BUILTIN_PROMPT_RAWS: string[] = [
+	RAW_PROMPT_CORRECTIONS, // premier de la liste = prompt actif par défaut
+	RAW_PROMPT_REVISION,
+];
+
+export interface SavedPrompt {
+	name: string;
+	prompt: string;
+	// Identifiant de modèle associé à CE prompt. Chaîne vide = pas de modèle
+	// dédié : charger ce prompt laisse `aiModel` (le modèle par défaut)
+	// inchangé.
+	model: string;
+	// Prompt fourni avec le plugin (ai/prompt-*.md) : non supprimable depuis
+	// les réglages, et automatiquement réinjecté s'il venait à manquer de
+	// data.json. Un prompt créé par l'utilisateur via "Enregistrer sous ce
+	// nom" a toujours `builtin: false`.
+	builtin: boolean;
+}
+
+/**
+ * Sépare la ligne d'en-tête "name: ..." (nom affiché dans le menu déroulant
+ * des prompts enregistrés) du corps du prompt réellement envoyé à l'IA.
+ * Si la première ligne ne commence pas par "name:", tout le fichier est
+ * considéré comme le corps et le nom de secours "Sans titre" est utilisé.
+ */
+function parsePromptFile(raw: string): SavedPrompt {
+	const match = raw.match(/^name:\s*(.*)\r?\n/);
+	if (!match) {
+		return { name: "Sans titre", prompt: raw.trim(), model: "", builtin: true };
+	}
+	return { name: match[1].trim(), prompt: raw.slice(match[0].length).trim(), model: "", builtin: true };
+}
+
+/** Les prompts système, dans l'ordre de BUILTIN_PROMPT_RAWS (le premier est le défaut). */
+export const BUILTIN_PROMPTS: SavedPrompt[] = BUILTIN_PROMPT_RAWS.map(parsePromptFile);
 
 /** Nombre de classes de couleur disponibles dans styles.css (.finition-color-0 à -19). */
 export const PALETTE_SIZE = 16;
@@ -58,6 +106,17 @@ export interface FinitionSettings {
 	// rythmique se perçoit sur une portée plus courte qu'une répétition de
 	// lemme.
 	cadenceSpan: number;
+	// Moteur utilisé par Cadence pour regrouper les phrases :
+	// - "fast" : heuristique historique, comparaison de longueurs de
+	//   clauses délimitées par charnières syntaxiques (data/syntax-hinges.json).
+	//   Synchrone, instantané, aucune dépendance externe.
+	// - "grammalecte" : signature syntaxique par phrase (SUJET/VERBE/
+	//   COMPLÉMENT/PROPOSITION_SUBORDONNÉE...), portée de stats.py
+	//   (projet unshiter), en s'appuyant sur les catégories grammaticales
+	//   de Grammalecte. Plus fidèle, mais asynchrone (requêtes au Worker
+	//   Grammalecte) : les surlignages se complètent après un court délai
+	//   plutôt qu'instantanément à chaque frappe.
+	cadenceEngine: "fast" | "grammalecte";
 	// Index de couleur (0 à PALETTE_SIZE-1, cf. palette.css) utilisé par les
 	// modes à couleur UNIQUE (pas de rotation ni de comparaison, contrairement
 	// aux répétitions/burstiness/cadence) : réglable dans l'onglet Palette.
@@ -81,8 +140,28 @@ export interface FinitionSettings {
 	// découpé par paragraphes, comme dans le pipeline Python d'origine).
 	aiChunkSize: number;
 	aiMaxTokens: number;
-	// Prompt système envoyé à l'IA, éditable sans toucher au code.
+	// Prompt système envoyé à l'IA, éditable sans toucher au code. C'est
+	// toujours CE champ qui est réellement utilisé par les appels IA — les
+	// prompts "enregistrés" (savedPrompts) ne sont qu'une bibliothèque dans
+	// laquelle on peut (re)charger du contenu ici.
 	aiPrompt: string;
+	// Nom du prompt actuellement chargé dans aiPrompt, s'il correspond à une
+	// entrée de savedPrompts (null = prompt par défaut ou modifié librement,
+	// sans correspondance exacte avec une entrée nommée).
+	activePromptName: string | null;
+	// Bibliothèque de prompts nommés et sauvegardés par l'utilisateur, pour
+	// pouvoir basculer rapidement entre plusieurs variantes (ex. "Sobre",
+	// "Littéraire", "Journalistique"...) sans retaper le texte à chaque fois.
+	// `model` : identifiant de modèle associé à CE prompt (ex. un prompt de
+	// relecture fine avec un modèle plus puissant). Chaîne vide = pas de
+	// modèle dédié : charger ce prompt laisse `aiModel` (le modèle par
+	// défaut réglé plus bas) inchangé.
+	savedPrompts: SavedPrompt[];
+	// Clé API OpenAI, utilisée à la place d'Anthropic quand aiModel pointe
+	// vers un modèle GPT (voir isOpenAIModel() dans ai/provider.ts). Un seul
+	// champ "Modèle" au total : c'est le nom du modèle choisi qui détermine
+	// quel fournisseur (et donc quelle clé) est utilisé.
+	openaiApiKey: string;
 
 	// --- Grammalecte (orthographe / grammaire) ------------------------------
 	// Dictionnaire utilisé par le moteur orthographique : "fr-classic"
@@ -92,6 +171,14 @@ export interface FinitionSettings {
 	// Index dans settings.palette utilisé comme fond coloré derrière les
 	// erreurs Grammalecte, en plus du soulignement ondulé rouge/bleu.
 	grammalecteColorIndex: number;
+	// Dictionnaire personnel : mots que Grammalecte signale comme absents du
+	// dictionnaire (noms propres, néologismes...) mais qu'on ne veut plus
+	// voir soulignés. Même format que customStopWords (séparés par espace
+	// et/ou virgule), rempli soit manuellement dans les réglages, soit via
+	// le bouton "Ajouter au dictionnaire" du popup Grammalecte. Toujours une
+	// chaîne (jamais null) : contrairement aux mots-outils, il n'y a pas de
+	// liste par défaut à remplacer, juste une liste à compléter.
+	grammalecteCustomDictionary: string;
 }
 
 /**
@@ -129,6 +216,7 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	burstThreshold: 3,
 	burstTolerancePercent: 10,
 	cadenceSpan: 500,
+	cadenceEngine: "fast",
 	hedgingColorIndex: 9, // jaune pastel (même couleur qu'avant, nouvel index)
 	stereotypeColorIndex: 5, // turquoise pastel (même couleur qu'avant, nouvel index)
 	ternaryColorIndex: 14, // violet pastel (même couleur qu'avant, nouvel index)
@@ -138,9 +226,17 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	aiModel: "claude-sonnet-5-5",
 	aiChunkSize: 5000,
 	aiMaxTokens: 8000,
-	aiPrompt: DEFAULT_AI_PROMPT,
+	// Le premier prompt système (BUILTIN_PROMPT_RAWS[0], "Corrections") est
+	// le prompt actif par défaut ; les autres (ex. "Révision stylistique")
+	// restent disponibles dans la bibliothèque, sélectionnables dans le menu
+	// déroulant des réglages.
+	aiPrompt: BUILTIN_PROMPTS[0].prompt,
+	activePromptName: BUILTIN_PROMPTS[0].name,
+	savedPrompts: [...BUILTIN_PROMPTS],
+	openaiApiKey: "",
 	grammalecteDictionary: "fr-classic",
 	grammalecteColorIndex: 9,
+	grammalecteCustomDictionary: "",
 };
 
 /** Découpe une liste saisie par l'utilisateur, séparée par espaces et/ou virgules. */
@@ -151,6 +247,31 @@ export function parseStopWords(raw: string): Set<string> {
 			.map((word) => word.trim().toLowerCase())
 			.filter((word) => word.length > 0)
 	);
+}
+
+/**
+ * Découpe le dictionnaire personnel Grammalecte (même format que les
+ * mots-outils : séparés par espace et/ou virgule). Comparaison toujours en
+ * minuscules — un mot ajouté "Dupont" doit aussi couvrir "dupont" en début
+ * de phrase, et inversement.
+ */
+export function parseGrammalecteDictionary(raw: string): Set<string> {
+	return parseStopWords(raw);
+}
+
+/**
+ * Ajoute un mot au dictionnaire personnel Grammalecte (chaîne brute telle
+ * que stockée dans settings.grammalecteCustomDictionary), sans doublon
+ * (comparaison insensible à la casse). Renvoie la chaîne inchangée si le mot
+ * y figure déjà.
+ */
+export function addWordToDictionaryText(raw: string, word: string): string {
+	const trimmedWord = word.trim();
+	if (!trimmedWord) return raw;
+	const existing = parseGrammalecteDictionary(raw);
+	if (existing.has(trimmedWord.toLowerCase())) return raw;
+	const trimmedRaw = raw.trim();
+	return trimmedRaw.length > 0 ? `${trimmedRaw}, ${trimmedWord}` : trimmedWord;
 }
 
 /**
@@ -173,4 +294,26 @@ export interface FinitionRuntime {
 	// (ex. "qui", "que", "et"...), chargés depuis data/syntax-hinges.json.
 	syntaxHinges: string[];
 	settingsVersion: number;
+
+	// --- Cadence, moteur "grammalecte" --------------------------------------
+	// Cache des catégories grammaticales déjà résolues par Grammalecte
+	// (clé = mot en minuscules, valeur = "nom"/"verbe"/"adjectif"/"adverbe"/
+	// "pronom"/"préposition"/"déterminant"/"conjonction"/""). Rempli de façon
+	// asynchrone : voir ensureWordCategories().
+	wordCategoryCache: Map<string, string>;
+	// Incrémenté CHAQUE FOIS que wordCategoryCache reçoit de nouvelles
+	// entrées (voir ensureWordCategories()). Nécessaire car
+	// refreshAllEditors() ne fait qu'un dispatch CM6 vide : sans ce
+	// compteur, editor-extension.ts (qui ne recalcule que sur docChanged ou
+	// changement de settingsVersion) ignorait ce rafraîchissement et gardait
+	// un affichage calculé avec un cache encore incomplet, jusqu'au
+	// prochain clic (qui recalcule, lui, inconditionnellement) — d'où des
+	// résultats Tricolon/Cadence qui semblaient changer "tout seuls" ou ne
+	// jamais se mettre à jour après une frappe.
+	wordCategoryCacheVersion: number;
+	// Demande (sans bloquer) la résolution des catégories grammaticales des
+	// mots fournis qui ne sont pas encore dans wordCategoryCache. Une fois
+	// résolus, rafraîchit tous les éditeurs ouverts pour appliquer le
+	// regroupement Cadence avec les catégories désormais connues.
+	ensureWordCategories: (words: string[]) => void;
 }

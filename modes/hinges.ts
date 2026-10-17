@@ -21,7 +21,7 @@ function escapeRegExp(word: string): string {
 function buildHingeRegex(hinges: string[]): RegExp | null {
 	if (hinges.length === 0) return null;
 	const alternatives = hinges.map(escapeRegExp).join("|");
-	const pattern = "(?<![\\p{L}\\p{N}_])(?:" + alternatives + ")(?![\\p{L}\\p{N}_])";
+	const pattern = "(^|[^\\p{L}\\p{N}_])(" + alternatives + ")(?![\\p{L}\\p{N}_])";
 	return new RegExp(pattern, "giu");
 }
 
@@ -32,7 +32,8 @@ export function computeHingeHighlights(text: string, hinges: string[]): Highligh
 	const highlights: Highlight[] = [];
 	let match: RegExpExecArray | null;
 	while ((match = regex.exec(text)) !== null) {
-		highlights.push({ from: match.index, to: match.index + match[0].length, lemma: "hinge", colorIndex: 0 });
+		const from = match.index + match[1].length;
+		highlights.push({ from, to: from + match[2].length, lemma: "hinge", colorIndex: 0 });
 	}
 	return highlights;
 }

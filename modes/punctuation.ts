@@ -42,11 +42,11 @@ function protectSpans(text: string): { text: string; restore: (s: string) => str
 	const stash: string[] = [];
 	const protectedText = text.replace(PROTECT_RE, (match) => {
 		stash.push(match);
-		return `\u0000${stash.length - 1}\u0000`;
+		return `\uE000${stash.length - 1}\uE001`;
 	});
 	return {
 		text: protectedText,
-		restore: (s: string) => s.replace(/\u0000(\d+)\u0000/g, (_, idx: string) => stash[Number(idx)]),
+		restore: (s: string) => s.replace(/\uE000(\d+)\uE001/g, (_, idx: string) => stash[Number(idx)]),
 	};
 }
 

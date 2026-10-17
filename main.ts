@@ -13,17 +13,31 @@
 
 import { Menu, MarkdownView, Notice, Plugin, setIcon } from "obsidian";
 import { EditorView } from "@codemirror/view";
-import { DEFAULT_PALETTE, DEFAULT_SETTINGS, FinitionMode, FinitionRuntime, FinitionSettings, parseStopWords } from "./types";
+import {
+	addWordToDictionaryText,
+	BUILTIN_PROMPTS,
+	DEFAULT_PALETTE,
+	DEFAULT_SETTINGS,
+	FinitionMode,
+	FinitionRuntime,
+	FinitionSettings,
+	parseGrammalecteDictionary,
+	parseStopWords,
+} from "./types";
 import { finitionEditorExtension } from "./editor-extension";
 import { FinitionSettingTab } from "./settings-tab";
 import { finitionAIExtension, AIGroup } from "./ai/ai-extension";
 import { splitIntoChunks } from "./ai/chunk";
 import { diffToGroups } from "./ai/diff";
 import { cleanTypography } from "./ai/clean";
-import { reviseChunkWithRetry } from "./ai/anthropic";
+import { reviseChunkWithRetryAnthropic } from "./ai/anthropic";
+import { reviseChunkWithRetryOpenAI } from "./ai/openai";
+import { detectProvider } from "./ai/provider";
 import { fixPunctuationSpacing, fixBlankLinesProtected } from "./modes/punctuation";
 import { GrammalecteEngine, GrammalecteError } from "./modes/grammalecte";
 import { finitionGrammalecteExtension } from "./grammalecte-extension";
+import { buildStructureReport } from "./modes/structure-report";
+import { structureCategoryWords } from "./modes/structure-signature";
 
 // Les dictionnaires ne sont PAS lus depuis un dossier data/ à côté de
 // main.js : ils sont importés comme n'importe quel module TypeScript et
@@ -49,8 +63,6 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	settingsVersion = 0;
 	private statusBarItem: HTMLElement | null = null;
 
-	private paletteStyleEl: HTMLStyleElement | null = null;
-
 	// Suggestions "Ortho-typo IA" en attente de validation (clic). Vivent
 	// uniquement en mémoire, jamais persistées : elles ne modifient le
 	// document que lorsque l'utilisateur clique dessus (voir ai-extension.ts).
@@ -64,6 +76,19 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	grammalecteErrors: GrammalecteError[] = [];
 	grammalecteErrorsVersion = 0;
 	private grammalecteEngine: GrammalecteEngine | null = null;
+
+	// Cache des catégories grammaticales pour Cadence (moteur "grammalecte") —
+	// voir ensureWordCategories() et modes/structure-signature.ts. Partage la
+	// même instance de GrammalecteEngine que la fonctionnalité Grammalecte :
+	// pas de double chargement du dictionnaire en mémoire.
+	wordCategoryCache: Map<string, string> = new Map();
+	// Incrémenté dans ensureWordCategories() à chaque mise à jour du cache —
+	// voir le commentaire sur FinitionRuntime.wordCategoryCacheVersion dans
+	// types.ts pour le bug que ça corrige (affichage Tricolon/Cadence figé
+	// sur un cache incomplet tant qu'on ne cliquait pas dans le document).
+	wordCategoryCacheVersion = 0;
+	private pendingCategoryWords = new Set<string>();
+	private categoryFetchTimer: number | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -86,18 +111,101 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			name: "Grammalecte : analyser toute la note",
 			callback: () => this.runGrammalecte(),
 		});
+
+		// En plus de l'entrée du menu de la barre de statut (parfois capricieux
+		// à cliquer — plusieurs rapports utilisateur de clics sans effet) :
+		// une commande fiable, accessible via la palette de commandes.
+		this.addCommand({
+			id: "finition-structure-report",
+			name: "Structure : générer le rapport d'analyse syntaxique",
+			callback: () => this.runStructureReport(),
+		});
 	}
 
 	onunload(): void {
-		this.paletteStyleEl?.remove();
+		for (let index = 0; index < this.settings.palette.length; index++) {
+			document.body.style.removeProperty(`--finition-color-${index}`);
+		}
 		this.grammalecteEngine?.destroy();
+		if (this.categoryFetchTimer !== null) window.clearTimeout(this.categoryFetchTimer);
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const saved = (await this.loadData()) as Partial<FinitionSettings> | null;
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, saved ?? {});
+		// Object.assign() est superficiel : si data.json ne contenait pas
+		// encore `savedPrompts` (installation antérieure à la bibliothèque de
+		// prompts), this.settings.savedPrompts pointerait vers EXACTEMENT le
+		// même tableau que DEFAULT_SETTINGS.savedPrompts — un push()/filter()
+		// ultérieur (Enregistrer/Supprimer) modifierait alors les valeurs par
+		// défaut elles-mêmes pour le reste de la session. On clone donc
+		// systématiquement les entrées pour obtenir un tableau indépendant.
+		this.settings.savedPrompts = (this.settings.savedPrompts ?? []).map((p) => ({ ...p }));
+		let needsPersist = this.ensureBuiltinPrompts();
+		if (this.reconcileActivePrompt()) {
+			needsPersist = true;
+		}
 		if (this.migrateLegacyPaletteOrder()) {
+			needsPersist = true;
+		}
+		if (needsPersist) {
 			await this.saveData(this.settings); // persiste la migration, une seule fois
 		}
+	}
+
+	/**
+	 * Garantit que tous les prompts système (BUILTIN_PROMPTS, un par fichier
+	 * ai/prompt-*.md) sont bien présents dans settings.savedPrompts — y
+	 * compris s'ils ont été ajoutés après l'installation initiale du plugin
+	 * (nouveau prompt système livré dans une mise à jour) ou si l'un d'eux a
+	 * disparu de data.json pour une raison quelconque. Ne touche jamais un
+	 * prompt système déjà présent (pas d'écrasement d'une éventuelle
+	 * modification manuelle de data.json). Renvoie true si une entrée a été
+	 * ajoutée (à persister).
+	 */
+	private ensureBuiltinPrompts(): boolean {
+		let changed = false;
+		for (const builtin of BUILTIN_PROMPTS) {
+			const existing = this.settings.savedPrompts.find((p) => p.name === builtin.name);
+			if (!existing) {
+				this.settings.savedPrompts.push({ ...builtin });
+				changed = true;
+			} else if (!existing.builtin) {
+				// Entrée créée par une version antérieure à l'ajout du champ
+				// `builtin` (ou sauvegardée avant ce correctif) : son nom
+				// correspond à un prompt système, on la marque donc non
+				// supprimable sans toucher à son contenu ni à son modèle.
+				existing.builtin = true;
+				changed = true;
+			}
+		}
+		return changed;
+	}
+
+	/**
+	 * Garantit que settings.activePromptName (affiché dans le menu déroulant
+	 * "Prompt enregistré") correspond réellement au contenu de
+	 * settings.aiPrompt (affiché dans la zone de texte) — sinon le menu
+	 * affiche un nom qui ne correspond pas au texte visible, ce qui est
+	 * trompeur. Deux cas gérés :
+	 * 1. Mise à jour depuis une version sans bibliothèque de prompts : aucun
+	 *    `activePromptName` n'existait, mais le contenu sauvegardé peut
+	 *    correspondre exactement à l'un des prompts fournis par défaut (ex.
+	 *    l'ancien prompt unique, devenu "Révision stylistique") : on
+	 *    retrouve alors son nom automatiquement.
+	 * 2. `activePromptName` est défini mais ne correspond plus au contenu
+	 *    réel (le texte a été modifié depuis, ou l'entrée a été supprimée de
+	 *    la bibliothèque) : on détache le nom, pour que l'interface affiche
+	 *    honnêtement "(non enregistré)" plutôt qu'un nom erroné.
+	 * Renvoie true si une correction a été appliquée (à persister).
+	 */
+	private reconcileActivePrompt(): boolean {
+		const { aiPrompt, activePromptName, savedPrompts } = this.settings;
+		const matchByNameAndContent = savedPrompts.find((p) => p.name === activePromptName && p.prompt === aiPrompt);
+		if (matchByNameAndContent) return false; // déjà cohérent
+		const matchByContent = savedPrompts.find((p) => p.prompt === aiPrompt);
+		this.settings.activePromptName = matchByContent ? matchByContent.name : null;
+		return true;
 	}
 
 	/**
@@ -132,23 +240,12 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	/**
-	 * Génère/actualise une feuille de style injectée dans le <head> à partir
-	 * de settings.palette (plus besoin de toucher palette.css ni de
-	 * relancer un build : un changement de couleur dans les réglages est
-	 * visible immédiatement). Les sélecteurs `.finition-color-N` sont les
-	 * mêmes que ceux historiquement définis dans palette.css ; cette feuille
-	 * injectée, placée après, prend le dessus.
+	 * Actualise les variables CSS de la palette à partir des réglages.
 	 */
 	applyPalette(): void {
-		if (!this.paletteStyleEl) {
-			this.paletteStyleEl = document.createElement("style");
-			this.paletteStyleEl.id = "finition-palette-style";
-			document.head.appendChild(this.paletteStyleEl);
-		}
-		const rules = this.settings.palette
-			.map((hex, index) => `.finition-color-${index} { background: ${hex}; }`)
-			.join("\n");
-		this.paletteStyleEl.textContent = rules;
+		this.settings.palette.forEach((hex, index) => {
+			document.body.style.setProperty(`--finition-color-${index}`, hex);
+		});
 	}
 
 	/**
@@ -247,7 +344,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 		menu.addItem((item) =>
 			item
-				.setTitle("Tricolon")
+				.setTitle("Tricolons")
 				.setIcon("git-branch")
 				.setChecked(this.settings.mode === "ternary")
 				.onClick(() => this.setMode("ternary"))
@@ -294,7 +391,36 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				.onClick(() => this.toggleGrammalecte())
 		);
 
+		menu.addItem((item) =>
+			item
+				.setTitle("Structure")
+				.setIcon("list-tree")
+				.onClick(() => this.runStructureReport())
+		);
+
+		menu.addSeparator();
+
+		menu.addItem((item) =>
+			item
+				.setTitle("Paramètres")
+				.setIcon("settings")
+				.onClick(() => this.openSettingsTab())
+		);
+
 		menu.showAtMouseEvent(evt);
+	}
+
+	/** Ouvre directement l'onglet de réglages du plugin Finition. */
+	private openSettingsTab(): void {
+		// API non officiellement typée par obsidian.d.ts mais stable et
+		// largement utilisée par l'écosystème des plugins tiers pour ouvrir
+		// directement SA PROPRE page de réglages (évite de passer par
+		// Réglages > Plugins communautaires > Finition manuellement).
+		const appWithSettings = this.app as unknown as {
+			setting: { open: () => void; openTabById: (id: string) => void };
+		};
+		appWithSettings.setting.open();
+		appWithSettings.setting.openTabById(this.manifest.id);
 	}
 
 	/**
@@ -326,8 +452,11 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			new Notice("Sélectionner d'abord un texte.");
 			return;
 		}
-		if (!this.settings.aiApiKey) {
-			new Notice("Ortho-typo IA : renseigne ta clé API Anthropic dans Réglages → Finition.");
+		const provider = detectProvider(this.settings.aiModel);
+		const apiKey = provider === "openai" ? this.settings.openaiApiKey : this.settings.aiApiKey;
+		if (!apiKey) {
+			const providerLabel = provider === "openai" ? "OpenAI" : "Anthropic";
+			new Notice(`Ortho-typo IA : renseigne ta clé API ${providerLabel} dans Réglages → Finition.`);
 			return;
 		}
 
@@ -356,8 +485,9 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				const chunk = chunks[i];
 				progress.setMessage(`Ortho-typo IA : tronçon ${i + 1}/${chunks.length}...`);
 				if (chunk.text.trim().length === 0) continue;
-				const { text: revisedRaw, error } = await reviseChunkWithRetry(chunk.text, this.settings.aiPrompt, {
-					apiKey: this.settings.aiApiKey,
+				const reviseChunk = provider === "openai" ? reviseChunkWithRetryOpenAI : reviseChunkWithRetryAnthropic;
+				const { text: revisedRaw, error } = await reviseChunk(chunk.text, this.settings.aiPrompt, {
+					apiKey,
 					model: this.settings.aiModel,
 					maxTokens: this.settings.aiMaxTokens,
 				});
@@ -452,6 +582,52 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		await this.runGrammalecte();
 	}
 
+	/** Crée le Worker Grammalecte au premier besoin (Grammalecte OU Cadence "grammalecte"), une seule fois. */
+	private async ensureGrammalecteEngine(): Promise<GrammalecteEngine> {
+		if (!this.grammalecteEngine) {
+			this.grammalecteEngine = new GrammalecteEngine(this.app, this.manifest.dir ?? "");
+		}
+		await this.grammalecteEngine.ensureReady(this.settings.grammalecteDictionary);
+		return this.grammalecteEngine;
+	}
+
+	/**
+	 * Demande la résolution des catégories grammaticales des mots fournis qui
+	 * manquent encore au cache, sans bloquer l'appelant (editor-extension.ts
+	 * continue d'afficher ce qu'il sait déjà). Les requêtes de plusieurs
+	 * frappes rapprochées sont regroupées (debounce 400 ms) pour éviter de
+	 * spammer le Worker à chaque caractère tapé.
+	 */
+	ensureWordCategories(words: string[]): void {
+		let hasNew = false;
+		for (const word of words) {
+			if (!this.wordCategoryCache.has(word) && !this.pendingCategoryWords.has(word)) {
+				this.pendingCategoryWords.add(word);
+				hasNew = true;
+			}
+		}
+		if (!hasNew) return;
+
+		if (this.categoryFetchTimer !== null) window.clearTimeout(this.categoryFetchTimer);
+		this.categoryFetchTimer = window.setTimeout(() => void this.resolvePendingWordCategories(), 400);
+	}
+
+	private async resolvePendingWordCategories(): Promise<void> {
+		const toFetch = [...this.pendingCategoryWords];
+		this.pendingCategoryWords.clear();
+		try {
+			const engine = await this.ensureGrammalecteEngine();
+			const result = await engine.getCategories(toFetch);
+			for (const [word, category] of Object.entries(result)) {
+				this.wordCategoryCache.set(word, category);
+			}
+			this.wordCategoryCacheVersion++;
+			this.refreshAllEditors();
+		} catch (e) {
+			console.error("Finition — Cadence (Grammalecte) : impossible de résoudre les catégories.", e);
+		}
+	}
+
 	private async runGrammalecte(): Promise<void> {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) return;
@@ -470,16 +646,20 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			this.clearAISuggestions();
 		}
 
-		if (!this.grammalecteEngine) {
-			this.grammalecteEngine = new GrammalecteEngine(this.app, this.manifest.dir ?? "");
-		}
-
 		const notice = new Notice("Grammalecte : chargement du moteur...", 0);
 		try {
-			await this.grammalecteEngine.ensureReady(this.settings.grammalecteDictionary);
+			const engine = await this.ensureGrammalecteEngine();
 			notice.setMessage("Grammalecte : analyse en cours...");
 			const text = editor.getValue();
-			this.grammalecteErrors = await this.grammalecteEngine.parse(text);
+			const rawErrors = await engine.parse(text);
+			const dictionary = parseGrammalecteDictionary(this.settings.grammalecteCustomDictionary);
+			// Les noms propres et mots inconnus ajoutés au dictionnaire
+			// personnel ne doivent plus jamais être soulignés — uniquement
+			// filtré côté orthographe : une erreur de grammaire portant sur un
+			// groupe de mots n'a pas de sValue unique à comparer.
+			this.grammalecteErrors = rawErrors.filter(
+				(err) => !(err.sType === "orthographe" && err.sValue && dictionary.has(err.sValue.toLowerCase()))
+			);
 			this.grammalecteErrorsVersion++;
 			this.refreshAllEditors();
 			notice.hide();
@@ -493,6 +673,83 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			new Notice(`Grammalecte : erreur — ${e instanceof Error ? e.message : String(e)}`, 10000);
 			console.error("Finition — Grammalecte :", e);
 		}
+	}
+
+	/**
+	 * Commande "Structure" : génère, dans une NOUVELLE note, l'encodage
+	 * syntaxique coloré de chaque phrase du document actif (voir
+	 * modes/structure-report.ts) — un outil de lecture seule pour comprendre
+	 * comment Cadence et Tricolons analysent le texte, sans jamais toucher
+	 * au document d'origine.
+	 */
+	private async runStructureReport(): Promise<void> {
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view) {
+			// Garde auparavant silencieuse : aucune erreur console, aucun
+			// message — ressemblait exactement à "rien ne se passe" alors
+			// qu'il n'y avait tout simplement pas de note Markdown active au
+			// moment du clic/raccourci (focus ailleurs, palette de
+			// commandes qui vient de se refermer sans avoir redonné le
+			// focus à l'éditeur, etc.).
+			new Notice("Structure : aucune note Markdown active. Clique d'abord dans le texte, puis relance.", 6000);
+			return;
+		}
+		const text = view.editor.getValue();
+
+		const notice = new Notice("Structure : chargement du moteur Grammalecte...", 0);
+		try {
+			const engine = await this.ensureGrammalecteEngine();
+			notice.setMessage("Structure : analyse en cours...");
+
+			const categories = await engine.getCategories(structureCategoryWords(text));
+			const getCategory = (word: string) => categories[word.toLowerCase()] ?? "";
+
+			const content = buildStructureReport(text, getCategory);
+
+			// Nom unique pour ne jamais écraser un rapport précédent par
+			// mégarde ; dans le même dossier que la note active, pour rester
+			// facile à retrouver.
+			const activeFile = view.file;
+			const folder = activeFile?.parent?.path ? `${activeFile.parent.path}/` : "";
+			const pad = (n: number) => String(n).padStart(2, "0");
+			const now = new Date();
+			const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(
+				now.getHours()
+			)}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+			const path = `${folder}Structure — ${activeFile?.basename ?? "sans titre"} (${timestamp}).md`;
+
+			const file = await this.app.vault.create(path, content);
+			notice.hide();
+			await this.app.workspace.getLeaf(true).openFile(file);
+		} catch (e) {
+			notice.hide();
+			new Notice(`Structure : erreur — ${e instanceof Error ? e.message : String(e)}`, 10000);
+			console.error("Finition — Structure :", e);
+		}
+	}
+
+	/**
+	 * Ajoute un mot au dictionnaire personnel Grammalecte (bouton "Ajouter au
+	 * dictionnaire" du popup — voir grammalecte-extension.ts) et retire
+	 * IMMÉDIATEMENT toutes les occurrences déjà soulignées de ce mot dans la
+	 * note courante (pas seulement celle sur laquelle on vient de cliquer) :
+	 * un nom propre répété plusieurs fois serait sinon toujours souligné
+	 * ailleurs dans le texte après l'avoir "accepté" une fois.
+	 */
+	async addWordToGrammalecteDictionary(word: string): Promise<void> {
+		const normalized = word.trim();
+		if (!normalized) return;
+		this.settings.grammalecteCustomDictionary = addWordToDictionaryText(
+			this.settings.grammalecteCustomDictionary,
+			normalized
+		);
+		const lower = normalized.toLowerCase();
+		this.grammalecteErrors = this.grammalecteErrors.filter(
+			(err) => !(err.sType === "orthographe" && err.sValue && err.sValue.toLowerCase() === lower)
+		);
+		this.grammalecteErrorsVersion++;
+		await this.saveSettings();
+		this.refreshAllEditors();
 	}
 
 	/** Efface toutes les suggestions IA en attente, sans rien modifier au document. */

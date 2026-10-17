@@ -15,6 +15,7 @@
 
 import { Highlight, PALETTE_SIZE } from "../types";
 import { WORD_RE, sentenceRanges, trimRange } from "./clause-split";
+import { sentenceStructureSignatures, GetCategory } from "./structure-signature";
 
 // Deux phrases sont de même structure seulement si chaque groupe
 // correspondant a EXACTEMENT le même nombre de mots (une tolérance ±1
@@ -35,7 +36,7 @@ function escapeRegExp(word: string): string {
 function buildGroupSeparator(hinges: string[]): RegExp {
 	if (hinges.length === 0) return /\s*,\s*/gi;
 	const alternatives = hinges.map(escapeRegExp).join("|");
-	const pattern = "\\s*(?:,|(?<![\\p{L}\\p{N}_])(?:" + alternatives + ")(?![\\p{L}\\p{N}_]))\\s*";
+	const pattern = "\\s*(?:,|(?:^|[^\\p{L}\\p{N}_])(?:" + alternatives + ")(?![\\p{L}\\p{N}_]))\\s*";
 	return new RegExp(pattern, "giu");
 }
 
@@ -129,6 +130,92 @@ export function computeCadenceHighlights(text: string, span: number, hinges: str
 	for (const members of clusters.values()) {
 		if (members.length < 2) continue; // phrase seule sur son modèle : pas de surlignage
 		const lemma = `cadence-${members[0]}`;
+		const colorIndex = colorCounter++ % PALETTE_SIZE;
+		for (const memberIndex of members) {
+			const [from, to] = candidates[memberIndex].range;
+			highlights.push({ from, to, lemma, colorIndex });
+		}
+	}
+	return highlights;
+}
+
+/** Une phrase candidate pour le moteur "grammalecte" : signature syntaxique au lieu d'un tableau de longueurs. */
+interface StructuralCandidate {
+	range: [number, number];
+	signature: string;
+	start: number;
+}
+
+function collectStructuralCandidates(text: string, getCategory: GetCategory): StructuralCandidate[] {
+	const sentences: { range: [number, number]; text: string }[] = [];
+	for (const [startRaw, endRaw] of sentenceRanges(text)) {
+		const clause = text.slice(startRaw, endRaw);
+		if (/^#{1,6}[ \t]/.test(clause.trim())) continue; // pas un titre
+		if (!clause.trim()) continue;
+		sentences.push({ range: trimRange(text, startRaw, endRaw), text: clause });
+	}
+	const signatures = sentenceStructureSignatures(
+		sentences.map((s) => s.text),
+		getCategory
+	);
+	// sentenceStructureSignatures() peut renvoyer MOINS de signatures que de
+	// phrases en entrée (une phrase sans aucun token reconnu est sautée côté
+	// Python/TS) : on ne peut donc pas réassocier par index direct. On
+	// requalifie par un second passage phrase par phrase à la place, plus
+	// simple et sans ambiguïté bien que légèrement redondant en calcul.
+	const candidates: StructuralCandidate[] = [];
+	for (const sentence of sentences) {
+		const [signature] = sentenceStructureSignatures([sentence.text], getCategory);
+		if (!signature) continue; // phrase sans structure reconnaissable (ex. une seule interjection)
+		candidates.push({ range: sentence.range, signature, start: sentence.range[0] });
+	}
+	return candidates;
+}
+
+/**
+ * Variante "grammalecte" de Cadence : regroupe les phrases qui partagent
+ * exactement la même signature syntaxique (SUJET/VERBE/COMPLÉMENT/
+ * PROPOSITION_SUBORDONNÉE...), fidèle à `sentence_structure_signatures()`
+ * + `structural_diversity()` du projet Python `unshiter`
+ * (script/detector/stats.py). `getCategory` doit être synchrone : voir
+ * FinitionRuntime.wordCategoryCache (types.ts) pour la façon dont le cache
+ * alimenté par le Worker Grammalecte est exposé ici sans bloquer.
+ */
+export function computeCadenceHighlightsStructural(text: string, span: number, getCategory: GetCategory): Highlight[] {
+	const candidates = collectStructuralCandidates(text, getCategory);
+
+	const parent = candidates.map((_, index) => index);
+	function find(i: number): number {
+		while (parent[i] !== i) {
+			parent[i] = parent[parent[i]];
+			i = parent[i];
+		}
+		return i;
+	}
+	function union(a: number, b: number): void {
+		const rootA = find(a);
+		const rootB = find(b);
+		if (rootA !== rootB) parent[rootA] = rootB;
+	}
+	for (let i = 0; i < candidates.length; i++) {
+		for (let j = i - 1; j >= 0; j--) {
+			if (candidates[i].start - candidates[j].start > span) break;
+			if (candidates[i].signature === candidates[j].signature) union(i, j);
+		}
+	}
+
+	const clusters = new Map<number, number[]>();
+	candidates.forEach((_, index) => {
+		const root = find(index);
+		if (!clusters.has(root)) clusters.set(root, []);
+		clusters.get(root)!.push(index);
+	});
+
+	const highlights: Highlight[] = [];
+	let colorCounter = 0;
+	for (const members of clusters.values()) {
+		if (members.length < 2) continue;
+		const lemma = `cadence-struct-${members[0]}`;
 		const colorIndex = colorCounter++ % PALETTE_SIZE;
 		for (const memberIndex of members) {
 			const [from, to] = candidates[memberIndex].range;

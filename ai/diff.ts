@@ -56,7 +56,7 @@ function wordDiff(original: string, revised: string): DiffOp[] {
 		];
 	}
 
-	const dp: Uint32Array[] = new Array(n + 1);
+	const dp = Array.from<Uint32Array>({ length: n + 1 });
 	for (let i = 0; i <= n; i++) dp[i] = new Uint32Array(m + 1);
 	for (let i = n - 1; i >= 0; i--) {
 		for (let j = m - 1; j >= 0; j--) {

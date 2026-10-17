@@ -41,15 +41,42 @@ export const BLOCK_BREAK_RE = /\n[ \t]*\n+|(?:^|\n)[ \t]*#{1,6}[ \t][^\n]*(?:\n|
 // Fin de phrase : ".", "!", "?", "…", éventuellement suivi de guillemets
 // fermants puis d'une espace (ou de la fin du segment), ou suivi d'un
 // guillemet ouvrant.
-export const SENTENCE_SEPARATOR_RE = /(?<=[.!?…])(?:[»”"]*(?:\s+|$)|(?=[«“]))/;
+//
+// Trois alternatives, dans cet ordre :
+// 1. Un éventuel espace (insécable en typo française avant "»") puis UN OU
+//    PLUSIEURS guillemets fermants puis une vraie frontière (espace ou fin) :
+//    gère "Il dit : « Je pars. »" en avalant le guillemet fermant dans la
+//    même frontière.
+// 2. Une frontière normale (espace/fin), mais SEULEMENT s'il n'y a PAS de
+//    guillemet fermant juste après (lookahead négatif) : sans ce garde-fou,
+//    "« Manman ! », comme si..." coupait la phrase juste après "!", avant
+//    même d'atteindre "»", laissant la réplique "coupée en deux" alors
+//    qu'elle continue après le guillemet (bug remonté sur du texte réel).
+// 3. Suivi direct d'un guillemet ouvrant (nouvelle réplique qui s'enchaîne).
+export const SENTENCE_SEPARATOR_RE =
+	/[.!?…](?:[ \u00A0]*[»”"]+(?:\s+|$)|(?!\s*[»”"])(?:\s+|$)|(?=[«“]))/;
 // Bornes de proposition à l'intérieur d'une phrase.
 export const CLAUSE_SEPARATOR_RE = /[;:—–]/;
+
+function sentenceRangesWithin(text: string, start: number, end: number): Array<[number, number]> {
+	const ranges: Array<[number, number]> = [];
+	const slice = text.slice(start, end);
+	const separator = new RegExp(SENTENCE_SEPARATOR_RE.source, "g");
+	let cursor = start;
+	let match: RegExpExecArray | null;
+	while ((match = separator.exec(slice)) !== null) {
+		ranges.push([cursor, start + match.index + 1]);
+		cursor = start + match.index + match[0].length;
+	}
+	ranges.push([cursor, end]);
+	return ranges;
+}
 
 /** Plages de clauses (bloc → phrase → clause), utilisé par le mode Ternaires. */
 export function clauseRanges(text: string): Array<[number, number]> {
 	const ranges: Array<[number, number]> = [];
 	for (const [blockStart, blockEnd] of splitRanges(text, 0, text.length, BLOCK_BREAK_RE)) {
-		for (const [sentenceStart, sentenceEnd] of splitRanges(text, blockStart, blockEnd, SENTENCE_SEPARATOR_RE)) {
+		for (const [sentenceStart, sentenceEnd] of sentenceRangesWithin(text, blockStart, blockEnd)) {
 			for (const clauseRange of splitRanges(text, sentenceStart, sentenceEnd, CLAUSE_SEPARATOR_RE)) {
 				ranges.push(clauseRange);
 			}
@@ -67,7 +94,7 @@ export function clauseRanges(text: string): Array<[number, number]> {
 export function sentenceRanges(text: string): Array<[number, number]> {
 	const ranges: Array<[number, number]> = [];
 	for (const [blockStart, blockEnd] of splitRanges(text, 0, text.length, BLOCK_BREAK_RE)) {
-		for (const sentenceRange of splitRanges(text, blockStart, blockEnd, SENTENCE_SEPARATOR_RE)) {
+		for (const sentenceRange of sentenceRangesWithin(text, blockStart, blockEnd)) {
 			ranges.push(sentenceRange);
 		}
 	}

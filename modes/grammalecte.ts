@@ -20,6 +20,12 @@ export interface GrammalecteError {
 	sRuleId: string;
 	sMessage: string;
 	aSuggestions: string[];
+	// Mot exact signalé, UNIQUEMENT pour les erreurs d'orthographe (mot
+	// absent du dictionnaire) : c'est ce qu'on ajoute au dictionnaire
+	// personnel via le bouton "Ajouter au dictionnaire" du popup. Absent
+	// (undefined) pour les erreurs de grammaire, où la notion ne s'applique
+	// pas (l'erreur porte sur un groupe de mots, pas un mot isolé).
+	sValue?: string;
 }
 
 // Ordre important : chaque fichier s'appuie sur des variables globales
@@ -114,8 +120,9 @@ export class GrammalecteEngine {
 			this.readDataFile("thesaurus2_data.json"),
 		]);
 
+		const dictionaryData: unknown = JSON.parse(dictRaw);
 		await this.send("init", {
-			oDictionary: JSON.parse(dictRaw),
+			oDictionary: dictionaryData,
 			sConjData: conjData,
 			sPhonetData: phonetData,
 			sMfspData: mfspData,
@@ -128,6 +135,18 @@ export class GrammalecteEngine {
 		if (!this.worker) throw new Error("Grammalecte : moteur non initialisé.");
 		const result = await this.send("parse", { sText: text });
 		return result as GrammalecteError[];
+	}
+
+	/**
+	 * Résout la catégorie grammaticale (nom/verbe/adjectif/adverbe/pronom/
+	 * préposition/déterminant/conjonction, ou "" si inconnue) d'une liste de
+	 * mots. Utilisé par Cadence (mode "grammalecte") pour construire des
+	 * signatures syntaxiques de phrases — voir modes/structure-signature.ts.
+	 */
+	async getCategories(words: string[]): Promise<Record<string, string>> {
+		if (!this.worker) throw new Error("Grammalecte : moteur non initialisé.");
+		const result = await this.send("lexicalCategories", { words });
+		return result as Record<string, string>;
 	}
 
 	private send(sCommand: string, oParam: unknown): Promise<unknown> {

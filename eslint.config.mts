@@ -1,5 +1,5 @@
 import obsidianmd from 'eslint-plugin-obsidianmd';
-import globals from 'globals';
+import * as globals from 'globals';
 import { globalIgnores, defineConfig } from 'eslint/config';
 
 export default defineConfig(
@@ -13,6 +13,8 @@ export default defineConfig(
 		'package.json',
 		'package-lock.json',
 		'tsconfig.json',
+		'data/grammalecte/*.js',
+		'!data/grammalecte/driver.js',
 	]),
 	{
 		languageOptions: {
