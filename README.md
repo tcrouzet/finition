@@ -54,7 +54,7 @@ Blocs de code, code inline, liens Markdown/wiki, URLs et horaires sont protégé
 
 ## Installation
 
-Trois fichiers à récupérer depuis la [dernière release GitHub](https://github.com/tcrouzet/finition/releases) : `main.js`, `manifest.json`, `styles.css`. Aucun autre fichier n'est nécessaire : les dictionnaires sont inlinés dans `main.js`. Remplace `<vault>` ci-dessous par le chemin de ton coffre Obsidian.
+Trois fichiers à récupérer depuis la [dernière release GitHub](https://github.com/tcrouzet/finition/releases) : `main.js`, `manifest.json`, `styles.css`. Aucun autre fichier n'est nécessaire : les dictionnaires et le moteur Grammalecte sont intégrés dans `main.js`. Grammalecte fonctionne hors ligne sans dossier `data` à installer. Remplace `<vault>` ci-dessous par le chemin de ton coffre Obsidian.
 
 ### macOS / Linux (Terminal)
 

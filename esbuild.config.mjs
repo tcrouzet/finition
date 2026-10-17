@@ -1,6 +1,7 @@
 import esbuild from "esbuild";
 import process from "process";
 import builtins from "builtin-modules";
+import { rawAssets } from "./raw-assets.mjs";
 
 const banner = `/*
 Plugin Obsidian "Finition". Build généré, ne pas éditer directement.
@@ -40,6 +41,7 @@ const context = await esbuild.context({
 	// dictionnaires JSON : un seul fichier à distribuer, pas de fichier .md
 	// à copier séparément pour l'utilisateur final.
 	loader: { ".md": "text" },
+	plugins: [rawAssets],
 });
 
 if (prod) {

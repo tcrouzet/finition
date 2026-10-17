@@ -2,8 +2,8 @@
  * Grammalecte — orthographe et grammaire, moteur tiers (GPL 3) tournant
  * dans un Web Worker pour ne pas bloquer le thread principal.
  *
- * Le Worker est construit au runtime : on lit tous les fichiers du moteur
- * (data/grammalecte/*.js) via l'API Obsidian, on les concatène dans l'ordre
+ * Le Worker est construit au runtime : ses scripts et dictionnaires sont
+ * intégrés à main.js à la compilation, puis concaténés dans l'ordre
  * attendu (même ordre que les importScripts() du worker officiel de
  * l'extension Firefox), on ajoute notre propre code de pilotage
  * (data/grammalecte/driver.js), et on transforme le tout en un Worker via
@@ -11,7 +11,7 @@
  * CORS/sandboxing dans Electron.
  */
 
-import { App, normalizePath } from "obsidian";
+import { engineScripts, grammarData } from "./grammalecte-resources";
 
 export interface GrammalecteError {
 	nStart: number;
@@ -28,39 +28,11 @@ export interface GrammalecteError {
 	sValue?: string;
 }
 
-// Ordre important : chaque fichier s'appuie sur des variables globales
-// définies par les précédents (pas de modules ES, code "à l'ancienne").
-const ENGINE_FILES = [
-	"helpers.js",
-	"str_transform.js",
-	"char_player.js",
-	"lexgraph_fr.js",
-	"ibdawg.js",
-	"spellchecker.js",
-	"text.js",
-	"tokenizer.js",
-	"conj.js",
-	"mfsp.js",
-	"phonet.js",
-	"thesaurus.js",
-	"cregex.js",
-	"gc_options.js",
-	"gc_functions.js",
-	"gc_rules.js",
-	"gc_rules_graph.js",
-	"gc_engine.js",
-];
-
 export class GrammalecteEngine {
 	private worker: Worker | null = null;
 	private initPromise: Promise<void> | null = null;
 	private pendingResolvers = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 	private requestSeq = 0;
-
-	constructor(
-		private app: App,
-		private pluginDir: string // ex. ".obsidian/plugins/finition", voir manifest.dir
-	) {}
 
 	/** Construit le Worker et initialise le moteur, une seule fois. */
 	async ensureReady(dictionary: "fr-classic" | "fr-reform"): Promise<void> {
@@ -69,14 +41,8 @@ export class GrammalecteEngine {
 		return this.initPromise;
 	}
 
-	private async readDataFile(name: string): Promise<string> {
-		const path = normalizePath(`${this.pluginDir}/data/grammalecte/${name}`);
-		return this.app.vault.adapter.read(path);
-	}
-
 	private async buildAndInit(dictionary: "fr-classic" | "fr-reform"): Promise<void> {
 		// 1. Concaténation du moteur + driver
-		const parts: string[] = [];
 		// Les fichiers Grammalecte testent `typeof(process) !== 'undefined'`
 		// pour choisir entre un require() Node.js (chemins relatifs, qui
 		// n'existent pas dans un Worker construit depuis un Blob) ou la
@@ -85,11 +51,7 @@ export class GrammalecteEngine {
 		// `process` existe même dans un Worker — on le neutralise ici pour
 		// forcer la branche navigateur, seule compatible avec notre
 		// concaténation manuelle.
-		parts.push("var process = undefined;");
-		for (const file of ENGINE_FILES) {
-			parts.push(await this.readDataFile(file));
-		}
-		parts.push(await this.readDataFile("driver.js"));
+		const parts = ["var process = undefined;", ...engineScripts];
 		const bigScript = parts.join("\n;\n");
 
 		const blob = new Blob([bigScript], { type: "application/javascript" });
@@ -110,24 +72,14 @@ export class GrammalecteEngine {
 		};
 
 		// 2. Chargement des données nécessaires à l'init (dictionnaire + données linguistiques)
-		const dictFile = dictionary === "fr-reform" ? "fr-reform.json" : "fr-classic.json";
-		const [dictRaw, conjData, phonetData, mfspData, thes1Data, thes2Data] = await Promise.all([
-			this.readDataFile(`_dictionaries/${dictFile}`),
-			this.readDataFile("conj_data.json"),
-			this.readDataFile("phonet_data.json"),
-			this.readDataFile("mfsp_data.json"),
-			this.readDataFile("thesaurus1_data.json"),
-			this.readDataFile("thesaurus2_data.json"),
-		]);
-
-		const dictionaryData: unknown = JSON.parse(dictRaw);
+		const dictionaryData: unknown = JSON.parse(dictionary === "fr-reform" ? grammarData.reform : grammarData.classic);
 		await this.send("init", {
 			oDictionary: dictionaryData,
-			sConjData: conjData,
-			sPhonetData: phonetData,
-			sMfspData: mfspData,
-			sThes1Data: thes1Data,
-			sThes2Data: thes2Data,
+			sConjData: grammarData.conjugations,
+			sPhonetData: grammarData.phonetics,
+			sMfspData: grammarData.plurals,
+			sThes1Data: grammarData.thesaurus1,
+			sThes2Data: grammarData.thesaurus2,
 		});
 	}
 

@@ -642,7 +642,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	/** Crée le Worker Grammalecte au premier besoin (Grammalecte OU Cadence "grammalecte"), une seule fois. */
 	private async ensureGrammalecteEngine(): Promise<GrammalecteEngine> {
 		if (!this.grammalecteEngine) {
-			this.grammalecteEngine = new GrammalecteEngine(this.app, this.manifest.dir ?? "");
+			this.grammalecteEngine = new GrammalecteEngine();
 		}
 		await this.grammalecteEngine.ensureReady(this.settings.grammalecteDictionary);
 		return this.grammalecteEngine;

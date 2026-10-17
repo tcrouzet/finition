@@ -1,15 +1,19 @@
 import * as assert from "node:assert/strict";
-import { mkdtempSync, copyFileSync } from "node:fs";
+import { mkdtempSync, copyFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import * as process from "node:process";
-import { spawnSync } from "node:child_process";
-import { build } from "esbuild";
+import { spawn } from "node:child_process";
+import type { Readable, Writable } from "node:stream";
+import { build, type PluginBuild } from "esbuild";
+import { rawAssets } from "../raw-assets.mjs";
 
 async function main() {
 	const directory = mkdtempSync(path.join(tmpdir(), "finition-click-"));
 	copyFileSync(new URL("./check-tic-click.html", import.meta.url), path.join(directory, "index.html"));
 	copyFileSync(new URL("../styles.css", import.meta.url), path.join(directory, "styles.css"));
+	copyFileSync(new URL("../main.js", import.meta.url), path.join(directory, "main.js"));
+	copyFileSync(new URL("../manifest.json", import.meta.url), path.join(directory, "manifest.json"));
 	await build({
 		stdin: { resolveDir: process.cwd(), contents: `
 	import { EditorView } from "@codemirror/view";
@@ -20,6 +24,8 @@ async function main() {
 	import { notices, menuOpenCount, setRequestHandler, requests, modals } from "obsidian";
 	import { checkAnalysisNavigation } from "./scripts/check-analysis-navigation";
 	import { checkSynonyms } from "./scripts/check-synonyms";
+	import { checkGrammalecteRelease } from "./scripts/check-grammalecte-release";
+	import ReleasedPlugin from "release-plugin";
 	const text = "Il est important de noter que tout change.\\n\\nLe chat dort.";
 	const runtime = {
 	  settings: { ...DEFAULT_SETTINGS, mode: "tic-ia" }, settingsVersion: 0,
@@ -50,11 +56,13 @@ async function main() {
 	    view.destroy();
 	    await checkAnalysisNavigation(() => menuOpenCount);
 	    await checkSynonyms(setRequestHandler, requests, notices, modals);
-	    document.querySelector("#result").textContent = "PASS: clics Tic IA ; navigation des analyses ; synonymes IA";
+	    await checkGrammalecteRelease(ReleasedPlugin);
+	    document.querySelector("#result").textContent = "PASS: clics Tic IA ; navigation des analyses ; synonymes IA ; release Grammalecte";
 	  } catch (error) { document.querySelector("#result").textContent = "FAIL: " + error.message; }
 	});` },
-		bundle: true, outfile: path.join(directory, "check.js"), loader: { ".md": "text" },
-		plugins: [{ name: "obsidian-notice", setup(plugin) {
+		bundle: true, outfile: path.join(directory, "check.js"), loader: { ".md": "text" }, nodePaths: [path.join(process.cwd(), "node_modules")],
+		plugins: [rawAssets, { name: "obsidian-notice", setup(plugin: PluginBuild) {
+			plugin.onResolve({ filter: /^release-plugin$/ }, () => ({ path: path.join(directory, "main.js") }));
 			plugin.onResolve({ filter: /^obsidian$/ }, () => ({ path: "obsidian", namespace: "test" }));
 			plugin.onLoad({ filter: /.*/, namespace: "test" }, () => ({ contents: `
 				const configure = (element, options = {}) => {
@@ -90,6 +98,7 @@ async function main() {
 				}
 				export class Plugin {
 				  extensions = []; cleanup = []; saved = null;
+				  constructor(app, manifest) { this.app = app; this.manifest = manifest; }
 				  async loadData() { return this.saved; }
 				  async saveData(settings) { this.saved = settings; }
 				  addStatusBarItem() { return document.body.appendChild(document.createElement("div")); }
@@ -110,15 +119,65 @@ async function main() {
 			` }));
 		} }],
 	});
-	const chrome = spawnSync("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", [
+	const chrome = spawn("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", [
 		"--headless=new", "--disable-gpu", "--no-first-run", `--user-data-dir=${path.join(directory, "profile")}`,
-		"--virtual-time-budget=2000", "--dump-dom", `file://${path.join(directory, "index.html")}`,
-	], { encoding: "utf8", timeout: 20000 });
-	assert.ifError(chrome.error);
-	assert.equal(chrome.status, 0, chrome.stderr);
-	const result = chrome.stdout.match(/<pre id="result"[^>]*>([^<]*)<\/pre>/)?.[1];
-	assert.equal(result, "PASS: clics Tic IA ; navigation des analyses ; synonymes IA", chrome.stdout.match(/<pre id="result"[^>]*>[^<]*<\/pre>/)?.[0]);
-	process.stdout.write(`${result}\n`);
+		"--remote-debugging-pipe",
+	], { stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"] });
+	const input = chrome.stdio[3] as Writable, output = chrome.stdio[4] as Readable;
+	const pending = new Map<number, { resolve: (result: Record<string, unknown>) => void; reject: (error: Error) => void }>();
+	let sequence = 0, buffer = "", stderr = "";
+	let onPageLoad: (() => void) | undefined;
+	chrome.stderr!.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+	const exited = new Promise<number | null>(resolve => chrome.once("close", (code, signal) => {
+		for (const request of pending.values()) request.reject(new Error(`Chromium arrêté : ${signal ?? code}; ${stderr}`));
+		resolve(code);
+	}));
+	chrome.on("error", error => { for (const request of pending.values()) request.reject(error); });
+	output.on("data", (chunk: Buffer) => {
+		buffer += chunk.toString();
+		let end: number;
+		while ((end = buffer.indexOf("\0")) !== -1) {
+			const response = JSON.parse(buffer.slice(0, end)) as { id?: number; method?: string; result?: Record<string, unknown>; error?: { message: string } };
+			buffer = buffer.slice(end + 1);
+			if (response.method === "Page.loadEventFired") onPageLoad?.();
+			if (response.id === undefined) continue;
+			const request = pending.get(response.id);
+			pending.delete(response.id);
+			if (response.error) request?.reject(new Error(response.error.message));
+			else request?.resolve(response.result ?? {});
+		}
+	});
+	const command = (method: string, params: Record<string, unknown> = {}, sessionId?: string) => new Promise<Record<string, unknown>>((resolve, reject) => {
+		const id = ++sequence;
+		pending.set(id, { resolve, reject });
+		input.write(JSON.stringify({ id, method, params, sessionId }) + "\0");
+	});
+	const timer = setTimeout(() => { chrome.kill(); }, 20000);
+	try {
+		const target = await command("Target.createTarget", { url: "about:blank" });
+		const { sessionId } = await command("Target.attachToTarget", { targetId: target.targetId, flatten: true });
+		assert.equal(typeof sessionId, "string");
+		const session = sessionId as string;
+		await command("Page.enable", {}, session);
+		const loaded = new Promise<void>(resolve => { onPageLoad = resolve; });
+		await command("Page.navigate", { url: `file://${path.join(directory, "index.html")}` }, session);
+		await Promise.race([loaded, exited.then(code => { throw new Error(`Chromium arrêté avant chargement : ${code}; ${stderr}`); })]);
+		const evaluation = await command("Runtime.evaluate", { awaitPromise: true, returnByValue: true, expression: `new Promise(resolve => {
+		  const observer = new MutationObserver(check);
+		  function check() { const result = document.querySelector("#result"); if (result && result.textContent !== "PENDING") { observer.disconnect(); resolve(result.textContent); } }
+		  observer.observe(document, { subtree: true, childList: true, characterData: true }); check();
+		})` }, session);
+		const result = (evaluation.result as { value?: string } | undefined)?.value;
+		assert.equal(result, "PASS: clics Tic IA ; navigation des analyses ; synonymes IA ; release Grammalecte", JSON.stringify(evaluation));
+		input.write(JSON.stringify({ id: ++sequence, method: "Browser.close" }) + "\0");
+		assert.equal(await exited, 0, stderr);
+		process.stdout.write(`${result}\n`);
+	} finally {
+		clearTimeout(timer);
+		if (chrome.exitCode === null) chrome.kill();
+		await exited;
+		rmSync(directory, { recursive: true, force: true });
+	}
 }
 
 void main().catch((error: unknown) => { console.error(error); process.exit(1); });

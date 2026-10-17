@@ -1,0 +1,30 @@
+import helpers from "../data/grammalecte/helpers.js?raw";
+import strTransform from "../data/grammalecte/str_transform.js?raw";
+import charPlayer from "../data/grammalecte/char_player.js?raw";
+import lexgraph from "../data/grammalecte/lexgraph_fr.js?raw";
+import ibdawg from "../data/grammalecte/ibdawg.js?raw";
+import spellchecker from "../data/grammalecte/spellchecker.js?raw";
+import text from "../data/grammalecte/text.js?raw";
+import tokenizer from "../data/grammalecte/tokenizer.js?raw";
+import conj from "../data/grammalecte/conj.js?raw";
+import mfsp from "../data/grammalecte/mfsp.js?raw";
+import phonet from "../data/grammalecte/phonet.js?raw";
+import thesaurus from "../data/grammalecte/thesaurus.js?raw";
+import cregex from "../data/grammalecte/cregex.js?raw";
+import options from "../data/grammalecte/gc_options.js?raw";
+import functions from "../data/grammalecte/gc_functions.js?raw";
+import rules from "../data/grammalecte/gc_rules.js?raw";
+import graph from "../data/grammalecte/gc_rules_graph.js?raw";
+import engine from "../data/grammalecte/gc_engine.js?raw";
+import driver from "../data/grammalecte/driver.js?raw";
+import classic from "../data/grammalecte/_dictionaries/fr-classic.json?raw";
+import reform from "../data/grammalecte/_dictionaries/fr-reform.json?raw";
+import conjugations from "../data/grammalecte/conj_data.json?raw";
+import phonetics from "../data/grammalecte/phonet_data.json?raw";
+import plurals from "../data/grammalecte/mfsp_data.json?raw";
+import thesaurus1 from "../data/grammalecte/thesaurus1_data.json?raw";
+import thesaurus2 from "../data/grammalecte/thesaurus2_data.json?raw";
+
+// L’ordre conserve les dépendances globales du moteur Grammalecte.
+export const engineScripts = [helpers, strTransform, charPlayer, lexgraph, ibdawg, spellchecker, text, tokenizer, conj, mfsp, phonet, thesaurus, cregex, options, functions, rules, graph, engine, driver];
+export const grammarData = { classic, reform, conjugations, phonetics, plurals, thesaurus1, thesaurus2 };

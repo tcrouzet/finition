@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import * as vm from "node:vm";
 import * as process from "node:process";
 import { build } from "esbuild";
+import { rawAssets } from "../raw-assets.mjs";
 import type { GetCategory } from "../modes/structure-signature";
 import type { TicIAResult } from "../modes/tic-ia";
 import type { FinitionSettings } from "../types";
@@ -10,7 +11,7 @@ import type { FinitionSettings } from "../types";
 async function main() {
 	const modules = await build({
 		stdin: { contents: 'export * from "./modes/clause-split"; export * from "./modes/structure-report"; export * from "./modes/structure-signature"; export * from "./modes/ternary"; export * from "./modes/tic-ia"; export { default as FinitionPlugin } from "./main";', resolveDir: process.cwd() },
-		bundle: true, platform: "node", format: "cjs", write: false, loader: { ".md": "text" }, external: ["obsidian"],
+		bundle: true, platform: "node", format: "cjs", write: false, loader: { ".md": "text" }, external: ["obsidian"], plugins: [rawAssets],
 	});
 	const menuTitles: string[] = [];
 	class Plugin {
