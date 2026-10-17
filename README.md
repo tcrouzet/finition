@@ -78,6 +78,12 @@ Invoke-WebRequest -Uri "https://github.com/tcrouzet/finition/releases/latest/dow
 
 Puis, dans les deux cas : active le plugin dans Obsidian (Réglages → Plugins communautaires → désactiver le mode sans échec si besoin → activer « Finition »).
 
+## Soumission au catalogue Obsidian
+
+Après avoir publié la release avec `release.sh` et poussé le même `manifest.json` sur la branche GitHub par défaut, lance `./submit.sh` (GitHub CLI connecté et `jq` requis). Le script vérifie la release publique, ses fichiers obligatoires et la concordance des manifests, puis ouvre le portail officiel. Il ne pousse aucun fichier chez Obsidian et ne crée aucune pull request.
+
+La [procédure officielle](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin) demande de se connecter sur [Obsidian Community](https://community.obsidian.md), de lier son compte GitHub, puis de choisir **Plugins → New plugin** et de renseigner `https://github.com/tcrouzet/finition`. La validation des règles et l’envoi du formulaire restent manuels. Après acceptation au catalogue, les nouvelles versions passent uniquement par les releases GitHub, sans nouvelle soumission.
+
 ## Architecture (bref)
 
 Le plugin s'appuie sur quelques dictionnaires statiques, dans `plugin/data/` — importés comme des modules TypeScript (`resolveJsonModule`) et inlinés par esbuild directement dans `main.js` au build, jamais lus depuis le disque au runtime :
