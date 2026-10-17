@@ -36,9 +36,10 @@ esac
 		assert.ifError(result.error);
 		assert.equal(result.status, scenario === "ok" ? 0 : 1, `${scenario} : ${result.stderr}`);
 		const calls = readFileSync(log, "utf8");
-		assert.equal(calls.includes("open https://community.obsidian.md"), scenario === "ok", scenario);
+		assert.equal(calls.split("\n").includes("open https://community.obsidian.md/account/plugins"), scenario === "ok", scenario);
 		assert.ok(!/\b(create|push|fork|--method|--field)\b/.test(calls), "Une publication distante a été demandée");
 		if (scenario === "ok") {
+			assert.match(result.stdout, /https:\/\/community\.obsidian\.md\/account\/plugins/);
 			assert.match(result.stdout, /https:\/\/github.com\/test\/plugin/);
 			assert.match(result.stdout, /ne soumet rien automatiquement/);
 		}

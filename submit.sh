@@ -26,10 +26,10 @@ jq -en --slurpfile local manifest.json --argjson released "$RELEASE_MANIFEST" '$
   || fail "Le manifest joint à la release diffère du manifest publié."
 
 printf 'Release vérifiée : https://github.com/%s/releases/tag/%s\n' "$REPO" "$VERSION"
-printf 'Soumission initiale : https://community.obsidian.md\nDépôt à renseigner : https://github.com/%s\n' "$REPO"
+printf 'Soumission initiale : https://community.obsidian.md/account/plugins\nDépôt à renseigner : https://github.com/%s\n' "$REPO"
 printf '%s\n' 'Connecte ton compte Obsidian et ton compte GitHub, puis Plugins → New plugin.'
 printf '%s\n' 'Valide toi-même les règles et le formulaire. Ce script ne soumet rien automatiquement.'
 printf '%s\n' 'Si Finition est déjà accepté au catalogue, aucune nouvelle soumission : utilise release.sh.'
 if command -v open >/dev/null; then
-  open "https://community.obsidian.md"
+  open "https://community.obsidian.md/account/plugins"
 fi
