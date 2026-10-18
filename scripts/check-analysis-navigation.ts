@@ -39,6 +39,13 @@ export async function checkAnalysisNavigation(menuOpened: () => number): Promise
 		await waitFor(() => counter!.textContent === String(expected) && view.state.selection.main.head === first && view.hasFocus, `Activation ${mode} : compteur ou première occurrence incorrects`);
 	};
 	await activate("hedging", 2, text.indexOf("Il semblerait"));
+	const highlight = view.dom.querySelector<HTMLElement>(".finition-hedging")!;
+	const normalBackground = getComputedStyle(highlight).backgroundColor;
+	highlight.click();
+	const focused = view.dom.querySelector<HTMLElement>(".finition-focused")!;
+	check(focused && getComputedStyle(focused).backgroundColor === "rgb(0, 0, 0)" && getComputedStyle(focused).color === "rgb(255, 255, 255)", "Le groupe sélectionné ne reste pas blanc sur noir");
+	focused.click();
+	check(!view.dom.querySelector(".finition-focused") && getComputedStyle(view.dom.querySelector<HTMLElement>(".finition-hedging")!).backgroundColor === normalBackground, "La désélection ne restaure pas la couleur du groupe");
 	next!.click();
 	check(view.state.selection.main.head === text.lastIndexOf("Il semblerait"), "La flèche ne rejoint pas l’occurrence suivante");
 	next!.click();
@@ -108,6 +115,8 @@ export async function checkAnalysisNavigation(menuOpened: () => number): Promise
 	plugin.updateStatusBarIcon();
 	check(!next!.hidden && counter!.textContent === "2", "Grammalecte : navigation perdue au retour dans la note");
 	const error = view.dom.querySelector<HTMLElement>(".finition-grammalecte-spelling")!;
+	const underline = getComputedStyle(error);
+	check(underline.borderBottomStyle === "dotted" && underline.borderBottomWidth === "2px" && underline.borderBottomColor === "rgb(224, 82, 82)", "Grammalecte : soulignement orthographique absent");
 	error.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
 	document.querySelector<HTMLButtonElement>(".finition-grammalecte-popup-suggestions button")!.click();
 	check(view.state.doc.toString() === "Une faute. Une autre fote.", "Grammalecte : correction non appliquée");

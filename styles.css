@@ -24,14 +24,12 @@
 /* --- Grammalecte --------------------------------------------------------- */
 
 .finition-grammalecte-spelling {
-	text-decoration: underline wavy #e05252;
-	text-decoration-thickness: 2px;
+	border-bottom: 2px dotted #e05252;
 	cursor: pointer;
 }
 
 .finition-grammalecte-grammar {
-	text-decoration: underline wavy #4a90d9;
-	text-decoration-thickness: 2px;
+	border-bottom: 2px dashed #4a90d9;
 	cursor: pointer;
 }
 
@@ -182,9 +180,9 @@
  * fond noir / texte blanc, par-dessus leur couleur habituelle. Reclic pour
  * désélectionner.
  */
-.finition-focused {
-	background: #000000 !important;
-	color: #ffffff !important;
+.cm-content .finition-focused {
+	background: #000000;
+	color: #ffffff;
 	cursor: pointer;
 }
 

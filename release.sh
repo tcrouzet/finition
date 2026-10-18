@@ -4,10 +4,20 @@
 # un dépôt git avec un remote "origin" GitHub déjà configuré. Générique :
 # même script réutilisable tel quel sur n'importe lequel de tes autres
 # plugins, sans fichier de config à maintenir (gh déduit le repo du remote).
-set -e
+set -euo pipefail
+
+current_date=$(date +"%Y-%m-%d %H:%M:%S")
+git add .
+git commit -m "sync before new release $current_date"
+git push -u origin "$BRANCH"
 
 # Arbre propre exigé (le script commite lui-même le bump)
 [ -z "$(git status --porcelain)" ] || { echo "Arbre git non propre" >&2; exit 1; }
+
+REPOSITORY=$(gh repo view --json nameWithOwner,defaultBranchRef)
+REPO=$(jq -er '.nameWithOwner' <<< "$REPOSITORY")
+BRANCH=$(jq -er '.defaultBranchRef.name' <<< "$REPOSITORY")
+[ "$(git branch --show-current)" = "$BRANCH" ] || { echo "Lance release.sh depuis la branche par défaut : $BRANCH" >&2; exit 1; }
 
 # Incrément automatique du patch : 0.5.0 -> 0.5.1
 CURRENT=$(jq -r '.version' manifest.json)
@@ -20,7 +30,6 @@ jq --arg v "$TAG" '.version = $v' package.json > package.tmp && mv package.tmp p
 
 
 # Variables
-REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 RELEASE_NAME="$TAG"
 DESCRIPTION="Release $TAG"
 FILES=("main.js" "manifest.json" "styles.css")
@@ -32,9 +41,19 @@ FILES=("main.js" "manifest.json" "styles.css")
 # quel plugin Obsidian, compatible BRAT/store officiel).
 npm run build
 
+#Git update
+git add .
+git commit -m "sync $TAG"
+git push -u origin "$BRANCH"
+
+PUBLISHED=$(gh api "repos/$REPO/contents/manifest.json" --jq '.content | @base64d | fromjson')
+jq -en --slurpfile local manifest.json --argjson published "$PUBLISHED" '$local[0] == $published' >/dev/null \
+  || { echo "Publication arrêtée : le manifest GitHub diffère du manifest de la release." >&2; exit 1; }
+
 # Créer la release (gh crée et pousse automatiquement le tag "$TAG" s'il
 # n'existe pas déjà sur le dépôt).
 gh release create "$TAG" "${FILES[@]}" \
   --repo "$REPO" \
+  --target "$(git rev-parse HEAD)" \
   --title "$RELEASE_NAME" \
   --notes "$DESCRIPTION"
