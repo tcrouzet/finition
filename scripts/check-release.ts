@@ -58,19 +58,28 @@ esac
 		run("git", ["push", "origin", branch]);
 		if (scenario === "push-failure") writeFileSync(path.join(remote, "hooks", "pre-receive"), "#!/bin/bash\nexit 1\n", { mode: 0o755 });
 		if (scenario === "wrong-branch") run("git", ["checkout", "-b", "feature"]);
-		if (scenario === "dirty") writeFileSync(path.join(repository, "styles.css"), ".changed {}\n");
+		if (scenario === "dirty" || scenario === "wrong-branch") writeFileSync(path.join(repository, "styles.css"), ".changed {}\n");
+		if (scenario === "dirty") writeFileSync(path.join(repository, "new.txt"), "À publier.\n");
 		const result = spawnSync("bash", ["release.sh"], { cwd: repository, env, encoding: "utf8", timeout: 20000 });
 		assert.ifError(result.error);
-		const succeeds = scenario === "ok" || scenario === "trunk";
+		const succeeds = scenario === "ok" || scenario === "trunk" || scenario === "dirty";
 		assert.equal(result.status, succeeds ? 0 : 1, `${scenario} : ${result.stdout}\n${result.stderr}`);
 		assert.equal(existsSync(release), succeeds, `${scenario} : publication incorrecte`);
 		if (scenario === "mismatch") assert.match(result.stderr, /le manifest GitHub diffère/);
 		const local = JSON.parse(readFileSync(path.join(repository, "manifest.json"), "utf8")) as { version: string };
-		if (scenario === "wrong-branch" || scenario === "dirty") assert.equal(local.version, "1.2.3", scenario);
+		if (scenario === "wrong-branch") {
+			assert.equal(local.version, "1.2.3", scenario);
+			assert.equal(run("git", ["rev-list", "--count", "HEAD"]), "1", "La mauvaise branche ne doit pas être commitée");
+		}
 		if (succeeds) {
 			const published = JSON.parse(run("git", ["--git-dir", remote, "show", `${branch}:manifest.json`])) as unknown;
 			assert.deepEqual(JSON.parse(readFileSync(release, "utf8")), published);
 			assert.equal(local.version, "1.2.4");
+			assert.equal(run("git", ["rev-list", "--count", "HEAD"]), scenario === "dirty" ? "3" : "2", "Commit initial manquant ou vide");
+			if (scenario === "dirty") {
+				assert.equal(run("git", ["--git-dir", remote, "show", `${branch}:new.txt`]), "À publier.");
+				assert.equal(run("git", ["--git-dir", remote, "show", `${branch}:styles.css`]), ".changed {}");
+			}
 			assert.match(readFileSync(log, "utf8"), new RegExp(`--target ${run("git", ["rev-parse", "HEAD"])}`));
 			assert.equal(run("git", ["status", "--porcelain"]), "");
 		}

@@ -6,18 +6,20 @@
 # plugins, sans fichier de config à maintenir (gh déduit le repo du remote).
 set -euo pipefail
 
-current_date=$(date +"%Y-%m-%d %H:%M:%S")
-git add .
-git commit -m "sync before new release $current_date"
-git push -u origin "$BRANCH"
-
-# Arbre propre exigé (le script commite lui-même le bump)
-[ -z "$(git status --porcelain)" ] || { echo "Arbre git non propre" >&2; exit 1; }
-
 REPOSITORY=$(gh repo view --json nameWithOwner,defaultBranchRef)
 REPO=$(jq -er '.nameWithOwner' <<< "$REPOSITORY")
 BRANCH=$(jq -er '.defaultBranchRef.name' <<< "$REPOSITORY")
 [ "$(git branch --show-current)" = "$BRANCH" ] || { echo "Lance release.sh depuis la branche par défaut : $BRANCH" >&2; exit 1; }
+
+git add .
+if ! git diff --cached --quiet; then
+  current_date=$(date +"%Y-%m-%d %H:%M:%S")
+  git commit -m "sync before new release $current_date"
+fi
+git push -u origin "$BRANCH"
+
+# Arbre propre exigé (le script commite lui-même le bump)
+[ -z "$(git status --porcelain)" ] || { echo "Arbre git non propre" >&2; exit 1; }
 
 # Incrément automatique du patch : 0.5.0 -> 0.5.1
 CURRENT=$(jq -r '.version' manifest.json)
