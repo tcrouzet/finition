@@ -6,15 +6,14 @@ export default defineConfig(
 	globalIgnores([
 		'node_modules',
 		'dist',
-		'esbuild.config.mjs',
+		'plugin/esbuild.config.mjs',
 		'version-bump.mjs',
 		'versions.json',
 		'main.js',
 		'package.json',
 		'package-lock.json',
 		'tsconfig.json',
-		'data/grammalecte/*.js',
-		'!data/grammalecte/driver.js',
+		'plugin/data/grammalecte/*.js',
 	]),
 	{
 		languageOptions: {
@@ -31,4 +30,24 @@ export default defineConfig(
 		},
 	},
 	...obsidianmd.configs.recommended,
+	{
+		rules: {
+			'obsidianmd/ui/sentence-case': ['warn', {
+				brands: ['Finition', 'Grammalecte', 'CamemBERT', 'Claude', 'OpenAI', 'Anthropic'],
+				acronyms: ['IA', 'API', 'JSON', 'GPT'],
+			}],
+		},
+	},
+	{
+		// Ces outils de développement s’exécutent sous Node, hors du plugin.
+		files: ['helper/**/*.ts', 'plugin/raw-assets.mjs'],
+		languageOptions: { globals: globals.node },
+		rules: {
+			'obsidianmd/no-nodejs-modules': 'off',
+			'obsidianmd/no-global-this': 'off',
+			'obsidianmd/prefer-window-timers': 'off',
+			'obsidianmd/hardcoded-config-path': 'off',
+			'no-restricted-globals': 'off',
+		},
+	},
 );

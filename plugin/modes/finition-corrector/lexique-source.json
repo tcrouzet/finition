@@ -1,0 +1,15 @@
+{
+  "source": "https://www.lexique.org/databases/Lexique383/Lexique383.tsv",
+  "version": "3.83",
+  "authors": [
+    "Boris New",
+    "Christophe Pallier",
+    "contributeurs de Lexique"
+  ],
+  "license": "CC-BY-SA-4.0",
+  "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "source_sha256": "637ba37a767a66679c48371d673ece50cbf541b49a4e40e598963d4f3fbce52b",
+  "output_sha256": "655aff1c77fd27d9c04ff749532e04641d0a70db96d3fc7f8cf0536da94442bd",
+  "entries": 142694,
+  "transformations": "Sélection des champs orthographiques/morphologiques, traduction des catégories, fréquence maximale des deux corpus."
+}

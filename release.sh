@@ -1,15 +1,17 @@
 #!/bin/bash
-# chmod +x release.sh
-# À lancer depuis plugin/ (là où vivent manifest.json, package.json), dans
-# un dépôt git avec un remote "origin" GitHub déjà configuré. Générique :
-# même script réutilisable tel quel sur n'importe lequel de tes autres
-# plugins, sans fichier de config à maintenir (gh déduit le repo du remote).
+# À lancer avec bash release.sh depuis la racine, ou par
+# son chemin depuis un autre dossier (gh déduit le repo du remote origin).
 set -euo pipefail
+
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 
 REPOSITORY=$(gh repo view --json nameWithOwner,defaultBranchRef)
 REPO=$(jq -er '.nameWithOwner' <<< "$REPOSITORY")
 BRANCH=$(jq -er '.defaultBranchRef.name' <<< "$REPOSITORY")
 [ "$(git branch --show-current)" = "$BRANCH" ] || { echo "Lance release.sh depuis la branche par défaut : $BRANCH" >&2; exit 1; }
+
+RESOURCE_ASSETS_DIR=$(mktemp -d "${TMPDIR:-/tmp}/finition-resources.XXXXXX")
+npm run resources -- "$RESOURCE_ASSETS_DIR"
 
 git add .
 if ! git diff --cached --quiet; then
@@ -34,13 +36,11 @@ jq --arg v "$TAG" '.version = $v' package.json > package.tmp && mv package.tmp p
 # Variables
 RELEASE_NAME="$TAG"
 DESCRIPTION="Release $TAG"
-FILES=("main.js" "manifest.json" "styles.css")
+FILES=("main.js" "manifest.json" "styles.css" "$RESOURCE_ASSETS_DIR/"*)
 
-# Rebuild de production avant de packager (régénère styles.css depuis
-# palette.css + styles.base.css, puis main.js minifié sans sourcemap ;
-# data/*.json et modes/*.ts sont tous les deux inlinés dans main.js par
-# esbuild, rien à distribuer à part — install aussi simple que n'importe
-# quel plugin Obsidian, compatible BRAT/store officiel).
+# Rebuild de production avant de packager (main.js minifié sans sourcemap).
+# Les ressources linguistiques sont jointes séparément pour être
+# téléchargées depuis les paramètres du plugin.
 npm run build
 
 #Git update

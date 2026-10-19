@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "commits": {
+    "LibreOffice/dictionaries": "67032ee957631908098a72edf48dc81cac27e369",
+    "omwn/omw-data": "406bf83b3c507a3d1f26e88252d5d66893fd36bf"
+  },
+  "files": [
+    {
+      "file": "sources/mythes.dat",
+      "url": "https://raw.githubusercontent.com/LibreOffice/dictionaries/67032ee957631908098a72edf48dc81cac27e369/fr_FR/dictionaries/thes_fr.dat",
+      "bytes": 4801627,
+      "sha256": "52efa736c37f98d7f0abfe5dd4345b6f712880ca0ca664c15a8168d9475a0b46"
+    },
+    {
+      "file": "MYTHES-NOTICE.txt",
+      "url": "https://raw.githubusercontent.com/LibreOffice/dictionaries/67032ee957631908098a72edf48dc81cac27e369/fr_FR/dictionaries/README_thes_fr.txt",
+      "bytes": 2034,
+      "sha256": "431a690c5be7741eeaa0e9654aeb75ed2b0af337492e622e8393d090b4612b3e"
+    },
+    {
+      "file": "sources/wolf.tab",
+      "url": "https://raw.githubusercontent.com/omwn/omw-data/406bf83b3c507a3d1f26e88252d5d66893fd36bf/wns/fra/wn-data-fra.tab",
+      "bytes": 3268432,
+      "sha256": "6effab15723bbb482f2922d42eb1db37c8586984ce7735ebfe0a096000b69f86"
+    },
+    {
+      "file": "LGPL-2.1.txt",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/LGPL-2.1-or-later.txt",
+      "bytes": 26001,
+      "sha256": "5749785c8bdefafcb5d798270ed0a967036fe2ca63dcedade1627565dfef81d2"
+    },
+    {
+      "file": "CECILL-C.txt",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/CECILL-C.txt",
+      "bytes": 21863,
+      "sha256": "7b00493e6580710aad04faf2747d74b6de840a47183f76f5a3645f1fce69245d"
+    }
+  ]
+}

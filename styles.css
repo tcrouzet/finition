@@ -4,6 +4,11 @@
  * viennent des variables actualisées par applyPalette() dans main.ts.
  */
 
+.finition-correction-spinner { display: inline-flex; vertical-align: middle; margin-right: 0.5em; }
+.finition-correction-spinner svg { width: 1em; height: 1em; animation: finition-correction-spin 1s linear infinite; }
+@keyframes finition-correction-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .finition-correction-spinner svg { animation: none; } }
+
 .finition-color-0 { background: var(--finition-color-0); }
 .finition-color-1 { background: var(--finition-color-1); }
 .finition-color-2 { background: var(--finition-color-2); }
@@ -191,24 +196,93 @@
 	align-items: center;
 	gap: 4px;
 	cursor: pointer;
-	opacity: 0.5;
 }
 
 .finition-next-occurrence {
 	padding: 0;
 }
 
+.finition-status-icon {
+	display: flex;
+}
+
 .finition-next-occurrence[hidden],
+.finition-document-count[hidden],
 .finition-analysis-count[hidden] {
 	display: none;
 }
 
-.finition-status-bar-item.finition-status-bar-active {
-	opacity: 1;
+body.finition-hide-backlinks-count .status-bar-item.plugin-backlink {
+	display: none;
+}
+
+.finition-synonyms-content {
+	min-height: 0;
+	overflow-y: auto;
+}
+
+.finition-synonyms {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0 var(--size-4-1);
+	list-style: none;
+	padding: 0;
+	margin-block: var(--size-4-1) var(--size-4-2);
 }
 
 .finition-synonyms li {
+	display: inline-flex;
+	align-items: baseline;
+	max-width: 100%;
+	margin: 0;
+}
+
+.finition-synonyms li:not(.finition-synonyms-label-item):not(:last-child)::after {
+	content: ",";
+	color: var(--text-muted);
+}
+
+.finition-synonyms-selection {
+	color: var(--text-muted);
+	margin-block: var(--size-4-1);
+}
+
+.finition-synonyms-section {
 	margin-block: var(--size-4-2);
+}
+
+.finition-synonyms-category {
+	font-size: var(--font-ui-medium);
+	font-weight: 700;
+	color: var(--text-normal);
+	margin-block: var(--size-4-2) var(--size-4-1);
+}
+
+.finition-synonyms-definition {
+	font-size: var(--font-ui-medium);
+	font-weight: 700;
+	margin-block: var(--size-4-2) var(--size-4-1);
+}
+
+.finition-synonyms-label {
+	font-size: inherit;
+	font-weight: 700;
+}
+
+.finition-synonyms-register {
+	font-size: var(--font-ui-small);
+	font-variant: small-caps;
+	color: var(--text-muted);
+}
+
+.finition-synonyms-groups,
+.finition-synonyms-registers {
+	padding-inline-start: calc(var(--size-4-2) * 2);
+	margin-block: var(--size-4-1);
+}
+
+.finition-synonyms-group {
+	margin-block: var(--size-4-1);
 }
 
 .finition-synonyms-drag-handle {
@@ -219,13 +293,42 @@
 
 .finition-synonyms-footer {
 	flex-shrink: 0;
+	margin-top: var(--size-4-1);
 }
 
-.finition-synonym-replace {
+.finition-synonyms .finition-synonym-replace {
+	background: transparent;
+	box-shadow: none;
+	border: 0;
+	border-radius: var(--radius-s);
+	color: var(--text-normal);
+	font-size: inherit;
+	padding: var(--size-2-1);
 	white-space: normal;
+	overflow-wrap: anywhere;
+	min-width: 0;
 	height: auto;
 	text-align: left;
-	margin-inline-end: var(--size-4-2);
+}
+
+.finition-synonyms .finition-synonym-replace:hover {
+	background: var(--background-modifier-hover);
+}
+
+.finition-synonyms .finition-synonym-replace:focus-visible,
+.finition-synonyms-copy:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+body.is-mobile .finition-synonyms {
+	gap: var(--size-4-2);
+}
+
+body.is-mobile .finition-synonym-replace,
+body.is-mobile .finition-synonyms-copy {
+	min-height: 44px;
+	min-width: 44px;
 }
 
 /*
@@ -236,6 +339,30 @@
  */
 .finition-stopwords-setting {
 	display: block;
+}
+
+.finition-settings-section > summary {
+	display: list-item;
+	padding: var(--size-4-4) 0;
+	cursor: pointer;
+	font-weight: var(--font-semibold);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.finition-settings-section-host.setting-item {
+	display: block;
+	padding: 0;
+	border: 0;
+}
+
+.finition-settings-section > summary:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+.finition-dictionary-example {
+	color: var(--text-muted);
+	font-style: italic;
 }
 
 .finition-stopwords-setting .setting-item-control {

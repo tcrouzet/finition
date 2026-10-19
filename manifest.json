@@ -2,7 +2,7 @@
   "id": "finition",
   "name": "Finition",
   "version": "0.4.3",
-  "minAppVersion": "1.4.0",
+  "minAppVersion": "1.14.0",
   "description": "Un plugin pour fignoler vos textes : traque les répétitions, les stéréotypes, les lieux communs, les phrases de longueur semblable en cascade, les ternaires et les effets de cadence.",
   "author": "Thierry Crouzet",
   "authorUrl": "https://tcrouzet.com",
