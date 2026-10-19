@@ -122,7 +122,7 @@ export async function convertModel(kind: "camembert" | "electra", source: Uint8A
 }
 
 async function main() {
-	const root = new URL("../plugin/data/finition-neural/", import.meta.url);
+	const root = new URL("../ressources/camembert/", import.meta.url);
 	await convertModel("camembert", Buffer.concat(await Promise.all(["onnx/model-0.bin", "onnx/model-1.bin"].map(name => readFile(new URL(name, root))))), new URL("../ressources/camembert/", import.meta.url));
 	const privateRoot = new URL("../Antidote/model/", import.meta.url);
 	await convertModel("electra", await readFile(new URL("electra/model.onnx", privateRoot)), privateRoot);

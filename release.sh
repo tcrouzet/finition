@@ -11,7 +11,11 @@ BRANCH=$(jq -er '.defaultBranchRef.name' <<< "$REPOSITORY")
 [ "$(git branch --show-current)" = "$BRANCH" ] || { echo "Lance release.sh depuis la branche par défaut : $BRANCH" >&2; exit 1; }
 
 RESOURCE_ASSETS_DIR=$(mktemp -d "${TMPDIR:-/tmp}/finition-resources.XXXXXX")
+trap 'rm -rf -- "$RESOURCE_ASSETS_DIR"' EXIT
 npm run resources -- "$RESOURCE_ASSETS_DIR"
+npm run typecheck
+npm run lint
+npm run build
 
 git add .
 if ! git diff --cached --quiet; then
@@ -29,21 +33,11 @@ TAG="${CURRENT%.*}.$(( ${CURRENT##*.} + 1 ))"
 MIN_APP=$(jq -r '.minAppVersion' manifest.json)
 
 jq --arg v "$TAG" '.version = $v' manifest.json > manifest.tmp && mv manifest.tmp manifest.json
-jq --arg v "$TAG" '.version = $v' package.json > package.tmp && mv package.tmp package.json
+npm version "$TAG" --no-git-tag-version --ignore-scripts
 [ -f versions.json ] && jq --arg v "$TAG" --arg m "$MIN_APP" '. + {($v): $m}' versions.json > versions.tmp && mv versions.tmp versions.json
 
+# La CI construit et atteste les fichiers du tag ; aucun main.js local n’est téléversé.
 
-# Variables
-RELEASE_NAME="$TAG"
-DESCRIPTION="Release $TAG"
-FILES=("main.js" "manifest.json" "styles.css" "$RESOURCE_ASSETS_DIR/"*)
-
-# Rebuild de production avant de packager (main.js minifié sans sourcemap).
-# Les ressources linguistiques sont jointes séparément pour être
-# téléchargées depuis les paramètres du plugin.
-npm run build
-
-#Git update
 git add .
 git commit -m "sync $TAG"
 git push -u origin "$BRANCH"
@@ -52,10 +46,7 @@ PUBLISHED=$(gh api "repos/$REPO/contents/manifest.json" --jq '.content | @base64
 jq -en --slurpfile local manifest.json --argjson published "$PUBLISHED" '$local[0] == $published' >/dev/null \
   || { echo "Publication arrêtée : le manifest GitHub diffère du manifest de la release." >&2; exit 1; }
 
-# Créer la release (gh crée et pousse automatiquement le tag "$TAG" s'il
-# n'existe pas déjà sur le dépôt).
-gh release create "$TAG" "${FILES[@]}" \
-  --repo "$REPO" \
-  --target "$(git rev-parse HEAD)" \
-  --title "$RELEASE_NAME" \
-  --notes "$DESCRIPTION"
+# Le tag déclenche la construction et la publication par GitHub Actions.
+git tag "$TAG"
+git push origin "$TAG"
+printf 'Release %s confiée à GitHub Actions : https://github.com/%s/actions\n' "$TAG" "$REPO"

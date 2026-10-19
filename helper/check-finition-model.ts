@@ -8,7 +8,7 @@ import { loadModel } from "../plugin/modes/finition-corrector/model";
 
 async function main() {
 	const root = new URL("../ressources/camembert/", import.meta.url);
-	const read = async (name: string): Promise<ArrayBuffer> => { const value = await readFile(new URL(name, name.startsWith("electra/") ? new URL("../Antidote/model/", import.meta.url) : name.startsWith("onnx/model-") ? new URL("../plugin/data/finition-neural/", import.meta.url) : root)); return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength); };
+	const read = async (name: string): Promise<ArrayBuffer> => { const value = await readFile(new URL(name, name.startsWith("electra/") ? new URL("../Antidote/model/", import.meta.url) : root)); return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength); };
 	env.wasm.numThreads = 1;
 	const runtime = await readFile(new URL("../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm", import.meta.url));
 	env.wasm.wasmBinary = runtime;

@@ -4,6 +4,7 @@
  */
 
 import { requestUrl } from "obsidian";
+import { hasResponseText } from "./clean";
 
 interface AnthropicCallOptions {
 	apiKey: string;
@@ -53,13 +54,13 @@ export async function callAnthropic(opts: AnthropicCallOptions): Promise<Anthrop
 			return { text: null, error: message };
 		}
 		const data = response.json as { content?: Array<{ type: string; text?: string }> };
-		const textBlock = data.content?.find((block) => block.type === "text");
-		if (!textBlock?.text) {
+		const text = data.content?.filter(block => block.type === "text").map(block => block.text ?? "").join("");
+		if (!hasResponseText(text)) {
 			const message = "Réponse API inattendue (aucun bloc de texte).";
 			console.error("Corrections IA :", message, data);
 			return { text: null, error: message };
 		}
-		return { text: textBlock.text, error: null };
+		return { text, error: null };
 	} catch (e) {
 		const message = `Erreur réseau : ${e instanceof Error ? e.message : String(e)}`;
 		console.error("Corrections IA :", message);

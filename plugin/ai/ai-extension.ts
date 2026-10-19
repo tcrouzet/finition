@@ -17,6 +17,7 @@
 
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
+import { editorInfoField } from "obsidian";
 
 export interface AIGroup {
 	id: number;
@@ -30,6 +31,7 @@ export interface AIGroup {
 export interface AIGroupHost {
 	aiGroups: AIGroup[];
 	aiGroupsVersion: number;
+	aiSourcePath: string | null;
 }
 
 class InsertionWidget extends WidgetType {
@@ -89,19 +91,22 @@ export function finitionAIExtension(host: AIGroupHost) {
 		class {
 			decorations: DecorationSet;
 			private lastVersion: number;
+			private sourceView: boolean;
 			private readonly handleClick: (event: MouseEvent) => void;
 			private readonly view: EditorView;
 
 			constructor(view: EditorView) {
 				this.view = view;
 				this.lastVersion = host.aiGroupsVersion;
-				this.decorations = buildAIDecorations(host.aiGroups);
+				this.sourceView = this.isSourceView();
+				this.decorations = this.sourceView ? buildAIDecorations(host.aiGroups) : Decoration.none;
 
 				// Clic sur le VERT (proposition) : applique la correction, seule
 				// vraie modification du document que fait cette extension. Clic
 				// sur le ROUGE (texte original) : garde l'original tel quel, le
 				// document n'est pas touché, la suggestion est juste écartée.
 				this.handleClick = (event: MouseEvent) => {
+					if (!this.isSourceView()) return;
 					const target = event.target as HTMLElement | null;
 					const marker = target?.closest<HTMLElement>("[data-finition-ai-group]");
 					if (!marker) return;
@@ -124,8 +129,19 @@ export function finitionAIExtension(host: AIGroupHost) {
 				this.view.dom.removeEventListener("click", this.handleClick);
 			}
 
+			private isSourceView(): boolean {
+				return host.aiSourcePath !== null && this.view.state.field(editorInfoField, false)?.file?.path === host.aiSourcePath;
+			}
+
 			update(update: ViewUpdate): void {
-				if (update.docChanged) {
+				const wasSource = this.sourceView;
+				this.sourceView = this.isSourceView();
+				if (!this.sourceView) {
+					this.decorations = Decoration.none;
+					this.lastVersion = -1;
+					return;
+				}
+				if (update.docChanged && wasSource) {
 					// Remappe les suggestions restantes après une édition
 					// (validation d'une autre suggestion, frappe manuelle...) :
 					// sans ça leurs positions deviendraient fausses.

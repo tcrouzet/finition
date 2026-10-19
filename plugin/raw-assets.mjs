@@ -11,7 +11,9 @@ export const rawAssets = {
 		build.onLoad({ filter: /.*/, namespace: "gzip" }, async args => {
 			const source = await readFile(args.path, "utf8");
 			const json = args.path.endsWith("/gc_rules_graph.js") ? runInNewContext(`${source}\nJSON.stringify(gc_rules_graph)`) : JSON.stringify(JSON.parse(source));
-			return { contents: gzipSync(json, { level: 9 }), loader: "binary", watchFiles: [args.path] };
+			const compressed = gzipSync(json, { level: 9 });
+			compressed[9] = 255; // En-tête portable : aucun identifiant macOS/Linux dans le bundle.
+			return { contents: compressed, loader: "binary", watchFiles: [args.path] };
 		});
 		build.onResolve({ filter: /\?worker$/ }, args => ({ path: resolve(args.resolveDir, args.path.slice(0, -7)), namespace: "worker" }));
 		build.onLoad({ filter: /.*/, namespace: "worker" }, async args => {

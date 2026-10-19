@@ -3,7 +3,10 @@ name: Release Obsidian plugin
 on:
     push:
         tags:
-            - '*'
+            - '[0-9]*'
+
+permissions:
+    contents: read
 
 jobs:
     build:
@@ -13,38 +16,49 @@ jobs:
             id-token: write
             attestations: write
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
             - name: Use Node.js
-              uses: actions/setup-node@v6
+              uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
               with:
-                  node-version: 24
+                  node-version-file: '.nvmrc'
                   cache: 'npm'
 
-            - name: Build plugin
+            - name: Validate and build
+              env:
+                  RELEASE_TAG: ${{ github.ref_name }}
               run: |
+                  set -euo pipefail
                   npm ci
+                  node -e 'const assert = require("node:assert/strict"); assert.equal(process.env.RELEASE_TAG, require("./manifest.json").version); assert.equal(require("./package.json").version, process.env.RELEASE_TAG);'
+                  npm run typecheck
+                  npm run lint
+                  npx --no-install jiti helper/check-structure.ts
                   npm run build
+                  sha256sum main.js > "$RUNNER_TEMP/main.sha256"
+                  npm run build
+                  sha256sum --check "$RUNNER_TEMP/main.sha256"
+                  node -e 'const fs = require("node:fs"); const size = ["main.js", "manifest.json", "styles.css"].reduce((sum, file) => sum + fs.statSync(file).size, 0); if (size >= 5000000) throw new Error(`Release trop volumineuse : ${size}`);'
 
-            - name: Check for optional styles
-              id: styles
-              run: |
-                  [ -f styles.css ] && echo "exists=true" >> "$GITHUB_OUTPUT" || echo "exists=false" >> "$GITHUB_OUTPUT"
+            - name: Package public data
+              run: npm run resources -- "$RUNNER_TEMP/finition-resources"
 
             - name: Attest build provenance
-              uses: actions/attest@v4
+              uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
               with:
                   subject-path: |
                       main.js
-                      ${{ steps.styles.outputs.exists == 'true' && 'styles.css' || '' }}
+                      manifest.json
+                      styles.css
 
-            - name: Create release
+            - name: Publish data and plugin separately
               env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  RELEASE_TAG: ${{ github.ref_name }}
               run: |
-                  tag="${GITHUB_REF#refs/tags/}"
-
-                  gh release create "$tag" \
-                    --title="$tag" \
-                    --draft \
-                    main.js manifest.json ${{ steps.styles.outputs.exists == 'true' && 'styles.css' || '' }}
+                  set -euo pipefail
+                  gh release create "resources-$RELEASE_TAG" "$RUNNER_TEMP/finition-resources/"* \
+                    --target "$GITHUB_SHA" --title "Données $RELEASE_TAG" \
+                    --prerelease --latest=false --notes "Données publiques pour Finition $RELEASE_TAG."
+                  gh release create "$RELEASE_TAG" main.js manifest.json styles.css \
+                    --verify-tag --title "$RELEASE_TAG" --notes "Release $RELEASE_TAG"

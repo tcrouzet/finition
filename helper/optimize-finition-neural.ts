@@ -44,7 +44,7 @@ export function optimizeNeuralModel(bytes: Uint8Array): Uint8Array {
 }
 
 async function main() {
-  const root = new URL("../plugin/data/finition-neural/", import.meta.url);
+  const root = new URL("../ressources/camembert/", import.meta.url);
   const original = Buffer.concat(await Promise.all(neuralModelParts.map(file => readFile(new URL(file, root)))));
   const optimized = optimizeNeuralModel(original);
   const provenance = new URL("../ressources/camembert/source.json", import.meta.url);

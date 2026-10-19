@@ -24,25 +24,10 @@ function tokenize(text: string): string[] {
 	return text.split(/(\s+)/).filter((t) => t.length > 0);
 }
 
-/**
- * Normalise un token pour la COMPARAISON uniquement (jamais pour
- * l'affichage ni l'insertion) : apostrophes droites/typographiques et
- * espaces normales/insécables sont considérées équivalentes. Par
- * expérience les IA ne respectent pas fidèlement la typographie française
- * sur ces deux points précis ; le texte source fait toujours foi, donc ces
- * différences ne doivent jamais générer de suggestion — elles sont traitées
- * comme un "equal", qui conserve le texte d'origine tel quel.
- */
-function normalizeForComparison(token: string): string {
-	return token.replace(/[''‘’]/g, "'").replace(/[\u00A0\u202F]/g, " ");
-}
-
 /** Diff mot-à-mot (LCS classique) entre deux textes déjà tokenisés. */
 function wordDiff(original: string, revised: string): DiffOp[] {
 	const a = tokenize(original);
 	const b = tokenize(revised);
-	const an = a.map(normalizeForComparison);
-	const bn = b.map(normalizeForComparison);
 	const n = a.length;
 	const m = b.length;
 
@@ -60,7 +45,7 @@ function wordDiff(original: string, revised: string): DiffOp[] {
 	for (let i = 0; i <= n; i++) dp[i] = new Uint32Array(m + 1);
 	for (let i = n - 1; i >= 0; i--) {
 		for (let j = m - 1; j >= 0; j--) {
-			dp[i][j] = an[i] === bn[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+			dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
 		}
 	}
 
@@ -68,10 +53,7 @@ function wordDiff(original: string, revised: string): DiffOp[] {
 	let i = 0;
 	let j = 0;
 	while (i < n && j < m) {
-		if (an[i] === bn[j]) {
-			// Equal : on garde le token du texte ORIGINAL (a[i]), jamais celui
-			// de l'IA, même si leur typographie diffère légèrement (apostrophe,
-			// espace insécable) — le document source a toujours raison dessus.
+		if (a[i] === b[j]) {
 			ops.push({ op: "equal", text: a[i] });
 			i++;
 			j++;
@@ -101,7 +83,7 @@ function wordDiff(original: string, revised: string): DiffOp[] {
  * Calcule les suggestions de correction entre `original` et `revised`,
  * avec leurs positions dans `original`. `equal` fait avancer le curseur
  * sans générer de suggestion ; une suite ininterrompue de `del`/`ins`
- * (sans `equal` entre les deux) forme une seule suggestion groupée.
+ * forme une seule suggestion groupée.
  */
 export function diffToGroups(original: string, revised: string): DiffGroup[] {
 	const ops = wordDiff(original, revised);

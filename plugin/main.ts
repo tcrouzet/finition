@@ -12,6 +12,7 @@
  */
 
 import { FileSystemAdapter, Menu, MarkdownView, Notice, Plugin, setIcon } from "obsidian";
+import type { TFile } from "obsidian";
 import { EditorView } from "@codemirror/view";
 import {
 	addWordToDictionaryText,
@@ -29,8 +30,9 @@ import { finitionEditorExtension } from "./editor-extension";
 import { FinitionSettingTab } from "./settings-tab";
 import { finitionAIExtension, AIGroup } from "./ai/ai-extension";
 import { splitIntoChunks } from "./ai/chunk";
-import { diffToGroups } from "./ai/diff";
-import { cleanTypography } from "./ai/clean";
+import { protectLinks } from "./ai/protected-links";
+import { hasResponseText } from "./ai/clean";
+import { markdownLinks } from "./markdown-links";
 import { reviseChunkWithRetryAnthropic } from "./ai/anthropic";
 import { reviseChunkWithRetryOpenAI } from "./ai/openai";
 import { detectProvider } from "./ai/provider";
@@ -42,10 +44,11 @@ import { analyzeCorrections } from "./modes/corrections";
 import { finitionGrammalecteExtension } from "./grammalecte-extension";
 import { buildStructureReport } from "./modes/structure-report";
 import { structureCategoryWords } from "./modes/structure-signature";
+import { loadingMessage } from "./ui/loading-message";
 import { AnalysisNavigation } from "./ui/analysis-navigation";
 import { countDocument, formatDocumentCount } from "./ui/document-count";
 import { LinguisticResources, resourceHash } from "./linguistic-resources";
-import type { ResourcePack } from "./linguistic-files";
+import type { ResourceEngine, ResourcePack } from "./linguistic-files";
 import { resourceEngines, resourceLabels, resourcePacks } from "./linguistic-files";
 import { finitionSynonymMetadata, isSynonymDocumentation, parseSynonymDictionary, personalSynonymPath, synonymFileLimit, SynonymsDictionary, type SynonymMetadata } from "./synonyms";
 import { runLocalSynonyms, runLocalWordLookup } from "./ui/local-synonyms";
@@ -60,6 +63,16 @@ import functionWordsData from "./data/function-words.json";
 import hedgingData from "./data/epistemic-hedging.json";
 import stereotypesData from "./data/stereotypes.json";
 import syntaxHingesData from "./data/syntax-hinges.json";
+
+const analysisModes: Array<{ mode: FinitionMode; name: string; icon: string }> = [
+	{ mode: "repetition", name: "Répétitions", icon: "repeat" },
+	{ mode: "hedging", name: "Atténuation", icon: "shield-question" },
+	{ mode: "stereotype", name: "Stéréotypes", icon: "sparkles" },
+	{ mode: "burstiness", name: "Monotonie", icon: "activity" },
+	{ mode: "ternary", name: "Tricolons", icon: "git-branch" },
+	{ mode: "cadence", name: "Cadence", icon: "waves" },
+	{ mode: "hinges", name: "Charnières", icon: "link" },
+];
 
 export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	settings: FinitionSettings = DEFAULT_SETTINGS;
@@ -83,6 +96,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	// document que lorsque l'utilisateur clique dessus (voir ai-extension.ts).
 	aiGroups: AIGroup[] = [];
 	aiGroupsVersion = 0;
+	aiSourcePath: string | null = null;
 	private nextAiGroupId = 0;
 
 	// Erreurs Grammalecte de la dernière analyse (toute la note). Comme pour
@@ -113,7 +127,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	async onload(): Promise<void> {
 		await this.loadSettings();
 		await this.loadLinguisticResources();
-		if (!this.hasLinguisticResources && this.settings.mode === "ternary") this.settings.mode = "none";
+		if (!this.hasAnalysisResources && this.settings.mode === "ternary") this.settings.mode = "none";
 		await this.loadLexiconData();
 		this.applyPalette();
 		this.setupStatusBarItem();
@@ -125,9 +139,28 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.registerEvent(this.app.workspace.on("editor-change", () => this.updateDocumentCounts()));
 		this.registerEvent(this.app.workspace.on("file-open", () => this.updateDocumentCounts()));
 
+		for (const { mode, name } of analysisModes) this.addCommand({
+			id: mode, name,
+			checkCallback: checking => {
+				if (mode === "ternary" && !this.hasAnalysisResources) return false;
+				if (!checking) void this.setMode(mode);
+				return true;
+			},
+		});
+		for (const engine of resourceEngines) this.addCommand({
+			id: engine === "grammalecte" ? "grammalecte" : "neural", name: resourceLabels[engine],
+			checkCallback: checking => {
+				if (!this.isLinguisticEngineInstalled(engine)) return false;
+				if (!checking) void this.runSpellingEngine(engine);
+				return true;
+			},
+		});
+		this.addCommand({ id: "corrections-ia", name: "Corrections IA", callback: () => this.toggleOrthoTypoIA() });
+		this.addCommand({ id: "settings", name: "Paramètres", callback: () => this.openSettingsTab() });
+
 		this.addCommand({
 			id: "synonymes-ia",
-			name: "Synonymes IA : proposer des synonymes de la sélection",
+			name: "Synonymes IA",
 			callback: () => runSynonyms(this.app, this.settings),
 		});
 		this.addCommand({ id: "synonyme", name: "Synonyme", callback: () => this.runSynonymsLocal() });
@@ -135,7 +168,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 		this.addCommand({
 			id: "punctuation-fix",
-			name: "Ponctuation : corriger les espaces et tirets de la sélection",
+			name: "Ponctuations",
 			callback: () => this.runPunctuationFix(),
 		});
 
@@ -150,9 +183,9 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		// une commande fiable, accessible via la palette de commandes.
 		this.addCommand({
 			id: "structure-report",
-			name: "Structure : générer le rapport d'analyse syntaxique",
+			name: "Structure",
 			checkCallback: (checking) => {
-				if (!this.settings.debugMode || !this.hasLinguisticResources) return false;
+				if (!this.settings.debugMode || !this.hasAnalysisResources) return false;
 				if (!checking) void this.runStructureReport();
 				return true;
 			},
@@ -179,6 +212,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		document.body.classList.toggle("finition-hide-backlinks-count", this.settings.hideBacklinksCount);
 		const unknownEngine = !resourceEngines.includes(this.settings.spellingEngine);
 		if (unknownEngine) this.settings.spellingEngine = "grammalecte";
+		if (!saved?.analysisEngine || !resourceEngines.includes(saved.analysisEngine)) this.settings.analysisEngine = this.settings.spellingEngine;
 		this.settings.spellingNeural = this.settings.spellingNeural === true;
 		if (typeof this.settings.neuralModel !== "string") this.settings.neuralModel = "auto";
 		const previousPacks = this.settings.resourcePacks && typeof this.settings.resourcePacks === "object" && !Array.isArray(this.settings.resourcePacks) ? this.settings.resourcePacks : {};
@@ -408,7 +442,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 	/** Change de mode, en désactivant systématiquement les autres (exclusif). */
 	async setMode(mode: FinitionMode): Promise<void> {
-		if (mode === "ternary" && this.settings.mode !== mode && !this.hasLinguisticResources) {
+		if (mode === "ternary" && this.settings.mode !== mode && !this.hasAnalysisResources) {
 			new Notice("Téléchargez un moteur linguistique dans les paramètres de Finition.");
 			return;
 		}
@@ -420,65 +454,22 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.refreshAllEditors();
 	}
 
+	private async runSpellingEngine(engine: ResourceEngine): Promise<void> {
+		if (!this.isLinguisticEngineInstalled(engine)) return;
+		if (this.settings.spellingEngine === engine && this.grammalecteErrors.length > 0) { await this.runGrammalecte(); return; }
+		if (engine === "finition-corrector") this.settings.spellingNeural = true;
+		await this.setSpellingEngine(engine);
+		await this.runGrammalecte();
+	}
+
 	private showModeMenu(evt: MouseEvent): void {
 		const menu = new Menu();
 
-		menu.addItem((item) =>
-			item
-				.setTitle("Répétitions")
-				.setIcon("repeat")
-				.setChecked(this.settings.mode === "repetition")
-				.onClick(() => this.setMode("repetition"))
-		);
-
-		menu.addItem((item) =>
-			item
-				.setTitle("Atténuation")
-				.setIcon("shield-question")
-				.setChecked(this.settings.mode === "hedging")
-				.onClick(() => this.setMode("hedging"))
-		);
-
-		menu.addItem((item) =>
-			item
-				.setTitle("Stéréotypes")
-				.setIcon("sparkles")
-				.setChecked(this.settings.mode === "stereotype")
-				.onClick(() => this.setMode("stereotype"))
-		);
-
-		menu.addItem((item) =>
-			item
-				.setTitle("Monotonie")
-				.setIcon("activity")
-				.setChecked(this.settings.mode === "burstiness")
-				.onClick(() => this.setMode("burstiness"))
-		);
-
-		menu.addItem((item) =>
-			item
-				.setTitle("Tricolons")
-				.setIcon("git-branch")
-				.setDisabled(!this.hasLinguisticResources)
-				.setChecked(this.settings.mode === "ternary")
-				.onClick(() => this.setMode("ternary"))
-		);
-
-		menu.addItem((item) =>
-			item
-				.setTitle("Cadence")
-				.setIcon("waves")
-				.setChecked(this.settings.mode === "cadence")
-				.onClick(() => this.setMode("cadence"))
-		);
-
-		menu.addItem((item) =>
-			item
-				.setTitle("Charnières")
-				.setIcon("link")
-				.setChecked(this.settings.mode === "hinges")
-				.onClick(() => this.setMode("hinges"))
-		);
+		for (const { mode, name, icon } of analysisModes) menu.addItem(item => item
+			.setTitle(name).setIcon(icon)
+			.setDisabled(mode === "ternary" && !this.hasAnalysisResources)
+			.setChecked(this.settings.mode === mode)
+			.onClick(() => this.setMode(mode)));
 
 		menu.addSeparator();
 
@@ -489,13 +480,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				.setIcon(engine === "grammalecte" ? "book-open" : "brain")
 				.setDisabled(!installed)
 				.setChecked(installed && this.settings.spellingEngine === engine && this.grammalecteErrors.length > 0)
-				.onClick(async () => {
-					if (!this.isLinguisticEngineInstalled(engine)) return;
-					if (this.settings.spellingEngine === engine && this.grammalecteErrors.length > 0) { await this.runGrammalecte(); return; }
-					if (engine === "finition-corrector") this.settings.spellingNeural = true;
-					await this.setSpellingEngine(engine);
-					await this.runGrammalecte();
-				}));
+				.onClick(() => this.runSpellingEngine(engine)));
 		}
 
 		menu.addItem((item) =>
@@ -527,7 +512,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			item
 				.setTitle("Structure")
 				.setIcon("list-tree")
-				.setDisabled(!this.hasLinguisticResources)
+				.setDisabled(!this.hasAnalysisResources)
 				.onClick(() => this.runStructureReport())
 		);
 
@@ -603,9 +588,13 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		// repart simplement à zéro.
 		this.clearAISuggestions();
 
+		this.aiSourcePath = view.file?.path ?? null;
 		const selectionFrom = editor.posToOffset(editor.getCursor("from"));
 		const original = editor.getSelection();
 		const chunks = splitIntoChunks(original, this.settings.aiChunkSize);
+		const links = markdownLinks(document);
+		const debugMode = this.settings.debugMode;
+		const debugChunks: string[] = [];
 
 		// Une seule notification, mise à jour à chaque tronçon (via
 		// setMessage) plutôt qu'un message figé affiché une fois pour toutes
@@ -624,7 +613,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				progress.setMessage(`Corrections IA : tronçon ${i + 1}/${chunks.length}...`);
 				if (chunk.text.trim().length === 0) continue;
 				const reviseChunk = provider === "openai" ? reviseChunkWithRetryOpenAI : reviseChunkWithRetryAnthropic;
-				const { text: revisedRaw, error } = await reviseChunk(chunk.text, this.settings.aiPrompt, {
+				const start = selectionFrom + chunk.start;
+				const protectedText = protectLinks(document, start, start + chunk.text.length, links);
+				if (!protectedText.text.trim()) continue;
+				const { text: revisedRaw, error } = await reviseChunk(protectedText.text, this.settings.aiPrompt, {
 					apiKey,
 					model: this.settings.aiModel,
 					maxTokens: this.settings.aiMaxTokens,
@@ -637,8 +629,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 					errors.push(`Tronçon ${i + 1}/${chunks.length} : ${error}`);
 					continue;
 				}
-				const revised = cleanTypography(revisedRaw);
-				const groups = diffToGroups(chunk.text, revised);
+				if (debugMode) debugChunks.push(revisedRaw);
+				const groups = protectedText.diff(revisedRaw);
 				for (const g of groups) {
 					this.aiGroups.push({
 						id: this.nextAiGroupId++,
@@ -651,6 +643,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				this.aiGroupsVersion++;
 				this.refreshAllEditors(); // les suggestions déjà calculées s'affichent au fil de l'eau, pas seulement à la toute fin
 			}
+			if (debugMode && errors.length === 0 && debugChunks.length) await this.createDebugNote(view, debugChunks.join("\n\n"), "");
 		} catch (e) {
 			errors.push(`Erreur inattendue : ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
@@ -717,7 +710,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	 * spammer le Worker à chaque caractère tapé.
 	 */
 	ensureWordCategories(words: string[]): void {
-		if (!this.hasLinguisticResources) return;
+		if (!this.hasAnalysisResources) return;
 		let hasNew = false;
 		for (const word of words) {
 			if (!this.wordCategoryCache.has(word) && !this.pendingCategoryWords.has(word)) {
@@ -736,7 +729,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.pendingCategoryWords.clear();
 		try {
 			const generation = this.wordCategoryCacheVersion;
-			const engine = await this.ensureSpellingEngine();
+			const engine = await this.ensureSpellingEngine(this.settings.analysisEngine);
 			const result = await engine.getCategories(toFetch);
 			if (generation !== this.wordCategoryCacheVersion) return;
 			for (const [word, category] of Object.entries(result)) {
@@ -756,16 +749,31 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.spellingRequest++;
 		this.grammalecteErrors = [];
 		this.grammalecteErrorsVersion++;
+		this.resetWordCategories();
+		if (!this.hasAnalysisResources && this.settings.mode === "ternary") this.settings.mode = "none";
+		this.refreshAllEditors();
+		await this.saveSettings();
+	}
+
+	private resetWordCategories(): void {
 		this.wordCategoryCache.clear();
 		this.wordCategoryCacheVersion++;
 		this.pendingCategoryWords.clear();
 		if (this.categoryFetchTimer !== null) window.clearTimeout(this.categoryFetchTimer);
 		this.categoryFetchTimer = null;
-		if (!this.hasLinguisticResources && this.settings.mode === "ternary") this.settings.mode = "none";
-		this.refreshAllEditors();
-		await this.saveSettings();
 	}
 
+	async setAnalysisEngine(engine: ResourceEngine): Promise<void> {
+		if (!resourceEngines.includes(engine) || !this.isLinguisticEngineInstalled(engine)) throw new Error("Dictionnaire d’analyse indisponible.");
+		const previous = this.settings.analysisEngine;
+		this.settings.analysisEngine = engine;
+		try { await this.saveSettings(); }
+		catch (error) { this.settings.analysisEngine = previous; throw error; }
+		this.resetWordCategories();
+		this.refreshAllEditors();
+	}
+
+	get hasAnalysisResources(): boolean { return this.linguisticResources?.available(this.settings.analysisEngine) ?? false; }
 	get hasLinguisticResources(): boolean { return this.linguisticResources?.available(this.settings.spellingEngine) ?? false; }
 	get neuralModelOptions(): Array<SynonymMetadata & { id: string }> { return this.neuralModels?.options ?? []; }
 	async setNeuralModel(id: string): Promise<void> {
@@ -934,7 +942,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			} catch { /* Un ancien dictionnaire absent ou incompatible reste désactivé. */ }
 		}
 		await this.refreshSynonymDictionaries();
-		this.wordDictionaries ??= new WordDictionaries(this.app.vault.adapter, this.manifest.dir, () => this.settings, () => this.saveSettings());
+		this.wordDictionaries ??= new WordDictionaries(this.app.vault.adapter, this.manifest.dir, () => this.settings, () => this.saveSettings(), this.linguisticResources);
 		await this.wordDictionaries.refresh();
 	}
 	private async readLinguisticAsset(engine: ResourcePack, file: string): Promise<ArrayBuffer> {
@@ -953,13 +961,18 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		await this.loadLinguisticResources();
 		if (!this.linguisticResources.available(engine)) throw new Error("Installation incomplète. Relancez le téléchargement.");
 		if (engine === "synonymes") { this.synonymsDictionary = null; return; }
+		if (engine !== "grammalecte" && engine !== "finition-corrector") {
+			if (!this.wordDictionaries) throw new Error("Dossier du plugin introuvable.");
+			await this.wordDictionaries.select(engine, "");
+			return;
+		}
 		this.finitionCorrectorEngine?.destroy();
 		this.grammalecteEngine?.destroy();
 		if (engine === "finition-corrector") this.settings.spellingNeural = true;
 		await this.setSpellingEngine(engine);
 	}
-	private async ensureSpellingEngine(): Promise<Pick<GrammalecteEngine, "parse" | "getCategories">> {
-		if (this.settings.spellingEngine !== "finition-corrector") return this.ensureGrammalecteEngine();
+	private async ensureSpellingEngine(engine: ResourceEngine = this.settings.spellingEngine): Promise<Pick<GrammalecteEngine, "parse" | "getCategories">> {
+		if (engine !== "finition-corrector") return this.ensureGrammalecteEngine();
 		if (!this.finitionCorrectorEngine) {
 			const specialized = this.neuralModels?.reader(this.settings.neuralModel);
 			this.finitionCorrectorEngine = new FinitionCorrectorEngine(file => file.startsWith("electra/") && specialized ? specialized(file) : this.readLinguisticAsset("finition-corrector", file));
@@ -1000,11 +1013,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		}
 
 		const label = this.settings.spellingEngine === "finition-corrector" && this.settings.spellingNeural ? "Correction neurale" : "Corrections";
-		const message = createFragment();
-		const spinner = createSpan({ cls: "finition-correction-spinner", attr: { "aria-hidden": "true" } });
-		setIcon(spinner, "loader-circle");
-		message.append(spinner, label);
-		const notice = new Notice(message, 0);
+		const notice = new Notice(loadingMessage(label), 0);
 		const publish = (rawErrors: GrammalecteError[]): boolean => {
 			if (request !== this.spellingRequest || document !== editor.getValue() || this.app.workspace.getActiveViewOfType(MarkdownView) !== view) return false;
 			const dictionary = parseGrammalecteDictionary(this.settings.grammalecteCustomDictionary);
@@ -1036,6 +1045,24 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		}
 	}
 
+	private async createDebugNote(view: MarkdownView, content: string, prefix: string): Promise<TFile> {
+		if (!hasResponseText(content)) throw new Error("Aucun texte à enregistrer : note horodatée non créée.");
+		const source = view.file;
+		const folder = source?.parent?.path && source.parent.path !== "/" ? `${source.parent.path}/` : "";
+		const pad = (number: number) => String(number).padStart(2, "0");
+		const now = new Date();
+		const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+		const base = `${folder}${prefix}${source?.basename ?? "sans titre"} (${timestamp})`;
+		let path = `${base}.md`;
+		for (let suffix = 2; this.app.vault.getAbstractFileByPath(path); suffix++) path = `${base} ${suffix}.md`;
+		const file = await this.app.vault.create(path, content);
+		if (await this.app.vault.read(file) !== content) {
+			await this.app.vault.process(file, saved => hasResponseText(saved) ? saved : content);
+			if (await this.app.vault.read(file) !== content) throw new Error(`Le contenu de la note horodatée n’a pas été conservé : ${path}`);
+		}
+		return file;
+	}
+
 	/**
 	 * Commande "Structure" : génère, dans une NOUVELLE note, l'encodage
 	 * syntaxique coloré de chaque phrase du document actif (voir
@@ -1043,9 +1070,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	 * comment Cadence et Tricolons analysent le texte, sans jamais toucher
 	 * au document d'origine.
 	 */
+
 	private async runStructureReport(): Promise<void> {
 		if (!this.settings.debugMode) return;
-		if (!this.hasLinguisticResources) { new Notice("Téléchargez un moteur linguistique dans les paramètres de Finition."); return; }
+		if (!this.hasAnalysisResources) { new Notice("Téléchargez un moteur linguistique dans les paramètres de Finition."); return; }
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) {
 			// Garde auparavant silencieuse : aucune erreur console, aucun
@@ -1061,7 +1089,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 		const notice = new Notice("Structure : chargement du moteur linguistique...", 0);
 		try {
-			const engine = await this.ensureSpellingEngine();
+			const engine = await this.ensureSpellingEngine(this.settings.analysisEngine);
 			notice.setMessage("Structure : analyse en cours...");
 
 			const categories = await engine.getCategories(structureCategoryWords(text));
@@ -1069,19 +1097,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 			const content = buildStructureReport(text, getCategory);
 
-			// Nom unique pour ne jamais écraser un rapport précédent par
-			// mégarde ; dans le même dossier que la note active, pour rester
-			// facile à retrouver.
-			const activeFile = view.file;
-			const folder = activeFile?.parent?.path ? `${activeFile.parent.path}/` : "";
-			const pad = (n: number) => String(n).padStart(2, "0");
-			const now = new Date();
-			const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(
-				now.getHours()
-			)}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-			const path = `${folder}Structure — ${activeFile?.basename ?? "sans titre"} (${timestamp}).md`;
-
-			const file = await this.app.vault.create(path, content);
+			const file = await this.createDebugNote(view, content, "Structure — ");
 			notice.hide();
 			await this.app.workspace.getLeaf(true).openFile(file);
 		} catch (e) {
@@ -1118,6 +1134,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	/** Efface toutes les suggestions IA en attente, sans rien modifier au document. */
 	clearAISuggestions(): void {
 		this.aiGroups = [];
+		this.aiSourcePath = null;
 		this.aiGroupsVersion++;
 		this.refreshAllEditors();
 	}

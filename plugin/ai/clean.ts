@@ -1,19 +1,11 @@
-/**
- * Nettoyage typographique français appliqué au texte renvoyé par l'IA,
- * port direct de `Ia.clean()` (mode français uniquement) du pipeline
- * Python d'origine.
- */
+import { protectSpans, fixPunctuationSpacing, fixBlankLines } from "../modes/punctuation";
+
+export function hasResponseText(text: unknown): text is string {
+	return typeof text === "string" && /[^\s\p{Cf}]/u.test(text);
+}
+
 export function cleanTypography(text: string): string {
-	// Espace insécable avant : ; ! ? » (et suppression d'une espace normale
-	// déjà présente avant ces signes).
-	text = text.replace(/(?<!\s)([:;!?»])| (?=[:;!?»])/g, "\u00A0$1");
-	// Espace insécable après «.
-	text = text.replace(/«\s*/g, "«\u00A0");
-	// Apostrophes typographiques.
-	text = text.replace(/'/g, "’");
-	text = text.replace(/https :\/\//g, "https://");
-	// Caractères invisibles résiduels.
-	text = text.replace(/\u200b/g, ""); // espace de largeur nulle
-	text = text.replace(/\ufeff/g, ""); // BOM
-	return text;
+	const protectedText = protectSpans(text);
+	const fixed = fixBlankLines(fixPunctuationSpacing(protectedText.text)).replace(/[\u200b\ufeff]/g, "");
+	return protectedText.restore(fixed);
 }

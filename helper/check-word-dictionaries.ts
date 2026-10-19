@@ -6,7 +6,7 @@ import { dictionaryKinds, dictionaryLabels, parseWordDictionary, type Dictionary
 import { FinitionSettingTab } from "../plugin/settings-tab";
 import { resourceFixture } from "./check-linguistic-resources";
 
-export async function checkWordDictionaries(Plugin: typeof FinitionPlugin, getMenu: () => Array<{ title: string; disabled: boolean; click: () => Promise<void> }>, notices: string[], modals: Array<{ close: () => void }>): Promise<void> {
+export async function checkWordDictionaries(Plugin: typeof FinitionPlugin, getMenu: () => Array<{ title: string; disabled: boolean; click: () => Promise<void> }>, notices: string[], modals: Array<{ close: () => void }>, setHandler: (handler: (request: { url: string }) => Promise<{ status: number; arrayBuffer: ArrayBuffer }>) => void): Promise<void> {
 	const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
 	const fixture = await resourceFixture(false);
 	const view = new EditorView({ parent: document.body.createDiv(), state: EditorState.create({ doc: "Un chat.", selection: { anchor: 3, head: 7 } }) });
@@ -101,6 +101,41 @@ export async function checkWordDictionaries(Plugin: typeof FinitionPlugin, getMe
 	failed = false;
 	try { await store.remove("antonymes", "source.json"); } catch { failed = true; }
 	check(failed && await fixture.adapter.exists("source.json"), "Suppression hors des copies du plugin acceptée");
+	const spellingEngine = plugin.settings.spellingEngine;
+	const privateDictionaries = JSON.stringify(plugin.settings.wordDictionaries);
+	setHandler(async request => {
+		const prefix = "https://github.com/tcrouzet/finition/releases/download/resources-0.4.3/";
+		check(request.url.startsWith(prefix), "Téléchargement du dictionnaire hors de la release");
+		return { status: 200, arrayBuffer: await fixture.readSource(request.url.slice(prefix.length)) };
+	});
+	for (const kind of dictionaryKinds) {
+		tab.update();
+		const section = container.querySelector<HTMLDetailsElement>(`details[data-section="${dictionaryLabels[kind]}"]`)!;
+		const finition = () => Array.from(section.querySelectorAll(".setting-item")).find(row => row.querySelector(".setting-item-name")?.textContent === "Finition")!;
+		check(finition().querySelector("button")?.textContent === "Charger", "Le pack public absent ne peut pas être téléchargé");
+		await plugin.downloadLinguisticResources(kind, () => {});
+		check(store.has(kind) && plugin.settings.wordDictionaryPaths[kind] === "" && store.options.some(option => option.kind === kind && option.name === "Finition" && option.path === ""), "Le téléchargement ne sélectionne pas le dictionnaire public");
+		tab.update();
+		const current = container.querySelector<HTMLDetailsElement>(`details[data-section="${dictionaryLabels[kind]}"]`)!;
+		const row = Array.from(current.querySelectorAll(".setting-item")).find(row => row.querySelector(".setting-item-name")?.textContent === "Finition")!;
+		check(row.querySelector("button")?.textContent === "Recharger" && row.querySelectorAll("button").length === 1 && current.querySelector<HTMLSelectElement>("select")?.selectedOptions[0]?.text === "Finition", "Le pack public n’est pas rechargeable ou est effaçable");
+		const result = await store.lookup(kind, kind === "antonymes" ? "chaud" : "chat");
+		check(result.dictionary.license?.name === "CC-BY-SA-4.0" && result.dictionary.license.source === "https://fr.wiktionary.org/" && result.rows.length > 0, "Licence, provenance ou résultat public absent");
+		if (kind === "antonymes") check(result.rows.some(row => row.words?.includes("froid")), "L’antonyme public attendu est absent");
+		if (kind === "phonetique") check(result.rows.some(row => row.text === "ʃa"), "La transcription API publique est absente");
+		if (kind === "rimes") check(result.rows.some(row => row.words?.includes("rat")), "La rime phonétique publique est absente");
+		check(await store.remove(kind, "").then(() => false, () => true), "Le dictionnaire public peut être effacé comme un import personnel");
+	}
+	check(plugin.settings.spellingEngine === spellingEngine && JSON.stringify(plugin.settings.wordDictionaries) === privateDictionaries, "Le téléchargement d’un dictionnaire change le correcteur ou les imports personnels");
+	await plugin.loadSettings();
+	await plugin.loadLinguisticResources();
+	check(dictionaryKinds.every(kind => store.has(kind) && plugin.settings.wordDictionaryPaths[kind] === ""), "Le choix public n’est pas conservé après rechargement");
+	const sample = (await store.lookup("antonymes", "chaud")).dictionary;
+	for (const license of [null, "CC-BY-SA-4.0", { ...sample.license, url: "javascript:alert(1)" }, { ...sample.license, source: "file:///tmp/source" }, { ...sample.license, attribution: "" }, { ...sample.license, sha256: "x" }, { ...sample.license, revision: "x\n" }]) {
+		let rejected = false;
+		try { parseWordDictionary(JSON.stringify({ ...sample, license }), "antonymes"); } catch { rejected = true; }
+		check(rejected, "Une licence ou une provenance invalide est acceptée");
+	}
 	container.remove();
 	view.destroy();
 }

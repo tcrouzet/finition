@@ -38,8 +38,7 @@ export async function checkLocalSynonyms(Plugin: typeof FinitionPlugin, getMenu:
 	const sections = Array.from(container.querySelectorAll<HTMLDetailsElement>("details"));
 	check(sections.map(section => section.querySelector("summary")?.textContent).join("|") === expectedSections && sections.every(section => !section.open), "Toutes les sections de Corrections à Palette doivent être repliées par défaut");
 	check(sections.every(section => section.querySelector("summary")!.checkVisibility() && !section.querySelector<HTMLElement>(".finition-settings-section-body")!.checkVisibility()), "Une section repliée cache son titre ou expose ses détails");
-	sections[0].open = true;
-	sections[1].open = true;
+	for (const title of ["Corrections", "Corrections IA"]) container.querySelector<HTMLDetailsElement>(`details[data-section="${title}"]`)!.open = true;
 	container.querySelector<HTMLDetailsElement>('details[data-section="Synonymes"]')!.open = true;
 	sections.at(-1)!.open = true;
 	tab.update();
@@ -78,7 +77,7 @@ export async function checkLocalSynonyms(Plugin: typeof FinitionPlugin, getMenu:
 	check(menu().find(item => item.title === "Synonyme")?.disabled, "Synonyme actif sans données");
 	const beforeDownload = requests.length;
 	const engine = plugin.settings.spellingEngine;
-	const prefix = "https://github.com/tcrouzet/finition/releases/download/0.4.3/";
+	const prefix = "https://github.com/tcrouzet/finition/releases/download/resources-0.4.3/";
 	setHandler(async request => {
 		check(request.url.startsWith(prefix) && request.method === "GET" && !request.body, "Téléchargement des synonymes inattendu");
 		return { status: 200, arrayBuffer: await fixture.readSource(request.url.slice(prefix.length)) };

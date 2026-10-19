@@ -64,7 +64,7 @@ export class SynonymsModal extends Modal {
 						const words = this.baseWords(group);
 						return [
 							`- ${group.label ? `**${escape(group.label)}**${words.length ? " — " : ""}` : ""}${words.map(escape).join(", ")}`,
-							...(group.registers ?? []).map(row => `${"  ".repeat(row.labels.length)}- **${escape(row.labels.at(-1)!)}** — ${row.words.map(escape).join(", ")}`),
+							...(group.registers ?? []).map(row => `${"  ".repeat(row.labels.length)}- **${escape(row.labels.at(-1) ?? "")}** — ${row.words.map(escape).join(", ")}`),
 						].join("\n");
 					}).join("\n"),
 				].filter(Boolean).join("\n\n")),

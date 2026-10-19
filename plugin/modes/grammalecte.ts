@@ -8,7 +8,7 @@
 
 import { engineScripts } from "./grammalecte-resources";
 import { grammarFiles } from "../linguistic-files";
-import graphData from "../data/grammalecte/gc_rules_graph.js?gzip";
+import graphData from "../vendor/grammalecte/gc_rules_graph.js?gzip";
 import { unpackData } from "../ui/compressed-data";
 
 export interface GrammalecteError {

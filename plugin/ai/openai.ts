@@ -7,6 +7,7 @@
  */
 
 import { requestUrl } from "obsidian";
+import { hasResponseText } from "./clean";
 
 interface OpenAICallOptions {
 	apiKey: string;
@@ -58,7 +59,7 @@ export async function callOpenAI(opts: OpenAICallOptions): Promise<OpenAICallRes
 		}
 		const data = response.json as { choices?: Array<{ message?: { content?: string } }> };
 		const text = data.choices?.[0]?.message?.content;
-		if (!text) {
+		if (!hasResponseText(text)) {
 			const message = "Réponse API inattendue (aucun contenu).";
 			console.error("Corrections IA :", message, data);
 			return { text: null, error: message };

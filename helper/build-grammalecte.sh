@@ -15,7 +15,7 @@ cd "$TMP_DIR"
 echo "→ Build JS (français)"
 python3 make.py fr -js
 
-DEST="$PLUGIN_DIR/plugin/data/grammalecte"
+DEST="$PLUGIN_DIR/plugin/vendor/grammalecte"
 PUBLIC_DATA="$PLUGIN_DIR/ressources/grammalecte"
 mkdir -p "$DEST" "$PUBLIC_DATA"
 

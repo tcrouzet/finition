@@ -2,6 +2,8 @@ import type { App } from "obsidian";
 import type FinitionPlugin from "../main";
 import type { FinitionCorrectorEngine } from "../plugin/modes/finition-corrector";
 import type { GrammalecteEngine } from "../plugin/modes/grammalecte";
+import { structureCategoryWords } from "../plugin/modes/structure-signature";
+import { buildStructureReport } from "../plugin/modes/structure-report";
 import { analyzeCorrections } from "../plugin/modes/corrections";
 import { resourceFixture } from "./check-linguistic-resources";
 
@@ -20,9 +22,11 @@ export async function checkFinitionCorrector(Plugin: typeof FinitionPlugin, getC
 	const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
 	let activeView = true;
 	const fixture = await resourceFixture();
-	const view = { editor: { getValue: () => "Une bonjor.", getSelection: () => "", listSelections: () => [{ anchor: { line: 0, ch: 0 }, head: { line: 0, ch: 0 } }], getCursor: () => ({ line: 0, ch: 0 }), posToOffset: () => 0 } };
-	const plugin = new Plugin({ workspace: { iterateAllLeaves() {}, getActiveViewOfType: () => activeView ? view : null }, vault: { adapter: fixture.adapter } } as unknown as App, { id: "finition", name: "Finition", version: "0.0.0", minAppVersion: "1.0.0", description: "", author: "", dir: "test-plugin" });
-	const internal = plugin as unknown as { ensureSpellingEngine: () => Promise<FinitionCorrectorEngine>; showModeMenu: (event: MouseEvent) => void };
+	let documentText = "Une bonjor.";
+	let report = "";
+	const view = { editor: { getValue: () => documentText, getSelection: () => "", listSelections: () => [{ anchor: { line: 0, ch: 0 }, head: { line: 0, ch: 0 } }], getCursor: () => ({ line: 0, ch: 0 }), posToOffset: () => 0 } };
+	const plugin = new Plugin({ workspace: { iterateAllLeaves() {}, getLeaf: () => ({ async openFile() {} }), getActiveViewOfType: () => activeView ? view : null }, vault: { adapter: fixture.adapter, getAbstractFileByPath: () => null, async read() { return report; }, async create(_path: string, content: string) { report = content; return {}; } } } as unknown as App, { id: "finition", name: "Finition", version: "0.0.0", minAppVersion: "1.0.0", description: "", author: "", dir: "test-plugin" });
+	const internal = plugin as unknown as { ensureSpellingEngine: () => Promise<FinitionCorrectorEngine>; pendingCategoryWords: Set<string>; resolvePendingWordCategories: () => Promise<void>; runStructureReport: () => Promise<void>; showModeMenu: (event: MouseEvent) => void };
 	await plugin.loadSettings();
 	check(plugin.settings.spellingEngine === "grammalecte", "Réglages existants : défaut modifié");
 	plugin.settings.resourcePacks = fixture.revisions;
@@ -105,6 +109,23 @@ export async function checkFinitionCorrector(Plugin: typeof FinitionPlugin, getC
 		plugin.grammalecteErrors = first;
 		await plugin.setSpellingEngine("grammalecte");
 		check(plugin.grammalecteErrors.length === 0, "Diagnostics périmés après changement de moteur");
+		const grammar = await internal.ensureSpellingEngine();
+		documentText = "Liras-tu demain ? Dis-leur que je continuerai. Toutes les variantes d’un mot rassemblées sous une même racine.";
+		const words = structureCategoryWords(documentText);
+		const grammarCategories = await grammar.getCategories(words);
+		const neuralCategories = await engine.getCategories(words);
+		check(JSON.stringify(grammarCategories) !== JSON.stringify(neuralCategories), "Le cas de test ne distingue pas les catégories des deux moteurs");
+		plugin.settings.debugMode = true;
+		for (const [analysis, correction, categories] of [["finition-corrector", "grammalecte", neuralCategories], ["grammalecte", "finition-corrector", grammarCategories]] as const) {
+			await plugin.setAnalysisEngine(analysis);
+			await plugin.setSpellingEngine(correction);
+			for (const word of words) internal.pendingCategoryWords.add(word);
+			await internal.resolvePendingWordCategories();
+			check(words.every(word => plugin.wordCategoryCache.get(word) === categories[word]), "Tricolons ou Cadence utilisent les catégories du correcteur plutôt que le choix d’analyse");
+			await internal.runStructureReport();
+			check(report === buildStructureReport(documentText, word => categories[word.toLowerCase()] ?? ""), "Structure utilise le correcteur plutôt que le dictionnaire choisi");
+		}
+		documentText = "Une bonjor.";
 		await plugin.setSpellingEngine("finition-corrector");
 		check(await internal.ensureSpellingEngine() === engine, "Worker recréé inutilement");
 		const cancelled = engine.parse("Bonjor.").then(() => false, () => true);

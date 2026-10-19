@@ -118,11 +118,10 @@ export interface FinitionSettings {
 	// - "fast" : heuristique historique, comparaison de longueurs de
 	//   clauses délimitées par charnières syntaxiques (data/syntax-hinges.json).
 	//   Synchrone, instantané, aucune dépendance externe.
-	// - "grammalecte" : signature syntaxique par phrase (SUJET/VERBE/
+	// - "grammalecte" : identifiant historique du mode syntaxique (SUJET/VERBE/
 	//   COMPLÉMENT/PROPOSITION_SUBORDONNÉE...), portée de stats.py
 	//   (projet unshiter), en s'appuyant sur les catégories grammaticales
-	//   de Grammalecte. Plus fidèle, mais asynchrone (requêtes au Worker
-	//   Grammalecte) : les surlignages se complètent après un court délai
+	//   du moteur choisi dans Corrections. Asynchrone (requêtes au Worker) : les surlignages se complètent après un court délai
 	//   plutôt qu'instantanément à chaque frappe.
 	cadenceEngine: "fast" | "grammalecte";
 	// Index de couleur (0 à PALETTE_SIZE-1, cf. palette.css) utilisé par les
@@ -172,9 +171,7 @@ export interface FinitionSettings {
 	openaiApiKey: string;
 
 	// --- Grammalecte (orthographe / grammaire) ------------------------------
-	// Dictionnaire utilisé par le moteur orthographique : "fr-classic"
-	// (orthographe traditionnelle) ou "fr-reform" (rectifications de 1990).
-	// Fichiers correspondants dans ressources/grammalecte/_dictionaries/.
+	analysisEngine: "grammalecte" | "finition-corrector";
 	spellingEngine: "grammalecte" | "finition-corrector";
 	spellingNeural: boolean;
 	neuralModel: string;
@@ -183,6 +180,9 @@ export interface FinitionSettings {
 	synonymDictionaries: Array<SynonymMetadata & { path: string }>;
 	wordDictionaries: StoredDictionary[];
 	wordDictionaryPaths: Partial<Record<DictionaryKind, string>>;
+	// Dictionnaire utilisé par le moteur orthographique : "fr-classic"
+	// (orthographe traditionnelle) ou "fr-reform" (rectifications de 1990).
+	// Fichiers correspondants dans ressources/grammalecte/_dictionaries/.
 	grammalecteDictionary: "fr-classic" | "fr-reform";
 	// Index dans settings.palette utilisé comme fond coloré derrière les
 	// erreurs Grammalecte, en plus du soulignement ondulé rouge/bleu.
@@ -253,6 +253,7 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	activePromptName: BUILTIN_PROMPTS[0].name,
 	savedPrompts: [...BUILTIN_PROMPTS],
 	openaiApiKey: "",
+	analysisEngine: "grammalecte",
 	spellingEngine: "grammalecte",
 	spellingNeural: false,
 	neuralModel: "auto",

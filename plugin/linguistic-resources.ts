@@ -66,7 +66,7 @@ export class LinguisticResources {
 	}
 	private async download(engine: ResourcePack, progress: (text: string) => void): Promise<string> {
 		if (!/^\d+\.\d+\.\d+$/.test(this.version)) throw new Error("Version du plugin invalide.");
-		const base = `https://github.com/tcrouzet/finition/releases/download/${this.version}/`;
+		const base = `https://github.com/tcrouzet/finition/releases/download/resources-${this.version}/`;
 		const get = async (name: string) => {
 			const response = await requestUrl({ url: base + name, method: "GET", throw: false });
 			if (response.status !== 200) throw new Error(`Téléchargement indisponible (HTTP ${response.status}). Vérifiez les ressources de la version ${this.version} sur GitHub.`);

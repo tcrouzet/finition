@@ -1,12 +1,13 @@
 import { App, ColorComponent, DropdownComponent, Notice, PluginSettingTab, Setting } from "obsidian";
 import type { SettingDefinitionRender } from "obsidian";
+import { loadingMessage } from "./ui/loading-message";
 import type { ResourcePack } from "./linguistic-files";
-import { resourceEngines } from "./linguistic-files";
+import { resourceEngines, resourceLabels } from "./linguistic-files";
 import { finitionSynonymMetadata, isSynonymDocumentation, synonymDocumentation, synonymFileLimit, type SynonymMetadata } from "./synonyms";
 import type FinitionPlugin from "./main";
 import { neuralDocumentation, neuralFileLimit } from "./neural-models";
 import { DEFAULT_PALETTE, DEFAULT_SETTINGS, parseGrammalecteDictionary, parseStopWords } from "./types";
-import { dictionaryDocumentation, dictionaryLabels, type DictionaryKind } from "./dictionaries";
+import { dictionaryDocumentation, dictionaryLabels, publicDictionaryMetadata, type DictionaryKind } from "./dictionaries";
 
 type ColorFunctionKey = "hedgingColorIndex" | "stereotypeColorIndex" | "hingeColorIndex" | "grammalecteColorIndex";
 
@@ -93,8 +94,8 @@ export class FinitionSettingTab extends PluginSettingTab {
 		const finition = new Setting(containerEl).setName("Finition")
 			.addButton(button => button.setButtonText(this.plugin.isLinguisticEngineInstalled("synonymes") ? "Recharger" : "Charger").setDisabled(busy)
 				.onClick(() => update(async () => {
-					const notice = new Notice("Téléchargement des synonymes…", 0);
-					try { await this.plugin.downloadLinguisticResources("synonymes", text => notice.setMessage(text)); }
+					const notice = new Notice(loadingMessage("Téléchargement des synonymes…"), 0);
+					try { await this.plugin.downloadLinguisticResources("synonymes", text => notice.setMessage(loadingMessage(text))); }
 					finally { notice.hide(); }
 				})));
 		this.describeResource(finition, finitionSynonymMetadata);
@@ -151,7 +152,15 @@ export class FinitionSettingTab extends PluginSettingTab {
 				dropdown.setValue(this.plugin.settings.wordDictionaryPaths?.[kind] ?? "").setDisabled(busy || !options.length)
 					.onChange(path => update(async () => { await store?.select(kind, path); }));
 			});
-		for (const option of options) {
+		const finition = new Setting(container).setName("Finition")
+			.addButton(button => button.setButtonText(this.plugin.isLinguisticEngineInstalled(kind) ? "Recharger" : "Charger").setDisabled(busy)
+				.onClick(() => update(async () => {
+					const notice = new Notice(loadingMessage("Téléchargement du dictionnaire…"), 0);
+					try { await this.plugin.downloadLinguisticResources(kind, text => notice.setMessage(loadingMessage(text))); }
+					finally { notice.hide(); }
+				})));
+		this.describeResource(finition, publicDictionaryMetadata);
+		for (const option of options.filter(option => option.path)) {
 			const row = new Setting(container).setName(option.name)
 				.addButton(button => button.setButtonText("Effacer").setDestructive().setDisabled(busy).onClick(() => {
 					if (container.ownerDocument.defaultView?.confirm(`Effacer le dictionnaire « ${option.name} » du plugin ?`)) return update(async () => { await store?.remove(kind, option.path); });
@@ -208,23 +217,6 @@ export class FinitionSettingTab extends PluginSettingTab {
 						await this.plugin.setSpellingEngine("grammalecte");
 					}));
 			});
-		new Setting(containerEl).setName("Correcteur neuronal par défaut")
-			.setDesc(this.modelError || (installed.includes("finition-corrector") ? "" : "Aucun correcteur neuronal installé."))
-			.addDropdown(dropdown => {
-				if (installed.includes("finition-corrector")) {
-					dropdown.addOption("finition-corrector", "CamemBERT");
-					for (const model of models) dropdown.addOption(model.id, model.name);
-				}
-				const selected = this.plugin.settings.neuralModel;
-				const model = selected === "auto" ? models[0]?.id : selected;
-				dropdown.setValue(model || "finition-corrector").setDisabled(!installed.includes("finition-corrector") || busy)
-					.onChange(value => update(async () => {
-						if (value !== "finition-corrector" && !models.some(model => model.id === value)) return;
-						await this.plugin.setNeuralModel(value === "finition-corrector" ? "" : value);
-						this.plugin.settings.spellingNeural = true;
-						await this.plugin.setSpellingEngine("finition-corrector");
-					}));
-			});
 		for (const engine of resourceEngines) {
 			const installed = this.plugin.isLinguisticEngineInstalled(engine);
 			const setting = engine === "grammalecte" ? grammar : new Setting(containerEl).setName("CamemBERT");
@@ -233,9 +225,9 @@ export class FinitionSettingTab extends PluginSettingTab {
 					.setDisabled(busy).onClick(async () => {
 						this.downloadingEngine = engine;
 						this.update();
-						const notice = new Notice("Téléchargement des ressources…", 0);
+						const notice = new Notice(loadingMessage("Téléchargement des ressources…"), 0);
 						try {
-							await this.plugin.downloadLinguisticResources(engine, text => notice.setMessage(text));
+							await this.plugin.downloadLinguisticResources(engine, text => notice.setMessage(loadingMessage(text)));
 							new Notice("Ressources installées. Le moteur fonctionne hors ligne.");
 						} catch (error) {
 							new Notice(error instanceof Error ? error.message : String(error), 10000);
@@ -278,6 +270,35 @@ export class FinitionSettingTab extends PluginSettingTab {
 				input.click();
 			}));
 		loader.descEl.createEl("a", { text: "Modèle au format Finition", href: neuralDocumentation, attr: { target: "_blank", rel: "noopener noreferrer" } });
+
+		new Setting(containerEl).setName("Correcteur neuronal par défaut")
+			.setDesc(this.modelError || (installed.includes("finition-corrector") ? "" : "Aucun correcteur neuronal installé."))
+			.addDropdown(dropdown => {
+				if (installed.includes("finition-corrector")) {
+					dropdown.addOption("finition-corrector", "CamemBERT");
+					for (const model of models) dropdown.addOption(model.id, model.name);
+				}
+				const selected = this.plugin.settings.neuralModel;
+				const model = selected === "auto" ? models[0]?.id : selected;
+				dropdown.setValue(model || "finition-corrector").setDisabled(!installed.includes("finition-corrector") || busy)
+					.onChange(value => update(async () => {
+						if (value !== "finition-corrector" && !models.some(model => model.id === value)) return;
+						await this.plugin.setNeuralModel(value === "finition-corrector" ? "" : value);
+						this.plugin.settings.spellingNeural = true;
+						await this.plugin.setSpellingEngine("finition-corrector");
+					}));
+			});
+
+		new Setting(containerEl).setName("Moteur d’analyse")
+			.setDesc("Pour la structure, les tricolons et la cadence syntaxique.")
+			.addDropdown(dropdown => {
+				for (const engine of installed) dropdown.addOption(engine, resourceLabels[engine]);
+				dropdown.setValue(this.plugin.settings.analysisEngine).setDisabled(busy || !installed.length)
+					.onChange(value => update(async () => {
+						if (value !== "grammalecte" && value !== "finition-corrector") return;
+						await this.plugin.setAnalysisEngine(value);
+					}));
+			});
 
 
 		new Setting(containerEl)
@@ -822,12 +843,12 @@ export class FinitionSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Moteur de cadence")
 			.setDesc(
-				"Rapide : heuristique légère basée sur la longueur et la ponctuation des phrases (temps réel). Grammalecte : signatures syntaxiques (sujet/verbe/complément...) construites à partir de l'analyse grammaticale de Grammalecte, plus précises mais plus lentes à calculer sur de longs documents."
+				"Rapide : longueur et ponctuation des phrases. Syntaxique : moteur choisi dans la section corrections."
 			)
 			.addDropdown((dropdown) => {
 				dropdown
 					.addOption("fast", "Rapide")
-					.addOption("grammalecte", "Grammalecte")
+					.addOption("grammalecte", "Syntaxique")
 					.setValue(this.plugin.settings.cadenceEngine)
 					.onChange(async (value) => {
 						this.plugin.settings.cadenceEngine = value as "fast" | "grammalecte";
@@ -934,7 +955,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 	getSettingDefinitions(): SettingDefinitionRender[] {
 		return [
 			...this.generalDefinitions(),
-			this.sectionDefinition("Corrections", ["Grammalecte", "Correcteur neuronal par défaut", "CamemBERT", "Charger un modèle neuronal", "Dictionnaire personnel", ...this.plugin.neuralModelOptions.map(option => option.name)], container => this.displayCorrections(container)),
+			this.sectionDefinition("Corrections", ["Moteur d’analyse", "Neuronal", "Structure", "Tricolons", "Grammalecte", "Correcteur neuronal par défaut", "CamemBERT", "Charger un modèle neuronal", "Dictionnaire personnel", ...this.plugin.neuralModelOptions.map(option => option.name)], container => this.displayCorrections(container)),
 			this.sectionDefinition("Corrections IA", ["Clé API Anthropic", "Clé API OpenAI", "Modèle par défaut", "Identifiant du modèle personnalisé", "Taille des tronçons (caractères)", "Prompt enregistré", "Prompt de révision", "Modèle pour ce prompt", "Identifiant du modèle pour ce prompt", "Enregistrer sous ce nom"], container => this.displayAICorrections(container)),
 			this.sectionDefinition("Synonymes", ["Dictionnaire", "Finition", "Charger un dictionnaire", ...this.plugin.synonymDictionaryOptions.map(option => option.name)], container => this.displaySynonyms(container)),
 			this.sectionDefinition("Définitions", ["Dictionnaire", "Charger un dictionnaire", ...(this.plugin.wordDictionaries?.options.filter(option => option.kind === "definitions").map(option => option.name) ?? [])], container => this.displayWordDictionary(container, "definitions")),

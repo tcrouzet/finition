@@ -1,19 +1,33 @@
 import * as assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { Buffer } from "node:buffer";
 import * as vm from "node:vm";
 import * as process from "node:process";
 import { build } from "esbuild";
 import { rawAssets } from "../plugin/raw-assets.mjs";
+import type { DiffGroup } from "../plugin/ai/diff";
+import type { EditorState, TransactionSpec } from "@codemirror/state";
+import type { DecorationSet, EditorView, ViewUpdate } from "@codemirror/view";
+import type { AIGroupHost } from "../plugin/ai/ai-extension";
 import type { GetCategory } from "../plugin/modes/structure-signature";
 import type { TicIAResult } from "../plugin/modes/tic-ia";
 import type { FinitionSettings } from "../plugin/types";
 
 async function main() {
+	const dataSources = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "plugin/data"], { encoding: "utf8" }).split("\0").filter(file => file && existsSync(file));
+	assert.ok(dataSources.every(file => file.endsWith(".json")), "Les sources de plugin/data doivent être uniquement des JSON d’analyse");
 	const modules = await build({
-		stdin: { contents: "export * from \"./plugin/modes/clause-split\"; export * from \"./plugin/modes/structure-report\"; export * from \"./plugin/modes/structure-signature\"; export * from \"./plugin/modes/ternary\"; export * from \"./plugin/modes/tic-ia\"; export { engineScripts } from \"./plugin/modes/grammalecte-resources\"; export { default as FinitionPlugin } from \"./main\";", resolveDir: process.cwd() },
+		stdin: { contents: "export { default as gzipData } from \"./plugin/data/lexicon.json?gzip\"; export { EditorState } from \"@codemirror/state\"; export * from \"./plugin/ai/ai-extension\"; export * from \"./plugin/ai/protected-links\"; export * from \"./plugin/markdown-links\"; export * from \"./plugin/ai/clean\"; export * from \"./plugin/modes/punctuation\"; export * from \"./plugin/modes/clause-split\"; export * from \"./plugin/modes/structure-report\"; export * from \"./plugin/modes/structure-signature\"; export * from \"./plugin/modes/ternary\"; export * from \"./plugin/modes/tic-ia\"; export { engineScripts } from \"./plugin/modes/grammalecte-resources\"; export { default as FinitionPlugin } from \"./main\";", resolveDir: process.cwd() },
 		bundle: true, platform: "node", format: "cjs", write: false, loader: { ".md": "text" }, external: ["obsidian"], plugins: [rawAssets],
 	});
+	const notices: string[] = [];
+	let requestHandler: (request: { url: string; body: string }) => unknown = () => { throw new Error("Appel API inattendu"); };
+	class Notice {
+		constructor(message: string) { notices.push(message); }
+		setMessage(message: string) { notices.push(message); }
+		hide() {}
+	}
 	const menuTitles: string[] = [];
 	const menuDisabled = new Map<string, boolean>();
 	class Plugin {
@@ -34,13 +48,21 @@ async function main() {
 		showAtMouseEvent() {}
 	}
 	const module = { exports: {} };
-	const sandbox = vm.createContext({ module, exports: module.exports, Buffer, TextEncoder, TextDecoder, require: (name: string) => {
+	const sandbox = vm.createContext({ module, exports: module.exports, Buffer, TextEncoder, TextDecoder, Date: class extends Date { constructor() { super("2026-10-19T12:34:56"); } }, require: (name: string) => {
 		assert.equal(name, "obsidian");
-		return { Plugin, PluginSettingTab: class {}, Modal: class {}, Component: class {}, Menu };
+		return { Plugin, PluginSettingTab: class {}, Modal: class {}, Component: class {}, Menu, Notice, requestUrl: (request: { url: string; body: string }) => requestHandler(request) };
 	} });
 	vm.runInContext(modules.outputFiles[0].text, sandbox);
 	sandbox.document = { body: { classList: { toggle() {} } } };
 	const api = module.exports as {
+		gzipData: Uint8Array;
+		EditorState: typeof EditorState;
+		finitionAIExtension: (host: AIGroupHost) => unknown;
+		cleanTypography: (text: string) => string;
+		fixPunctuationSpacing: (text: string) => string;
+		fixBlankLinesProtected: (text: string) => string;
+		linkRanges: (text: string) => Array<[number, number]>;
+		protectLinks: (text: string, from?: number, to?: number) => { text: string; diff: (revised: string) => DiffGroup[] };
 		engineScripts: string[];
 		sentenceRanges: (text: string) => Array<[number, number]>;
 		buildStructureReport: (text: string, getCategory: GetCategory) => string;
@@ -53,11 +75,15 @@ async function main() {
 		tricolonMembership: (keys: Array<{ key: string; reduction: "none" }>) => Array<{ groupId: number; position: number } | null>;
 		FinitionPlugin: new () => Plugin & {
 			settings: FinitionSettings;
+			aiGroups: DiffGroup[];
 			loadSettings: () => Promise<void>;
 			showModeMenu: (event: unknown) => void;
 			runStructureReport: () => Promise<void>;
+			runOrthoTypoIA: () => Promise<void>;
+			createDebugNote: (view: unknown, content: string, prefix: string) => Promise<{ path: string }>;
 		};
 	};
+	assert.equal(api.gzipData[9], 255, "Le gzip embarqué dépend du système de compilation");
 	assert.ok(!/\brequire\s*\(\s*["'](?:node:)?fs(?:\/promises)?["']\s*\)/u.test(api.engineScripts.join("\n")), "Grammalecte embarque un accès direct au système de fichiers");
 	const plugin = new api.FinitionPlugin();
 	plugin.saved = { mode: "tic-ia" };
@@ -83,6 +109,7 @@ async function main() {
 	assert.ok(!menuTitles.includes("Structure"));
 	await plugin.runStructureReport();
 	Object.defineProperty(plugin, "hasLinguisticResources", { value: true });
+	Object.defineProperty(plugin, "hasAnalysisResources", { value: true });
 	menuTitles.length = 0;
 	plugin.showModeMenu({});
 	assert.equal(menuDisabled.get("Tricolons"), false);
@@ -93,10 +120,281 @@ async function main() {
 	assert.ok(menuTitles.includes("Structure"));
 	assert.equal(menuDisabled.get("Structure"), false);
 	process.stdout.write("Menu: Structure réservé au mode debug ; disponibilité liée aux ressources ; réglage persisté\n");
+	const apply = (text: string, groups: DiffGroup[]) => [...groups].reverse().reduce((result, group) => result.slice(0, group.delFrom) + (group.insText ?? "") + result.slice(group.delTo), text);
+	const sequence = "Suite à un collègue, je réponds.";
+	const sequenceGroups = api.protectLinks(sequence).diff("A la suite d'un collègue, je réponds.");
+	assert.equal(sequenceGroups.length, 1, "Un remplacement de plusieurs mots est morcelé");
+	assert.equal(sequenceGroups[0].delText, "Suite à un");
+	assert.equal(sequenceGroups[0].insText, "A la suite d’un");
+	assert.equal(apply(sequence, sequenceGroups), "A la suite d’un collègue, je réponds.");
+	for (const [source, revised, expected] of [
+		[sequence, "À la suite d'un collègue, je réponds.", "À la suite d’un collègue, je réponds."],
+		["Il dit bonjour.", "Il dit : bonjour.", "Il dit\u00a0: bonjour."],
+		["Il dit bonjour. Une fote.", "Il dit : bonjour. Une faute.", "Il dit\u00a0: bonjour. Une faute."],
+	] as const) {
+		const host = { aiSourcePath: "source.md", aiGroups: api.protectLinks(source).diff(revised).map((group, id) => ({ ...group, id })), aiGroupsVersion: 0 };
+		let state = api.EditorState.create({ doc: source }), filePath = "source.md";
+		const listeners = new Map<string, (event: MouseEvent) => void>();
+		const factory = api.finitionAIExtension(host) as { create: (view: EditorView) => { decorations: DecorationSet; update: (update: ViewUpdate) => void; destroy: () => void } };
+		const view = { get state() { return { doc: state.doc, field: () => ({ file: { path: filePath } }) }; },
+			dom: { addEventListener: (name: string, handler: (event: MouseEvent) => void) => listeners.set(name, handler), removeEventListener: (name: string) => listeners.delete(name) },
+			dispatch(spec: TransactionSpec) { const transaction = state.update(spec); state = transaction.state; instance.update({ docChanged: transaction.docChanged, changes: transaction.changes } as ViewUpdate); },
+		} as unknown as EditorView;
+		const instance = factory.create(view);
+		const before = JSON.stringify(host.aiGroups);
+		filePath = "debug.md";
+		view.dispatch({ changes: { from: 0, to: state.doc.length, insert: "Debug." } });
+		assert.equal(instance.decorations.size, 0, "La note de debug reçoit les décorations de la note source");
+		assert.equal(JSON.stringify(host.aiGroups), before, "Ouvrir une autre note déplace les suggestions source");
+		filePath = "source.md";
+		view.dispatch({ changes: { from: 0, to: state.doc.length, insert: source } });
+		assert.equal(JSON.stringify(host.aiGroups), before, "Revenir à la note source déplace les suggestions");
+		let removed = "", inserted = "";
+		sandbox.createSpan = () => ({ dataset: {}, setAttribute() {}, textContent: "" });
+		instance.decorations.between(0, source.length, (from, to, decoration) => {
+			const spec = decoration.spec as { class?: string; widget?: { toDOM: () => { textContent: string } } };
+			if (spec.class === "finition-ai-del") removed += source.slice(from, to);
+			if (spec.widget) inserted += spec.widget.toDOM().textContent;
+		});
+		assert.equal(removed, host.aiGroups.map(group => group.delText).join(""), "La séquence n’est pas barrée en entier");
+		assert.equal(inserted, host.aiGroups.map(group => group.insText ?? "").join(""), "Le widget altère le remplacement ou son insécable");
+		for (const group of [...host.aiGroups]) listeners.get("click")!({ target: { closest: () => ({ dataset: { finitionAiGroup: String(group.id), finitionAiAction: "accept" } }) }, preventDefault() {} } as unknown as MouseEvent);
+		assert.equal(state.doc.toString(), expected, "Le clic insère un remplacement incomplet ou une espace ordinaire");
+		assert.equal(host.aiGroups.length, 0);
+		instance.destroy();
+	}
+	process.stdout.write("Suggestions IA : séquences entières, insécable au clic et isolation de la note de debug vérifiées\n");
+	for (const [source, revised, expected] of [
+		["Il dit bonjour.", "Il dit : bonjour.", "Il dit\u00a0: bonjour."],
+		["À propos de.", "À propos ?", "À propos\u00a0?"],
+		["C'est bon?", "C'est bon?", "C’est bon\u00a0?"],
+		["Il répond : oui!", "Il répond : oui !", "Il répond\u00a0: oui\u00a0!"],
+		["«mot »; vraiment?", "«mot »; vraiment?", "«\u00a0mot\u00a0»\u00a0; vraiment\u00a0?"],
+		["Et alors\u202f?", "Et alors\u202f?", "Et alors\u00a0?"],
+		["– Salut!", "– Salut!", "—\u00a0Salut\u00a0!"],
+		["Il vient – peut-être – demain.", "Il vient – peut-être – demain.", "Il vient –\u00a0peut-être\u00a0– demain."],
+		["Premier.\n\n\nDernier.", "Premier.\n\n\nDernier.", "Premier.\n\nDernier."],
+		["- Un\n\n- Deux", "- Un\n\n- Deux", "- Un\n- Deux"],
+		["Voir [l’auteur](https://example.org/a?b=c) à propos de.", "Voir l’auteur à propos ?", "Voir [l’auteur](https://example.org/a?b=c) à propos\u00a0?"],
+	] as const) {
+		assert.equal(apply(source, api.protectLinks(source).diff(revised)), expected, "Une suggestion IA perd la typographie française");
+		assert.equal(api.cleanTypography(revised), api.fixBlankLinesProtected(api.fixPunctuationSpacing(revised)), "Le retour IA ne suit pas les règles de Ponctuations");
+	}
+	process.stdout.write("Typographie IA : insécables, apostrophes, guillemets, tirets, paragraphes et liens vérifiés\n");
+	const linkCases = [
+		"[Finition](https://example.org/article?q=1&lang=fr)", "![Image](app://local/a(b).webp?123)",
+		"[des [mots]](https://example.org/a_(b) \"titre (avec parenthèses)\")", "[titre](<https://example.org/a)b> \"titre\")",
+		"[[Note|Libellé]]", "![[Image.png]]", "<https://example.org/a?b=c>", "https://example.org/l'auteur?q=oui!", "[https://example.org/bracket]",
+		"<a href='https://example.org/a?b=c'>Texte</a>", "<img src=\"https://example.org/a?b=c\" alt=\"l'auteur > celui-ci\">", "<video src='https://example.org/v.mp4'></video>", "zotero://select/library/items/ABC", "<a@example.org>", "d'angelo@example.org", "[texte][r]\n[r]: https://example.org/a?b=c", "[r]\n[r]: https://example.org/a?b=c", "[texte] [r]\n[r]: https://example.org/a?b=c",
+	];
+	for (const link of linkCases) {
+		const text = `Une fote ${link}\n\nune errer.`;
+		const ranges = api.linkRanges(text);
+		assert.ok(ranges.length, `Lien non reconnu : ${link}`);
+		for (const transform of [api.cleanTypography, api.fixPunctuationSpacing, api.fixBlankLinesProtected]) {
+			assert.equal(transform(link), link, `Un lien isolé est altéré : ${link}`);
+			const transformed = transform(text);
+			assert.ok(transformed.includes(link), `Ponctuations ou normalisation IA altère un lien : ${link}`);
+			assert.equal(transform(transformed), transformed, "La ponctuation protégée n’est pas idempotente");
+		}
+		const guarded = api.protectLinks(text);
+		assert.ok(!guarded.text.includes("https://") && !guarded.text.includes("app://"), `Adresse envoyée à l’IA : ${link}`);
+		assert.equal(guarded.diff(guarded.text).length, 0, `Une réponse inchangée altère un lien : ${link}`);
+		const groups = guarded.diff(guarded.text.replace("fote", "faute").replace("errer", "erreur"));
+		assert.equal(apply(text, groups), text.replace("fote", "faute").replace("errer", "erreur"));
+		assert.ok(groups.every(group => ranges.every(([from, to]) => group.delTo <= from || group.delFrom >= to)), "Une suggestion englobe un lien");
+	}
+	assert.equal(api.fixPunctuationSpacing("C'est bon! À 10:30. `a:b?`"), "C’est bon\u00a0! À 10:30. `a:b?`");
+	assert.equal(api.fixBlankLinesProtected("Avant.\n\n\n```\nconst x = 'https://a.test?a:b';\n\n\n```\n\n\nAprès."), "Avant.\n\n```\nconst x = 'https://a.test?a:b';\n\n\n```\n\nAprès.");
+	assert.ok(api.fixPunctuationSpacing("\uE0000\uE001 [mot](https://example.org?q=1)").includes("\uE0000\uE001 [mot](https://example.org?q=1)"));
+	for (const [source, expected] of [
+		["je développe [Unshiter](https://github.com/tcrouzet/unshiter), une app.", "je développe Unshiter, une app."],
+		["[Antidote](https://antidote.info), le correcteur de [Druide](https://druide.com), intégré à [Obsidian](https://obsidian.md) avec [Finition](https://github.com/tcrouzet/finition).", "Antidote, le correcteur de Druide, intégré à Obsidian avec Finition."],
+		["![Une image](app://local/image.webp)", "Une image"],
+		["[[Note|Un libellé]][Autre](https://a.test)", "Un libelléAutre"],
+		["Voir [r].\n\n[r]: https://a.test", "Voir r.\n\n"],
+		["Avant\r\n[r]: https://a.test\r\nAprès.", "Avant\r\nAprès."],
+		["<a href='https://a.test'><b>Mot visible</b></a>", "Mot visible"],
+		["<img src='https://a.test/img' alt='Image visible'>", "Image visible"],
+		["Voir [https://a.test](https://a.test)", "Voir "],
+	] as const) assert.equal(api.protectLinks(source).text, expected, "Le libellé visible disparaît ou un marqueur/une adresse est envoyé");
+	for (const text of ["Une fote [Mot](https://a.test), une errer.", "😀 Une fote [Mot](https://a.test)\r\nune errer.", "Une fote [Mot](https://a.test)[Mot](https://b.test) une errer."]) {
+		const guarded = api.protectLinks(text);
+		assert.equal(apply(text, guarded.diff(guarded.text.replace("fote", "faute").replace("errer", "erreur"))), text.replace("fote", "faute").replace("errer", "erreur"));
+		const changed = guarded.diff(guarded.text.replace(/Mot/g, "Autre"));
+		assert.equal(apply(text, changed), text, "Un libellé de lien a été modifié");
+	}
+	const punctuation = "Voir [Finition](https://a.test), vraiment.";
+	assert.equal(apply(punctuation, api.protectLinks(punctuation).diff("Voir Finition ; vraiment.")), "Voir [Finition](https://a.test)\u00a0; vraiment.");
+	const hidden = "Avant https://a.test après.";
+	assert.equal(apply(hidden, api.protectLinks(hidden).diff("Texte changé.")), hidden, "Une suggestion traverse une adresse masquée");
+	const collision = "⟦LIEN0⟧ [mot](https://example.org)";
+	assert.equal(api.protectLinks(collision).diff(api.protectLinks(collision).text).length, 0);
+	for (let depth = 1; depth <= 32; depth++) {
+		const nested = `[${"[".repeat(depth)}mot${"]".repeat(depth)}](https://example.org/${"(".repeat(depth)}x${")".repeat(depth)})`;
+		assert.equal(api.linkRanges(nested)[0][1], nested.length, "Les parenthèses ou crochets imbriqués tronquent un lien");
+	}
+	process.stdout.write("Liens IA : URL intactes, images, liens imbriqués, références, libellés visibles et positions vérifiés\n");
+	const aiPlugin = new api.FinitionPlugin();
+	await aiPlugin.loadSettings();
+	aiPlugin.settings.aiModel = "gpt-test";
+	aiPlugin.settings.openaiApiKey = "test";
+	aiPlugin.settings.aiApiKey = "test";
+	let sourceText = "J’ai des mots.";
+	let aiFrom = 0, aiTo: number | undefined;
+	let failWrite = false;
+	let writeOverride: string | null = null;
+	const notes = new Map<string, string>();
+	const opened: string[] = [];
+	const sourceView = { file: { path: "Dossier/Article.md", basename: "Article", parent: { path: "Dossier" } }, editor: {
+		getValue: () => sourceText, getSelection: () => sourceText.slice(aiFrom, aiTo), somethingSelected: () => true,
+		getCursor: () => ({ line: 0, ch: aiFrom }), posToOffset: (position: { ch: number }) => position.ch,
+	} };
+	Object.assign(aiPlugin.app, { vault: {
+		getAbstractFileByPath: (path: string) => notes.has(path) ? { path } : null,
+		async create(path: string, content: string) {
+			if (failWrite) throw new Error("Disque plein");
+			assert.ok(!notes.has(path), "Une note existante serait écrasée");
+			notes.set(path, writeOverride ?? content);
+			return { path };
+		},
+		async read(file: { path: string }) { return notes.get(file.path) ?? ""; },
+		async process(file: { path: string }, transform: (content: string) => string) {
+			const content = transform(notes.get(file.path) ?? "");
+			notes.set(file.path, content);
+			return content;
+		},
+	}, workspace: {
+		getActiveViewOfType: () => sourceView, iterateAllLeaves() {},
+		getLeaf: () => ({ async openFile(file: { path: string }) { opened.push(file.path); } }),
+	} });
+	const raw = `"J'ai des mots."`;
+	requestHandler = request => {
+		assert.equal(request.url, "https://api.openai.com/v1/chat/completions");
+		const body = JSON.parse(request.body) as { messages: Array<{ content: string }> };
+		assert.equal(body.messages[1].content, sourceText);
+		return { status: 200, json: { choices: [{ message: { content: raw } }] } };
+	};
+	await aiPlugin.runOrthoTypoIA();
+	assert.equal(notes.size, 0, "Une note Debug est créée alors que Debug est désactivé");
+	aiPlugin.settings.debugMode = true;
+	await aiPlugin.runOrthoTypoIA();
+	assert.equal(notes.get("Dossier/Article (2026-10-19 123456).md"), raw, "Le retour IA brut n’est pas conservé");
+	assert.equal(sourceText, "J’ai des mots.", "La note source a changé");
+	assert.equal(opened.length, 0, "La sauvegarde Debug détourne l’éditeur de la note source");
+	aiPlugin.settings.aiModel = "claude-test";
+	aiPlugin.settings.aiChunkSize = 10;
+	sourceText = "Premier paragraphe.\n\nDeuxième paragraphe.";
+	const replies: string[] = [];
+	requestHandler = request => {
+		assert.equal(request.url, "https://api.anthropic.com/v1/messages");
+		const body = JSON.parse(request.body) as { messages: Array<{ content: string }> };
+		const text = `[${body.messages[0].content}]`;
+		replies.push(text);
+		return { status: 200, json: { content: [{ type: "text", text }] } };
+	};
+	await aiPlugin.runOrthoTypoIA();
+	assert.equal(replies.length, 2);
+	assert.equal(notes.get("Dossier/Article (2026-10-19 123456) 2.md"), replies.join("\n\n"), "Les réponses des tronçons sont perdues ou la note précédente est écrasée");
+	requestHandler = () => ({ status: 401, text: "Refus", json: { error: { message: "Refus" } } });
+	await aiPlugin.runOrthoTypoIA();
+	assert.equal(notes.size, 2, "Une erreur API crée une fausse réponse Debug");
+	requestHandler = () => {
+		sourceText += "!";
+		return { status: 200, json: { content: [{ type: "text", text: sourceText }] } };
+	};
+	await aiPlugin.runOrthoTypoIA();
+	assert.equal(notes.size, 2, "Une analyse périmée crée une note Debug");
+	requestHandler = () => ({ status: 200, json: { content: [{ type: "text", text: sourceText }] } });
+	failWrite = true;
+	await aiPlugin.runOrthoTypoIA();
+	assert.equal(notes.size, 2);
+	assert.ok(notices.some(message => message.includes("Disque plein")), "L’échec d’écriture est masqué");
+	failWrite = false;
+	aiPlugin.settings.debugMode = false;
+	aiPlugin.settings.aiModel = "gpt-test";
+	aiPlugin.settings.aiChunkSize = 2000;
+	sourceText = "Une fote [Finition](https://example.org/article?q=1&lang=fr) une errer.";
+	requestHandler = request => {
+		const body = JSON.parse(request.body) as { messages: Array<{ content: string }> };
+		assert.equal(body.messages[0].content, aiPlugin.settings.aiPrompt);
+		assert.equal(body.messages[1].content, "Une fote Finition une errer.");
+		assert.ok(!body.messages[1].content.includes("https://") && !body.messages[1].content.includes("example.org"), "L’API reçoit encore les adresses");
+		return { status: 200, json: { choices: [{ message: { content: body.messages[1].content.replace("fote", "faute").replace("errer", "erreur") } }] } };
+	};
+	await aiPlugin.runOrthoTypoIA();
+	assert.equal(apply(sourceText, aiPlugin.aiGroups), sourceText.replace("fote", "faute").replace("errer", "erreur"), "Les corrections IA altèrent les liens ou leurs positions");
+	for (const [document, from, to, expected] of [["Avant [mot](https://example.org/page?q=1) après.", 17, 27, ""], ["Voir [r].\n\n[r]: https://example.org/ref", 5, 8, "r"], ["Avant [libellé](https://example.org) après.", 8, 12, "ibel"]] as const) {
+		sourceText = document;
+		aiFrom = from; aiTo = to;
+		let calls = 0;
+		requestHandler = request => {
+			calls++;
+			const body = JSON.parse(request.body) as { messages: Array<{ content: string }> };
+			assert.equal(body.messages[1].content, expected, "Une sélection partielle perd son libellé ou transmet une adresse");
+			return { status: 200, json: { choices: [{ message: { content: body.messages[1].content } }] } };
+		};
+		await aiPlugin.runOrthoTypoIA();
+		assert.equal(calls, expected ? 1 : 0, "Une adresse sans texte est envoyée à l’IA");
+		assert.equal(aiPlugin.aiGroups.length, 0, "Une sélection partielle de lien est modifiée");
+	}
+	aiFrom = 0; aiTo = undefined;
+	sourceText = "Depuis le mois d’août, je développe [Unshiter](https://github.com/tcrouzet/unshiter), une app.\n\n[Antidote](https://antidote.info), le correcteur de [Druide](https://druide.com), intégré à [Obsidian](https://obsidian.md). Je code [Finition](https://github.com/tcrouzet/finition).";
+	aiPlugin.settings.debugMode = true;
+	const plain = "Depuis le mois d’août, je développe Unshiter, une app.\n\nAntidote, le correcteur de Druide, intégré à Obsidian. Je code Finition.";
+	requestHandler = request => {
+		const body = JSON.parse(request.body) as { messages: Array<{ content: string }> };
+		assert.equal(body.messages[1].content, plain, "Le scénario signalé perd des mots dans le texte envoyé");
+		return { status: 200, json: { choices: [{ message: { content: plain } }] } };
+	};
+	await aiPlugin.runOrthoTypoIA();
+	assert.equal(aiPlugin.aiGroups.length, 0);
+	assert.equal(notes.get("Dossier/Article (2026-10-19 123456) 3.md"), plain, "La note Debug contient encore des marqueurs");
+	aiPlugin.settings.debugMode = false;
+	for (const model of ["gpt-test", "claude-test"]) {
+		aiPlugin.settings.aiModel = model;
+		sourceText = "Voir [Finition](https://example.org/a?b=c) à propos de.";
+		requestHandler = () => ({ status: 200, json: { choices: [{ message: { content: "Voir Finition à propos ?" } }], content: [{ type: "text", text: "Voir Finition à propos ?" }] } });
+		await aiPlugin.runOrthoTypoIA();
+		assert.equal(apply(sourceText, aiPlugin.aiGroups), "Voir [Finition](https://example.org/a?b=c) à propos\u00a0?", `L’insécable est perdue dans les suggestions ${model}`);
+	}
+	aiPlugin.settings.debugMode = true;
+	aiPlugin.settings.aiModel = "claude-test";
+	sourceText = "J’ai des mots.";
+	const blocks = [" \n".repeat(100), "J’ai des mots."];
+	requestHandler = () => ({ status: 200, json: { content: [{ type: "thinking", thinking: "Interne" }, ...blocks.map(text => ({ type: "text", text }))] } });
+	await aiPlugin.runOrthoTypoIA();
+	assert.equal(notes.get("Dossier/Article (2026-10-19 123456) 4.md"), blocks.join(""), "Les blocs de texte Anthropic après un bloc vide sont perdus");
+	for (const model of ["gpt-test", "claude-test"]) {
+		aiPlugin.settings.aiModel = model;
+		for (const blank of ["", " \n".repeat(100), "\u200b\u2060\ufeff".repeat(100)]) {
+			const before: number = notes.size;
+			const noticesBefore = notices.length;
+			let calls = 0;
+			requestHandler = () => {
+				calls++;
+				return { status: 200, json: { choices: [{ message: { content: blank } }], content: [{ type: "text", text: blank }] } };
+			};
+			await aiPlugin.runOrthoTypoIA();
+			assert.equal(notes.size, before, `Une réponse vide ${model} crée une note horodatée`);
+			assert.equal(aiPlugin.aiGroups.length, 0, "Une réponse vide propose de supprimer le texte");
+			assert.equal(calls, 3, "Une réponse vide ne suit pas les tentatives prévues");
+			assert.ok(notices.slice(noticesBefore).some(message => message.includes("erreur")), "Une réponse vide est annoncée comme réussie");
+		}
+	}
+	await assert.rejects(aiPlugin.createDebugNote(sourceView, " \n\u200b\u2060", ""), /aucun texte/i, "Une note vide peut encore être créée directement");
+	writeOverride = "";
+	const recovered = await aiPlugin.createDebugNote(sourceView, "Réponse IA reçue.", "");
+	assert.equal(notes.get(recovered.path), "Réponse IA reçue.", "Une réponse non vide aboutit à une note vide sans vérification");
+	writeOverride = "Modification manuelle.";
+	await assert.rejects(aiPlugin.createDebugNote(sourceView, "Réponse IA reçue.", ""), /contenu/i, "Une écriture différente est annoncée comme réussie");
+	assert.ok([...notes.values()].includes("Modification manuelle."), "La vérification écrase une modification extérieure");
+	writeOverride = null;
+	process.stdout.write("Debug IA : réponses vides refusées, blocs de texte conservés, réponse brute, tronçons, collision, erreurs et annulation vérifiés\n");
 	const lexiconData = JSON.parse(readFileSync(new URL("../plugin/data/lexicon.json", import.meta.url), "utf8")) as Record<string, string>;
 	const lexicon = new Map(Object.entries(lexiconData));
 	const analyze = (text: string, category: GetCategory) => api.analyzeTicIA(text, category, lexicon);
-	const root = new URL("../plugin/data/grammalecte/", import.meta.url);
+	const root = new URL("../plugin/vendor/grammalecte/", import.meta.url);
 	const read = (name: string) => readFileSync(new URL(name, name.endsWith(".json") ? new URL("../ressources/grammalecte/", import.meta.url) : root), "utf8");
 	const files = ["helpers.js", "str_transform.js", "char_player.js", "lexgraph_fr.js", "ibdawg.js", "spellchecker.js", "text.js", "tokenizer.js", "conj.js", "mfsp.js", "phonet.js", "thesaurus.js", "cregex.js", "gc_options.js", "gc_functions.js", "gc_rules.js", "gc_rules_graph.js", "gc_engine.js"];
 	const driver = await build({ entryPoints: ["plugin/modes/grammalecte-driver.ts"], bundle: true, platform: "browser", format: "iife", target: "es2020", write: false });

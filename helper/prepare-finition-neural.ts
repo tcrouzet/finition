@@ -9,20 +9,19 @@ import { convertModel } from "./convert-finition-models";
 
 async function main() {
   const root = new URL("../ressources/camembert/", import.meta.url);
-  const originalRoot = new URL("../plugin/data/finition-neural/", import.meta.url);
   const revision = "c74ca76d8310cfe6ccf9fc51671716e494a66179";
   const model = "Xenova/camembert-base";
   const files = ["config.json", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json", "onnx/model_quantized.onnx", "README.md"];
   const hashes: Record<string, string> = {};
   for (const file of files) {
-    const existing = file === "onnx/model_quantized.onnx" ? await Promise.all(neuralModelParts.map(name => readFile(new URL(name, originalRoot)))).then(parts => Buffer.concat(parts)).catch((error: unknown) => { if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error; return null; }) : null;
+    const existing = file === "onnx/model_quantized.onnx" ? await Promise.all(neuralModelParts.map(name => readFile(new URL(name, root)))).then(parts => Buffer.concat(parts)).catch((error: unknown) => { if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error; return null; }) : null;
     const response = existing ? null : await fetch(`https://huggingface.co/${model}/resolve/${revision}/${file}`, { signal: AbortSignal.timeout(180000) });
     if (response && !response.ok) throw new Error(`${file}: HTTP ${response.status}`);
     let bytes = existing ?? Buffer.from(await response!.arrayBuffer());
     if (file === "onnx/model_quantized.onnx") bytes = Buffer.from(optimizeNeuralModel(bytes));
     const outputs: Array<[string, Buffer]> = file === "onnx/model_quantized.onnx" ? neuralModelParts.map((name, i) => [name, bytes.subarray(i * 64 * 1024 * 1024, (i + 1) * 64 * 1024 * 1024)]) : [[file, bytes]];
     for (const [name, part] of outputs) {
-      const path = new URL(name, name.startsWith("onnx/") ? originalRoot : root);
+      const path = new URL(name, root);
       await mkdir(dirname(path.pathname), { recursive: true });
       await writeFile(path, part);
       hashes[name] = createHash("sha256").update(part).digest("hex");
@@ -32,7 +31,7 @@ async function main() {
   for (const [source, destination] of [
     ["@huggingface/transformers/LICENSE", "TRANSFORMERS-LICENSE.txt"],
   ]) {
-    const from = new URL(`../../node_modules/${source}`, import.meta.url);
+    const from = new URL(`../node_modules/${source}`, import.meta.url);
     const to = new URL(destination, root);
     await copyFile(from, to);
     hashes[destination] = createHash("sha256").update(await readFile(to)).digest("hex");
@@ -41,7 +40,7 @@ async function main() {
   if (!license.ok) throw new Error(`Licence ONNX: HTTP ${license.status}`);
   await writeFile(new URL("ONNX-LICENSE.txt", root), await license.text());
   await writeFile(new URL("source.json", root), JSON.stringify({ model, revision, license: "MIT", upstream: "https://huggingface.co/almanach/camembert-base", transformers: "4.3.1", optimization: "Projection du vocabulaire limitée au mot masqué ; poids et calcul contextuel conservés.", hashes }, null, 2) + "\n");
-  await convertModel("camembert", Buffer.concat(await Promise.all(neuralModelParts.map(name => readFile(new URL(name, originalRoot))))), root);
+  await convertModel("camembert", Buffer.concat(await Promise.all(neuralModelParts.map(name => readFile(new URL(name, root))))), root);
   process.stdout.write("Modèle local prêt ; aucune connexion utilisée par le correcteur.\n");
 }
 void main().catch((error: unknown) => { console.error(error); process.exit(1); });

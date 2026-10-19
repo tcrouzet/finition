@@ -13,7 +13,7 @@ export default defineConfig(
 		'package.json',
 		'package-lock.json',
 		'tsconfig.json',
-		'plugin/data/grammalecte/*.js',
+		'plugin/vendor/grammalecte/*.js',
 	]),
 	{
 		languageOptions: {

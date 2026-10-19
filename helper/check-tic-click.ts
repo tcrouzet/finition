@@ -75,11 +75,11 @@ async function main() {
 	    press(5, view.contentDOM);
 	    check(notices.length === 2, "Notification hors mode Tic IA");
 	    view.destroy();
-	    await checkAnalysisNavigation(() => menuOpenCount);
+	    await checkAnalysisNavigation(() => menuOpenCount, () => lastMenu.items);
 	    await checkSynonyms(setRequestHandler, requests, notices, modals);
 	    await checkLinguisticInstallation(ReleasedPlugin, () => lastMenu.items, setRequestHandler);
 	    await checkLocalSynonyms(ReleasedPlugin, () => lastMenu.items, setRequestHandler, requests, notices, modals);
-	    await checkWordDictionaries(ReleasedPlugin, () => lastMenu.items, notices, modals);
+	    await checkWordDictionaries(ReleasedPlugin, () => lastMenu.items, notices, modals, setRequestHandler);
 	    await checkGrammalecteRelease(ReleasedPlugin);
 	    console.error("finition-test-step", "grammalecte", Math.round(performance.now()));
 	    checkDictionaryCore();
@@ -95,7 +95,9 @@ async function main() {
 		plugins: [rawAssets, { name: "obsidian-notice", setup(plugin: PluginBuild) {
 			plugin.onResolve({ filter: /^release-plugin$/ }, () => ({ path: path.join(directory, "main.js") }));
 			plugin.onResolve({ filter: /^obsidian$/ }, () => ({ path: "obsidian", namespace: "test" }));
-			plugin.onLoad({ filter: /.*/, namespace: "test" }, () => ({ contents: `
+			plugin.onLoad({ filter: /.*/, namespace: "test" }, () => ({ resolveDir: process.cwd(), contents: `
+				import { StateField } from "@codemirror/state";
+				export const editorInfoField = StateField.define({ create: () => ({ file: null }), update: value => value });
 				const configure = (element, options = {}) => {
 				  element.className = options.cls ?? "";
 				  if (options.text) element.textContent = options.text;
@@ -133,14 +135,14 @@ async function main() {
 				  close() { this.onClose(); this.containerEl.remove(); }
 				}
 				export class Plugin {
-				  extensions = []; cleanup = []; saved = null;
+				  extensions = []; cleanup = []; commands = []; saved = null;
 				  constructor(app, manifest) { this.app = app; this.manifest = manifest; }
 				  async loadData() { return this.saved; }
 				  async saveData(settings) { this.saved = settings; }
 				  addStatusBarItem() { return document.body.appendChild(document.createElement("div")); }
 				  registerDomEvent(element, name, callback) { element.addEventListener(name, callback); this.cleanup.push(() => element.removeEventListener(name, callback)); }
 				  registerEditorExtension(extension) { this.extensions.push(extension); }
-				  registerEvent() {} addCommand() {} addSettingTab() {}
+				  registerEvent() {} addCommand(command) { this.commands.push(command); } addSettingTab() {}
 				}
 				export class MarkdownView {} export class PluginSettingTab {
 				  update() { this.settingItems = this.getSettingDefinitions(); this.containerEl.empty(); for (const definition of this.settingItems) { const setting = new Setting(this.containerEl).setName(definition.name).setDesc(definition.desc ?? ""); definition.render?.(setting); } }
@@ -198,7 +200,11 @@ async function main() {
 				  addSeparator() {} showAtMouseEvent() { menuOpenCount++; }
 				}
 				export const setIcon = (element, name) => { element.dataset.icon = name; };
-				export const notices = []; export class Notice { constructor(message) { notices.push(message); } setMessage(message) { notices.push(message); } hide() {} }
+				export const notices = []; export class Notice {
+				  constructor(message) { this.noticeEl = document.body.createDiv({ cls: "notice" }); this.setMessage(message); }
+				  setMessage(message) { notices.push(message); this.noticeEl.replaceChildren(message); }
+				  hide() { this.noticeEl.remove(); }
+				}
 			` }));
 		} }],
 	});

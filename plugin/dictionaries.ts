@@ -1,15 +1,20 @@
 import type { DataAdapter } from "obsidian";
-import { resourceHash } from "./linguistic-resources";
+import { resourceHash, type LinguisticResources } from "./linguistic-resources";
 import { isSynonymDocumentation, isSynonymWord, personalSynonymPath, synonymFileLimit, synonymKey, type SynonymMetadata } from "./synonyms";
 
 export const dictionaryKinds = ["definitions", "antonymes", "phonetique", "rimes"] as const;
 export type DictionaryKind = typeof dictionaryKinds[number];
 export const dictionaryLabels: Record<DictionaryKind, string> = { definitions: "Définitions", antonymes: "Antonymes", phonetique: "Phonétique", rimes: "Rimes" };
 export const dictionaryDocumentation = "https://github.com/tcrouzet/finition/blob/main/doc/dictionnaires.md";
+export const publicDictionaryMetadata = { name: "Finition", description: "Wiktionnaire via Kaikki — entrées canoniques françaises", documentation: dictionaryDocumentation };
+export interface DictionaryLicense {
+	name: string; url: string; attribution: string; source: string; download: string; sha256: string; revision: string; changes: string;
+}
 export interface DictionaryRow { label?: string; text?: string; examples?: string[]; words?: string[] }
 export interface WordDictionary extends SynonymMetadata {
 	format: "finition-dictionnaire"; version: 1; language: "fr"; kind: DictionaryKind;
 	encoding?: "phonetic-internal";
+	license?: DictionaryLicense;
 	entries: Record<string, DictionaryRow[]>;
 }
 export interface StoredDictionary extends SynonymMetadata { kind: DictionaryKind; path: string }
@@ -25,6 +30,10 @@ export function parseWordDictionary(text: string, kind: DictionaryKind): WordDic
 	if (value.description !== undefined && value.description !== "" && !string(value.description, 1000)) return fail();
 	if (value.documentation !== undefined && value.documentation !== "" && !isSynonymDocumentation(value.documentation)) return fail();
 	if (value.encoding !== undefined && value.encoding !== "phonetic-internal") return fail();
+	if (value.license !== undefined) {
+		const license = value.license;
+		if (!object(license) || !string(license.name, 100) || !string(license.attribution, 4000) || !string(license.revision, 1000) || !string(license.changes, 4000) || !isSynonymDocumentation(license.url) || !isSynonymDocumentation(license.source) || !isSynonymDocumentation(license.download) || typeof license.sha256 !== "string" || !/^[a-f0-9]{64}$/u.test(license.sha256)) return fail();
+	}
 	const entries = Object.entries(value.entries);
 	if (!entries.length || entries.length > 1200000) return fail();
 	for (const [word, rows] of entries) {
@@ -45,7 +54,7 @@ export function parseWordDictionary(text: string, kind: DictionaryKind): WordDic
 export class WordDictionaries {
 	options: StoredDictionary[] = [];
 	private cached: { path: string; loading: Promise<WordDictionary> } | null = null;
-	constructor(private adapter: DataAdapter, private directory: string, private settings: () => DictionarySettings, private save: () => Promise<void>) {}
+	constructor(private adapter: DataAdapter, private directory: string, private settings: () => DictionarySettings, private save: () => Promise<void>, private resources: LinguisticResources) {}
 
 	private owns(path: string, kind: DictionaryKind): boolean {
 		const prefix = `${this.directory}/data/dictionnaires-${kind}-`;
@@ -63,8 +72,8 @@ export class WordDictionaries {
 			...(isSynonymDocumentation(entry.documentation) ? { documentation: entry.documentation } : {}),
 		}));
 		const paths = settings.wordDictionaryPaths;
-		settings.wordDictionaryPaths = Object.fromEntries(dictionaryKinds.flatMap(kind => paths && typeof paths[kind] === "string" && this.owns(paths[kind], kind) ? [[kind, paths[kind]]] : []));
-		this.options = [];
+		settings.wordDictionaryPaths = Object.fromEntries(dictionaryKinds.flatMap(kind => paths && typeof paths[kind] === "string" && (paths[kind] === "" || this.owns(paths[kind], kind)) ? [[kind, paths[kind]]] : []));
+		this.options = dictionaryKinds.filter(kind => this.resources.available(kind)).map(kind => ({ kind, path: "", ...publicDictionaryMetadata }));
 		for (const entry of settings.wordDictionaries) {
 			try {
 				const stat = await this.adapter.stat(entry.path);
@@ -72,7 +81,7 @@ export class WordDictionaries {
 			} catch { /* Un fichier absent reste indisponible. */ }
 		}
 	}
-	has(kind: DictionaryKind): boolean { return this.options.some(entry => entry.kind === kind && entry.path === this.settings().wordDictionaryPaths[kind]); }
+	has(kind: DictionaryKind): boolean { return this.options.some(entry => entry.kind === kind && entry.path === (this.settings().wordDictionaryPaths[kind] ?? "")); }
 	private async persist(entries: StoredDictionary[], paths: DictionarySettings["wordDictionaryPaths"]): Promise<void> {
 		const settings = this.settings(), previous = { entries: settings.wordDictionaries, paths: settings.wordDictionaryPaths };
 		settings.wordDictionaries = entries;
@@ -120,34 +129,40 @@ export class WordDictionaries {
 	async lookup(kind: DictionaryKind, word: string): Promise<{ dictionary: WordDictionary; rows: DictionaryRow[] }> {
 		if (!isSynonymWord(word)) throw new Error("Sélectionne un seul mot.");
 		if (!this.has(kind)) throw new Error("Charge un dictionnaire dans les réglages de Finition.");
-		const path = this.settings().wordDictionaryPaths[kind]!;
-		if (this.cached?.path !== path) {
-			const loading = this.adapter.readBinary(path).then(raw => {
+		const path = this.settings().wordDictionaryPaths[kind] ?? "";
+		const cacheKey = `${kind}:${path}`;
+		if (this.cached?.path !== cacheKey) {
+			const loading = (path ? this.adapter.readBinary(path) : this.resources.read(kind, `${kind}.json`)).then(raw => {
 				if (raw.byteLength > synonymFileLimit) throw new Error("Dictionnaire trop volumineux.");
 				return parseWordDictionary(new TextDecoder("utf-8", { fatal: true }).decode(raw), kind);
-			}).catch((error: unknown) => { if (this.cached?.path === path) this.cached = null; throw error; });
-			this.cached = { path, loading };
+			}).catch((error: unknown) => { if (this.cached?.path === cacheKey) this.cached = null; throw error; });
+			this.cached = { path: cacheKey, loading };
 		}
 		const dictionary = await this.cached.loading;
 		const key = synonymKey(word);
 		const rows = Object.prototype.hasOwnProperty.call(dictionary.entries, key) ? dictionary.entries[key] : [];
 		if (kind !== "rimes" || rows.some(row => row.words)) return { dictionary, rows };
+		const vowels = /[aàâeéèêëiîïoôöuûüyɑɛɔœøəɒɐɜɞɪʊɤɨɯʉɘɶɚɝ]/giu;
 		const endings = rows.flatMap(row => {
 			const ending = row.text?.match(/[aàâeéèêëiîïoôöuûüyɑɛɔœøəɒɐɜɞɪʊɤɨɯʉɘɶɚɝ][^aàâeéèêëiîïoôöuûüyɑɛɔœøəɒɐɜɞɪʊɤɨɯʉɘɶɚɝ]*$/iu)?.[0];
-			return ending ? [ending] : [];
+			return ending ? [{ text: ending, syllables: row.text?.match(vowels)?.length ?? 0 }] : [];
 		});
 		if (!endings.length) return { dictionary, rows: [] };
-		// shortcut: suffixes internes communs, remplacer par un classement de rimes vérifié quand disponible.
-		const matches: Array<{ word: string; score: number }> = [];
+		// shortcut: terminaisons et voyelles approximatives, remplacer par un classement de rimes vérifié quand disponible.
+		const matches: Array<{ word: string; variant: number; distance: number }> = [];
 		for (const candidate of Object.keys(dictionary.entries)) {
 			if (candidate === key) continue;
-			let score = 0;
-			for (const row of dictionary.entries[candidate]) for (const ending of endings) {
-				if (row.text?.endsWith(ending)) score = Math.max(score, ending.length);
+			let variant = Infinity, distance = Infinity;
+			for (const row of dictionary.entries[candidate]) {
+				const syllables = row.text?.match(vowels)?.length ?? 0;
+				for (const [index, ending] of endings.entries()) {
+					const difference = Math.abs(syllables - ending.syllables);
+					if (row.text?.endsWith(ending.text) && (index < variant || index === variant && difference < distance)) { variant = index; distance = difference; }
+				}
 			}
-			if (score > 0) matches.push({ word: candidate, score });
+			if (variant !== Infinity) matches.push({ word: candidate, variant, distance });
 		}
-		matches.sort((a, b) => b.score - a.score || a.word.length - b.word.length || a.word.localeCompare(b.word, "fr"));
+		matches.sort((a, b) => a.variant - b.variant || a.distance - b.distance || a.word.length - b.word.length || a.word.localeCompare(b.word, "fr"));
 		return { dictionary, rows: matches.length ? [{ label: "Terminaisons phonétiques communes (200 résultats maximum)", words: matches.slice(0, 200).map(match => match.word) }] : [] };
 	}
 }

@@ -1,12 +1,12 @@
 import { EditorState, Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { App, MarkdownView } from "obsidian";
+import { App, MarkdownView, type Command } from "obsidian";
 import FinitionPlugin from "../main";
 import { DEFAULT_SETTINGS, FinitionMode, Highlight } from "../plugin/types";
 import { resourceFixture } from "./check-linguistic-resources";
 import { countDocument, formatDocumentCount } from "../plugin/ui/document-count";
 
-export async function checkAnalysisNavigation(menuOpened: () => number): Promise<void> {
+export async function checkAnalysisNavigation(menuOpened: () => number, getMenu: () => Array<{ title: string }>): Promise<void> {
 	const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
 	for (const [number, expected] of [[999, "999 mots"], [1000, "1000 mots"], [1001, "1K mots"], [1050, "1,1K mots"], [10000, "10K mots"], [10500, "10,5K mots"]] as const) check(formatDocumentCount(number, "mot") === expected, `Compteur compact incorrect : ${number}`);
 	check(formatDocumentCount(0, "mot") === "0 mots" && formatDocumentCount(1, "mot") === "1 mot" && formatDocumentCount(1, "signe") === "1 signe", "Unité du compteur incorrecte");
@@ -21,7 +21,7 @@ export async function checkAnalysisNavigation(menuOpened: () => number): Promise
 	};
 	const fixture = await resourceFixture();
 	const plugin = new FinitionPlugin({} as App, { id: "finition", name: "Finition", version: "0.0.0", minAppVersion: "1.0.0", description: "", author: "", dir: "navigation-test" });
-	const host = plugin as unknown as { saved: unknown; extensions: Extension[]; cleanup: Array<() => void> };
+	const host = plugin as unknown as { saved: unknown; commands: Command[]; extensions: Extension[]; cleanup: Array<() => void> };
 	host.saved = { ...DEFAULT_SETTINGS, mode: "none", debounceMs: 0, resourcePacks: fixture.revisions };
 	let active: MarkdownView | null = null;
 	const events = new Map<string, () => void>();
@@ -183,6 +183,34 @@ export async function checkAnalysisNavigation(menuOpened: () => number): Promise
 	active = null;
 	plugin.updateStatusBarIcon();
 	check(counter!.hidden && next!.hidden, "Les contrôles restent visibles sans éditeur");
+	const command = (name: string) => {
+		const found = host.commands.find(command => command.name === name);
+		check(found, `Commande absente : ${name}`);
+		return found!;
+	};
+	check(new Set(host.commands.map(command => command.id)).size === host.commands.length, "Identifiants de commande dupliqués");
+	for (const debug of [false, true]) {
+		plugin.settings.debugMode = debug;
+		(plugin as unknown as { showModeMenu: (event: MouseEvent) => void }).showModeMenu(new MouseEvent("click"));
+		for (const item of getMenu()) command(item.title);
+		check(command("Structure").checkCallback!(true) === debug, "Structure ne respecte pas le mode debug dans la palette");
+	}
+	for (const [name, mode] of [["Répétitions", "repetition"], ["Atténuation", "hedging"], ["Stéréotypes", "stereotype"], ["Monotonie", "burstiness"], ["Tricolons", "ternary"], ["Cadence", "cadence"], ["Charnières", "hinges"]] as const) {
+		plugin.settings.mode = "none";
+		const action = command(name).checkCallback!;
+		check(action(true) === true && plugin.settings.mode === "none", `${name} : vérifier active le mode`);
+		action(false);
+		await waitFor(() => plugin.settings.mode === mode, `${name} : commande sans effet`);
+		action(false);
+		await waitFor(() => plugin.settings.mode === "none", `${name} : commande sans bascule`);
+	}
+	for (const [name, engine] of [["Grammalecte", "grammalecte"], ["Neuronal", "finition-corrector"]] as const) {
+		plugin.settings.spellingEngine = engine;
+		plugin.grammalecteErrors = [{ nStart: 0, nEnd: 4, sRuleId: "test", sType: "orthographe", sMessage: "Faute", aSuggestions: [] }];
+		check(command(name).checkCallback!(true) === true && plugin.grammalecteErrors.length === 1, `${name} : vérifier efface les suggestions`);
+		command(name).checkCallback!(false);
+		check(plugin.grammalecteErrors.length === 0, `${name} : la commande ne désactive pas les corrections`);
+	}
 	plugin.settings.hideBacklinksCount = true;
 	await plugin.saveSettings();
 	plugin.onunload();

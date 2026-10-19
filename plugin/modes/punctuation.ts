@@ -1,3 +1,5 @@
+import { linkRanges, mergeRanges } from "../markdown-links";
+
 /**
  * Correction automatique et déterministe des espaces insécables et des
  * tirets, selon le code typographique français. Appliquée instantanément
@@ -5,7 +7,7 @@
  * règles objectives, pas un jugement).
  *
  * Règles implémentées :
- * 1. Espace insécable AVANT ! ? : » (double ponctuation).
+ * 1. Espace insécable AVANT ! ? : ; » (double ponctuation).
  * 2. Espace insécable APRÈS «, espace normale avant « (non touchée).
  * 3. Tiret de dialogue en début de ligne : normalisé en em dash (—) suivi
  *    d'une espace insécable. On ne touche QUE les lignes qui commencent déjà
@@ -35,41 +37,43 @@
 // la note pouvait apparier avec un ``` sans rapport bien plus loin, et
 // avaler plusieurs paragraphes (et leurs sauts de ligne) comme "protégés",
 // jamais corrigés par erreur.
-const PROTECT_RE =
-	/^[ \t]*```.*$[\s\S]*?^[ \t]*```[ \t]*$|`[^`\n]*`|\[\[[^\]\n]*\]\]|\[[^\]\n]*\]\([^)\n]*\)|https?:\/\/[^\s)]+|\b\d{1,2}:\d{2}(?::\d{2})?\b/gm;
+const PROTECT_RE = /^[ \t]*```.*$[\s\S]*?^[ \t]*```[ \t]*$|`[^`\n]*`|\b\d{1,2}:\d{2}(?::\d{2})?\b/gm;
 
-function protectSpans(text: string): { text: string; restore: (s: string) => string } {
+export function protectSpans(text: string): { text: string; restore: (s: string) => string } {
+	const ranges = mergeRanges([...linkRanges(text), ...[...text.matchAll(PROTECT_RE)].map(match => [match.index, match.index + match[0].length] as const)]);
 	const stash: string[] = [];
-	const protectedText = text.replace(PROTECT_RE, (match) => {
-		stash.push(match);
-		return `\uE000${stash.length - 1}\uE001`;
-	});
-	return {
-		text: protectedText,
-		restore: (s: string) => s.replace(/\uE000(\d+)\uE001/g, (_, idx: string) => stash[Number(idx)]),
-	};
+	let prefix = "\uE000";
+	while (text.includes(prefix)) prefix += "\uE000";
+	let protectedText = "", cursor = 0;
+	for (const [from, to] of ranges) {
+		protectedText += text.slice(cursor, from) + `${prefix}${stash.length}\uE001`;
+		stash.push(text.slice(from, to));
+		cursor = to;
+	}
+	protectedText += text.slice(cursor);
+	return { text: protectedText, restore: value => value.replace(new RegExp(`${prefix}(\\d+)\uE001`, "g"), (match, index: string) => stash[Number(index)] ?? match) };
 }
 
 function fixGuillemets(text: string): string {
 	// « suivi d'une espace insécable, quel que soit ce qu'il y avait avant
 	// (espace normale, insécable, ou rien). L'espace AVANT « n'est pas touchée.
-	return text.replace(/«[\u00A0 \t]*/g, "«\u00A0");
+	return text.replace(/«[\u00A0\u202F \t]*/g, "«\u00A0");
 }
 
 function fixDoublePunctuation(text: string): string {
 	// Consomme toute espace existante (normale ou insécable) avant le signe
 	// et la remplace par une seule espace insécable — idempotent.
-	return text.replace(/[\u00A0 \t]*([!?:»])/g, "\u00A0$1");
+	return text.replace(/[\u00A0\u202F \t]*([!?:;»])/g, "\u00A0$1");
 }
 
 function fixLineStartDashes(text: string): string {
 	// Uniquement si la ligne commence déjà par un tiret moyen/long (– ou —) :
 	// un simple "-" est laissé intact pour ne pas casser les listes Markdown.
-	return text.replace(/^[ \t]*[–—][\u00A0 \t]*/gm, "—\u00A0");
+	return text.replace(/^[ \t]*[–—][\u00A0\u202F \t]*/gm, "—\u00A0");
 }
 
 function fixInciseDashesInParagraph(paragraph: string): string {
-	const DASH_RE = /[\u00A0 \t]*–[\u00A0 \t]*/g;
+	const DASH_RE = /[\u00A0\u202F \t]*–[\u00A0\u202F \t]*/g;
 	const matches: RegExpExecArray[] = [];
 	let m: RegExpExecArray | null;
 	while ((m = DASH_RE.exec(paragraph)) !== null) matches.push(m);

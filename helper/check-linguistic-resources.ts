@@ -23,7 +23,7 @@ export async function resourceFixture(seed = true) {
 		if ([...removedRoots].some(root => path === root || path.startsWith(root + "/"))) return undefined;
 		const privateFile = /\/Antidote\/model\/(pack\.json|electra\/(?:model\.json|weights\.bin|tokenizer\.json|labels\.json))$/u.exec(path);
 		if (seed && privateFile) return files.get(`private-${privateFile[1].replace(/\//gu, "__")}`);
-		const match = /\/resources\/(grammalecte|finition-corrector|synonymes)\/([a-f0-9]{64})\/(.+)$/u.exec(path);
+		const match = /\/resources\/(grammalecte|finition-corrector|synonymes|definitions|antonymes|phonetique|rimes)\/([a-f0-9]{64})\/(.+)$/u.exec(path);
 		if (!seed || !match || revisions[match[1] as ResourcePack] !== match[2]) return undefined;
 		return files.get(match[3] === "resources.json" ? `${match[1]}-resources.json` : resourceAssetName(match[1] as ResourcePack, match[3]));
 	};
@@ -95,6 +95,10 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	tab.containerEl = container;
 	tab.update();
 	const row = (name: string) => Array.from(container.querySelectorAll(".setting-item")).find(row => row.querySelector(".setting-item-name")?.textContent === name);
+	const analysis = () => row("Moteur d’analyse")!.querySelector<HTMLSelectElement>("select")!;
+	check(!container.querySelector('details[data-section="Dictionnaire"]'), "Une section Dictionnaire séparée subsiste");
+	const correctionRows = Array.from(container.querySelectorAll('details[data-section="Corrections"] .setting-item-name')).map(row => row.textContent);
+	check(correctionRows.indexOf("Moteur d’analyse") > correctionRows.indexOf("Charger un modèle neuronal") && correctionRows.indexOf("Correcteur neuronal par défaut") > correctionRows.indexOf("CamemBERT"), "Un sélecteur précède les ressources à charger");
 	const corrector = () => row("Correcteur neuronal par défaut")!.querySelector<HTMLSelectElement>("select")!;
 	const grammar = () => row("Grammalecte")!.querySelector<HTMLSelectElement>("select")!;
 	const settled = async (condition: () => boolean) => {
@@ -108,6 +112,7 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 		select.dispatchEvent(new Event("change"));
 		await settled(() => !dropdown().disabled && dropdown().value === value);
 	};
+	check(analysis().disabled && analysis().options.length === 0, "Un dictionnaire d’analyse absent est sélectionnable");
 	check(corrector().options.length === 0 && corrector().disabled && grammar().options.length === 0 && grammar().disabled && !row("Moteur linguistique") && !row("Modèle neuronal"), "Des correcteurs absents sont proposés dans les réglages");
 	check(row("Grammalecte")?.querySelector("button")?.textContent === "Charger", "Le chargement de Grammalecte est absent");
 	for (const [name, href] of [["Grammalecte", "https://grammalecte.net/"], ["CamemBERT", "https://huggingface.co/almanach/camembert-base"]]) {
@@ -130,14 +135,19 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	await plugin.setMode("ternary");
 	check(plugin.settings.mode !== "ternary", "Tricolons activé sans dictionnaire");
 	let requests = 0;
-	const prefix = "https://github.com/tcrouzet/finition/releases/download/0.4.3/";
+	let spinnerVisible = true;
+	const prefix = "https://github.com/tcrouzet/finition/releases/download/resources-0.4.3/";
 	setHandler(async request => {
 		requests++;
+		if (!document.querySelector('.notice .finition-correction-spinner[data-icon="loader-circle"]')) spinnerVisible = false;
 		check(request.url.startsWith(prefix) && request.method === "GET" && !request.body, "Le téléchargement transmet des données ou utilise une source inattendue");
 		return { status: 200, arrayBuffer: await fixture.readSource(request.url.slice(prefix.length)) };
 	});
 	row("Grammalecte")!.querySelector<HTMLButtonElement>("button")!.click();
 	await settled(() => row("Grammalecte")?.querySelector<HTMLButtonElement>("button")?.textContent === "Recharger" && !grammar().disabled);
+	check(spinnerVisible, "La roue disparaît pendant le téléchargement des réglages");
+	check(!document.querySelector(".notice .finition-correction-spinner"), "La roue reste affichée après le téléchargement");
+	check(Array.from(analysis().options).map(option => option.text).join("|") === "Grammalecte", "Un moteur d’analyse non installé est proposé");
 	check(requests === 8 && plugin.hasLinguisticResources, "Téléchargement incomplet ou moteur inactif");
 	check(Array.from(grammar().options).map(option => option.text).join("|") === "Classique|Réforme 1990" && grammar().value === "fr-classic" && corrector().disabled, "Les deux variantes installées de Grammalecte sont absentes");
 	await choose("fr-reform");
@@ -152,7 +162,9 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	await plugin.setMode("ternary");
 	check(plugin.settings.mode === "ternary", "Tricolons reste inaccessible avec un dictionnaire");
 	await plugin.setSpellingEngine("finition-corrector");
-	check(plugin.settings.mode === "none" && menus().every(item => item.disabled), "Le changement vers un moteur absent laisse Tricolons actif");
+	check(plugin.settings.mode === "ternary" && plugin.settings.analysisEngine === "grammalecte" && menus().every(item => !item.disabled), "Changer de correcteur désactive le dictionnaire d’analyse ou Tricolons");
+	const missingAnalysis = await plugin.setAnalysisEngine("finition-corrector").then(() => false, () => true);
+	check(missingAnalysis && plugin.settings.analysisEngine === "grammalecte", "Un dictionnaire d’analyse absent peut être sélectionné");
 	await plugin.setSpellingEngine("grammalecte");
 	await plugin.loadSettings();
 	await plugin.loadLinguisticResources();
@@ -187,6 +199,14 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	tab.plugin = choice;
 	tab.update();
 	check(Array.from(corrector().options).map(option => option.value).join("|") === "finition-corrector|Antidote/model" && Array.from(corrector().options).map(option => option.text).join("|") === "CamemBERT|Antidote" && row("CamemBERT") && row("Antidote"), "La liste neuronale mélange Grammalecte ou perd le nom des modèles");
+	check(Array.from(analysis().options).map(option => option.text).join("|") === "Grammalecte|Neuronal", "Le choix du dictionnaire d’analyse manque ou expose les modèles de correction");
+	choice.wordCategoryCache.set("périmé", "nom");
+	const generation = choice.wordCategoryCacheVersion;
+	analysis().value = "finition-corrector";
+	analysis().dispatchEvent(new Event("change"));
+	await settled(() => choice.settings.analysisEngine === "finition-corrector" && choice.wordCategoryCacheVersion > generation);
+	await choice.loadSettings();
+	check(choice.settings.analysisEngine === "finition-corrector" && choice.settings.spellingEngine === "grammalecte" && choice.wordCategoryCache.size === 0, "Le choix d’analyse ne se sauvegarde pas indépendamment ou garde les anciennes catégories");
 	await choose("finition-corrector");
 	await choice.loadSettings();
 	check(choice.settings.spellingEngine === "finition-corrector" && corrector().value === "finition-corrector", "Le correcteur neuronal par défaut CamemBERT n’est pas persisté");
@@ -194,6 +214,11 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	await choice.loadSettings();
 	check(choice.settings.spellingEngine === "grammalecte" && choice.settings.grammalecteDictionary === "fr-reform", "Changer de moteur perd la variante Grammalecte");
 
+	await choice.saveData({ ...choice.settings, analysisEngine: undefined, spellingEngine: "finition-corrector" });
+	await choice.loadSettings();
+	check(choice.settings.analysisEngine === "finition-corrector", "Une ancienne configuration perd son moteur d’analyse");
+	await choice.setAnalysisEngine("grammalecte");
+	await choice.setSpellingEngine("grammalecte");
 	const choiceMenu = () => { (choice as unknown as { showModeMenu: (event: MouseEvent) => void }).showModeMenu(new MouseEvent("click")); return getMenu(); };
 	check(choiceMenu().filter(item => ["Grammalecte", "Neuronal"].includes(item.title)).every(item => !item.disabled), "Moteur installé grisé");
 	await choiceMenu().find(item => item.title === "Neuronal")!.click();
