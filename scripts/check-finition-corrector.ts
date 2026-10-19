@@ -42,6 +42,15 @@ export async function checkCorrectionScope(engine: Pick<GrammalecteEngine, "pars
 	const to = text.lastIndexOf("\r\n");
 	const selected = await analyzeCorrections(engine, text, from, to);
 	if (selected.length !== 1 || selected[0].nStart !== text.indexOf("bonjor", from) || text.slice(selected[0].nStart, selected[0].nEnd) !== "bonjor") throw new Error("Sélection : texte ou positions incorrectes");
+	const tagged = "# Une bonjor.\r\n😀 Une bonjor #bonjor #école/bonjor #🌿.";
+	let submitted = "";
+	const observed = { async parse(input: string) { submitted = input; return engine.parse(input); } };
+	const taggedErrors = await analyzeCorrections(observed, tagged, 0, 0);
+	if (submitted.includes("#bonjor") || submitted.includes("#école") || submitted.includes("#🌿") || !submitted.startsWith("# Une bonjor.")) throw new Error("Hashtags soumis au correcteur local ou titre Markdown masqué");
+	const visibleTypos = taggedErrors.filter(error => error.sValue === "bonjor");
+	if (visibleTypos.length !== 2 || visibleTypos.some(error => tagged.slice(error.nStart, error.nEnd) !== "bonjor")) throw new Error("Hashtags : diagnostic visible ou positions UTF-16 invalides");
+	const tagStart = tagged.indexOf("#bonjor");
+	if ((await analyzeCorrections(observed, tagged, tagStart + 2, tagStart + 5)).length) throw new Error("Un fragment de hashtag sélectionné est corrigé");
 	const whole = await analyzeCorrections(engine, text, from, from);
 	if (whole.filter(error => error.sType === "orthographe" && error.sValue === "bonjor").length !== 3) throw new Error("Sans sélection : document incomplet");
 	if ((await analyzeCorrections(engine, "Une faute.\nUne bonjor.", 0, 10)).length) throw new Error("Erreur signalée hors sélection");

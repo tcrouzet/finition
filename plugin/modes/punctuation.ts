@@ -1,4 +1,5 @@
 import { linkRanges, mergeRanges } from "../markdown-links";
+import { hashtagRanges } from "../markdown-tags";
 
 /**
  * Correction automatique et déterministe des espaces insécables et des
@@ -17,12 +18,13 @@ import { linkRanges, mergeRanges } from "../markdown-links";
  *    moitié d'une paire reçoit une espace insécable APRÈS, la seconde une
  *    espace insécable AVANT — ex. "Il pleut – ça m'emmerde – mais je
  *    m'adapte." Le pairage se fait par ordre d'apparition, par paragraphe ;
- *    un tiret resté seul en fin de paragraphe n'est pas touché.
+ *    un tiret resté seul ouvre une incise jusqu'à la fin du paragraphe.
  * 5. Apostrophes droites (') remplacées par des apostrophes typographiques (’).
  * 6. Jamais plus de deux sauts de ligne consécutifs (un pour finir le
  *    paragraphe, un pour le séparer du suivant) — SAUF entre deux entrées
  *    d'une liste (-, *, +, ou numérotée), où un seul saut de ligne est
  *    conservé (pas de ligne vide entre les entrées).
+ * 7. Espace insécable entre un nombre et une unité (Mo, kg, km…).
  *
  * Les zones suivantes sont protégées (jamais modifiées) : blocs de code
  * (```...```), code inline (`...`), liens Markdown [texte](url), liens
@@ -40,7 +42,7 @@ import { linkRanges, mergeRanges } from "../markdown-links";
 const PROTECT_RE = /^[ \t]*```.*$[\s\S]*?^[ \t]*```[ \t]*$|`[^`\n]*`|\b\d{1,2}:\d{2}(?::\d{2})?\b/gm;
 
 export function protectSpans(text: string): { text: string; restore: (s: string) => string } {
-	const ranges = mergeRanges([...linkRanges(text), ...[...text.matchAll(PROTECT_RE)].map(match => [match.index, match.index + match[0].length] as const)]);
+	const ranges = mergeRanges([...linkRanges(text), ...hashtagRanges(text), ...[...text.matchAll(PROTECT_RE)].map(match => [match.index, match.index + match[0].length] as const)]);
 	const stash: string[] = [];
 	let prefix = "\uE000";
 	while (text.includes(prefix)) prefix += "\uE000";
@@ -73,22 +75,23 @@ function fixLineStartDashes(text: string): string {
 }
 
 function fixInciseDashesInParagraph(paragraph: string): string {
-	const DASH_RE = /[\u00A0\u202F \t]*–[\u00A0\u202F \t]*/g;
+	const DASH_RE = /[\u00A0\u202F \t]+–[\u00A0\u202F \t]*/g;
 	const matches: RegExpExecArray[] = [];
 	let m: RegExpExecArray | null;
-	while ((m = DASH_RE.exec(paragraph)) !== null) matches.push(m);
+	while ((m = DASH_RE.exec(paragraph)) !== null) {
+		if (/\d$/u.test(paragraph[m.index - 1] ?? "") && /^\d/u.test(paragraph[m.index + m[0].length] ?? "")) continue;
+		matches.push(m);
+	}
 
 	let result = "";
 	let cursor = 0;
 	for (let i = 0; i < matches.length; i++) {
 		const match = matches[i];
 		result += paragraph.slice(cursor, match.index);
-		if (i % 2 === 0 && i + 1 < matches.length) {
+		if (i % 2 === 0) {
 			result += " –\u00A0"; // ouvrant : espace normale avant, insécable après
-		} else if (i % 2 === 1) {
-			result += "\u00A0– "; // fermant : espace insécable avant, normale après
 		} else {
-			result += match[0]; // tiret isolé en fin de paragraphe : on ne touche pas
+			result += "\u00A0– "; // fermant : espace insécable avant, normale après
 		}
 		cursor = match.index + match[0].length;
 	}
@@ -99,12 +102,16 @@ function fixInciseDashesInParagraph(paragraph: string): string {
 function fixInciseDashes(text: string): string {
 	// Découpage par paragraphe (ligne vide) : le pairage des tirets d'incise
 	// ne doit pas traverser les paragraphes.
-	const parts = text.split(/(\n[ \t]*\n+)/);
+	const parts = text.split(/(\r?\n[ \t]*(?:\r?\n)+)/);
 	return parts.map((part, i) => (i % 2 === 1 ? part : fixInciseDashesInParagraph(part))).join("");
 }
 
 function fixApostrophes(text: string): string {
 	return text.replace(/'/g, "’");
+}
+
+function fixUnitSpacing(text: string): string {
+	return text.replace(/(\d)[\u00a0\u202f \t]*([kKMGTPE]?o|[kmcdµμn]?m[²³]?|[kmcµμn]?g|[mcdµμ]?[lL]|[kMG]?Hz|[kMG]?Wh?|[kMG]?J|[hkM]?Pa|ms|min|s|h|K|°[CF])(?![\p{L}\p{M}\p{N}_])/gu, "$1\u00a0$2");
 }
 
 const LIST_ITEM_START_RE = /[ \t]*(?:[-*+]|\d+[.)])[ \t]+/;
@@ -146,6 +153,7 @@ export function fixPunctuationSpacing(text: string): string {
 	result = fixLineStartDashes(result);
 	result = fixInciseDashes(result);
 	result = fixApostrophes(result);
+	result = fixUnitSpacing(result);
 	return restore(result);
 }
 

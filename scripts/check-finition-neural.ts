@@ -79,13 +79,15 @@ export async function checkFinitionNeural(Plugin: typeof FinitionPlugin): Promis
     }
     const attachment = "toutes les variantes d’un mot rassemblées sous une même racine, par exemple « étais, étaient, est, es… » sous être.";
     check((await engine.parse(attachment)).length === 0, "Accord avec le nom principal rejeté par le moteur neuronal");
-    const scopedText = "Les enfants son dans le jardin.\r\n😀 Il va a Paris demain.\r\nIls on terminé leur travail.";
-    const selected = await analyzeCorrections(engine, scopedText, scopedText.indexOf("Il va"), scopedText.lastIndexOf("\r\n"));
-    check(selected.length === 1 && selected[0].aSuggestions.includes("à") && selected[0].nStart === scopedText.indexOf("a Paris"), "Sélection neuronale ou offsets invalides");
-    const progressText = "Une bonjor.\r\n😀 Une bonjor. Il va a Paris demain.\r\nUne bonjor.";
-    let previewPosition = -1;
-    await analyzeCorrections(engine, progressText, progressText.indexOf("😀"), progressText.lastIndexOf("\r\n"), partial => { previewPosition = partial.find(error => error.sValue === "bonjor")?.nStart ?? -1; });
-    check(previewPosition === progressText.indexOf("bonjor", progressText.indexOf("😀")), "Offsets des premières corrections hors sélection");
+    for (const tags of ["", " #on #a #bonjor"]) {
+      const scopedText = `Les enfants son dans le jardin.\r\n😀 Il va a Paris demain.${tags}\r\nIls on terminé leur travail.`;
+      const selected = await analyzeCorrections(engine, scopedText, scopedText.indexOf("Il va"), scopedText.lastIndexOf("\r\n"));
+      check(selected.length === 1 && selected[0].aSuggestions.includes("à") && selected[0].nStart === scopedText.indexOf("a Paris"), "Sélection neuronale ou offsets invalides");
+      const progressText = `Une bonjor.\r\n😀 Une bonjor.${tags} Il va a Paris demain.\r\nUne bonjor.`;
+      let previewPosition = -1;
+      await analyzeCorrections(engine, progressText, progressText.indexOf("😀"), progressText.lastIndexOf("\r\n"), partial => { previewPosition = partial.find(error => error.sValue === "bonjor")?.nStart ?? -1; });
+      check(previewPosition === progressText.indexOf("bonjor", progressText.indexOf("😀")), "Offsets des premières corrections hors sélection");
+    }
     check(!(await engine.parse("`Les enfants son dans le jardin.`\nhttps://exemple.fr\n[[Ils on terminé leur travail]]")).some(error => error.sRuleId.startsWith("neural.")), "Markdown analysé par le modèle");
     check(!(await engine.parse("```fr\nLes enfants son dans le jardin.\nIl va a Paris demain.\nIls on terminé leur travail.\n```\nUne petite maison.")).some(error => error.sRuleId.startsWith("neural.")), "Bloc de code analysé après répartition des paragraphes");
     plugin.settings.spellingNeural = false;

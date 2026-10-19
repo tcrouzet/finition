@@ -2,6 +2,7 @@ import { App, MarkdownView, Modal, Notice, setIcon } from "obsidian";
 import { isSynonymWord, SynonymsDictionary, type SynonymGroup } from "../synonyms";
 import type { DictionaryRow } from "../dictionaries";
 import { SynonymsModal } from "./synonyms-modal";
+import { createRemarkInsertion } from "./insert-remark";
 
 export async function runLocalSynonyms(app: App, dictionary: SynonymsDictionary): Promise<void> {
 	await runLocalWordLookup(app, "Synonyme", async word => ({ groups: await dictionary.lookupGroups(word) }));
@@ -19,24 +20,25 @@ export async function runLocalWordLookup(app: App, title: string, lookup: (word:
 	const from = editor.posToOffset(editor.getCursor("from"));
 	const to = editor.posToOffset(editor.getCursor("to"));
 	const selected = document.slice(from, to);
+	const insertRemark = createRemarkInsertion(app, view);
 	const notice = new Notice(`${title}…`, 0);
 	try {
 		const { groups = [], rows = [], description } = await lookup(selected);
 		const words = groups.flatMap(group => group.words);
 		if (!words.length && !rows.length) { new Notice(`${title} : aucun résultat pour « ${selected} ».`); return; }
 		if (rows.length) {
-			new WordInformationModal(app, view, selected, title, rows, description).open();
+			new WordInformationModal(app, view, selected, title, rows, insertRemark, description).open();
 			return;
 		}
 		new SynonymsModal(app, view, selected, words, word => {
 			if (app.workspace.getActiveViewOfType(MarkdownView) !== view || view.file !== file || view.editor !== editor || editor.getValue() !== document) {
-				new Notice("La note ou le texte a changé. Relance la recherche pour remplacer ; la copie reste disponible.");
+				new Notice("La note ou le texte a changé. Relance la recherche.");
 				return false;
 			}
 			editor.replaceRange(word, editor.offsetToPos(from), editor.offsetToPos(to));
 			editor.setSelection(editor.offsetToPos(from), editor.offsetToPos(from + word.length));
 			return true;
-		}, title, groups).open();
+		}, insertRemark, title, groups).open();
 	} catch (error) {
 		new Notice(`${title} : ${error instanceof Error ? error.message : String(error)}`, 10000);
 	} finally {
@@ -46,7 +48,7 @@ export async function runLocalWordLookup(app: App, title: string, lookup: (word:
 
 class WordInformationModal extends Modal {
 	private restoreFocus: () => void;
-	constructor(app: App, view: MarkdownView, private word: string, private title: string, private rows: DictionaryRow[], private description?: string) {
+	constructor(app: App, view: MarkdownView, private word: string, private title: string, private rows: DictionaryRow[], private insertRemark: (text: string) => boolean, private description?: string) {
 		super(app);
 		this.shouldRestoreSelection = false;
 		const editor = view.editor, file = view.file;
@@ -65,11 +67,11 @@ class WordInformationModal extends Modal {
 			for (const example of row.examples ?? []) this.contentEl.createEl("p", { text: example, cls: "finition-dictionary-example" });
 		}
 		const footer = this.modalEl.createDiv({ cls: "modal-button-container finition-synonyms-footer" });
-		const button = footer.createEl("button", { cls: "clickable-icon finition-synonyms-copy", attr: { "aria-label": "Copier toute la liste", title: "Copier toute la liste" } });
-		setIcon(button, "copy");
+		const button = footer.createEl("button", { cls: "clickable-icon finition-synonyms-insert", attr: { "aria-label": "Insérer la liste en remarque", title: "Insérer la liste en remarque" } });
+		setIcon(button, "message-square-plus");
 		button.addEventListener("click", () => {
 			const text = [this.word, this.description, ...this.rows.map(row => [row.label, row.text, ...(row.examples ?? [])].filter(Boolean).join("\n"))].filter(Boolean).join("\n\n");
-			void navigator.clipboard.writeText(text).then(() => { new Notice("Liste copiée."); }, () => { new Notice("Copie impossible."); });
+			if (this.insertRemark(text)) this.close();
 		});
 	}
 	onClose(): void {

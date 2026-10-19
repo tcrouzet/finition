@@ -1,22 +1,32 @@
 {
-  "model": "Xenova/camembert-base",
-  "revision": "c74ca76d8310cfe6ccf9fc51671716e494a66179",
+  "model": "almanach/camembertv2-base",
+  "revision": "42096e44334c6d256ef099c5d8936f9e272a938f",
   "license": "MIT",
-  "upstream": "https://huggingface.co/almanach/camembert-base",
-  "transformers": "4.3.1",
-  "hashes": {
-    "config.json": "5c8f07e8262526c4df53da0d53f5ba175d6997e56224e2c1098231040f130f9b",
-    "tokenizer.json": "8a10e1cc766d776b0682caa224bb8592b8cea4735128676b5164d5997bc33474",
-    "tokenizer_config.json": "d67d4767f67c42401d0141ecf512dde63217b9d9681fa85dcabf43873090fe25",
-    "special_tokens_map.json": "cbe6c204e884a6f86e32acfd01bff06fdcd8b1baac8d8f0489de8ffd05a692bd",
-    "onnx/model-0.bin": "812639416ed7994a1d6562c5225679189f35d8956ecb4341b8c580f44a68cd85",
-    "onnx/model-1.bin": "5a7af66471f584f33853a5e314a8b7dccba7060cfd6a401f04a7038cf2dc3b88",
-    "README.md": "4831382123e2906c8ad600a2be3ce57e522990240aabb35a3ac472144d4b5db0",
-    "TRANSFORMERS-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-    "model.json": "a4f31049b9d1590541e091f347f59088db7723e1f3bf622976a654b1d520e834",
-    "onnx/weights-0.bin": "9d017467f142f288cc470a832dda8b3ca735445583d5089b586122c9ebbd6ca7",
-    "onnx/weights-1.bin": "e149af65ee09ad8d8127a4527d2b4724119ee8fb9b071d1ce05f12b6a0e9a8e5"
+  "upstream": "https://huggingface.co/almanach/camembertv2-base",
+  "encoder": {
+    "model": "onnx-community/camembertv2-base",
+    "revision": "6feb53a77def2a26b1dcd49ec3b70799411a8ba6",
+    "sha256": "1e83a09a9f74afb42501f895dd44b3f504da8a72aaef9ae0937e3550789fd442"
   },
-  "optimization": "Projection du vocabulaire limitée au mot masqué ; poids et calcul contextuel conservés.",
+  "mlmSource": {
+    "bytes": 106353408,
+    "sha256": "f722d18cd78c7a4462701df18cf30d9a95efb58dfd39e13f27e0862cc635d319",
+    "checkpointSha256": "632617234a6fa64239b427be9a5325c930a26f3f3c11ede90d3040cf53d6b6dc"
+  },
+  "transformers": "4.3.1",
+  "optimization": "Tête MLM officielle restaurée avec projection limitée aux mots masqués ; embeddings, décodeur et activations en précision d’origine ; poids des projections internes quantifiés.",
+  "hashes": {
+    "config.json": "ae37c72814a8913efe40b78e6fea709d27c4e617e9d192787e7a2ac102d3ded5",
+    "tokenizer.json": "9a73847b1816a4ba8f99a11e602fc983d717b3cc393696239b2a57d32adbedca",
+    "tokenizer_config.json": "97d3f6f9628ffbf08fded0bed70f9f76f07b2d1e10bf62b2854eb53342963bb1",
+    "special_tokens_map.json": "02febc01c792e198ba17c4e094a0cddc27f3cf96bc5754314f8f1cd854b4326c",
+    "README.md": "a1d56583a9003815acec0038661a3787ac9d7927ef378b044d87d8dca013a54f",
+    "onnx/model-0.bin": "4fb123ecdc34aa67eed95e9f49cc7c7634b0cc44053ed323c4f1c928bc8e6fbe",
+    "onnx/model-1.bin": "2b7934abbc6414e076ca10d2a405187dfe57fe69be0390a072b1deaaceb3362b",
+    "TRANSFORMERS-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "model.json": "a4fd0d1ec839feea89710acb8498f04c1b36df0e187f3ef423a0030ecae511a9",
+    "onnx/weights-0.bin": "31d36c339fb13a5430c6615dfe1470fb18ef8fedcb9d2d8f304ec809818dd72f",
+    "onnx/weights-1.bin": "cad536a3945c92ba0ac4301df641ea15c4f7729d07495f4e2cf02a39a5dd936e"
+  },
   "inference": "Calcul Finition intégré au plugin ; seuls les poids et données sont distribués séparément."
 }

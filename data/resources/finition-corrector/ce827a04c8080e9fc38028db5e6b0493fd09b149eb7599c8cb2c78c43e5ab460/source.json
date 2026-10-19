@@ -1,0 +1,32 @@
+{
+  "model": "almanach/camembertv2-base",
+  "revision": "42096e44334c6d256ef099c5d8936f9e272a938f",
+  "license": "MIT",
+  "upstream": "https://huggingface.co/almanach/camembertv2-base",
+  "encoder": {
+    "model": "onnx-community/camembertv2-base",
+    "revision": "6feb53a77def2a26b1dcd49ec3b70799411a8ba6",
+    "sha256": "1e83a09a9f74afb42501f895dd44b3f504da8a72aaef9ae0937e3550789fd442"
+  },
+  "mlmSource": {
+    "bytes": 106353408,
+    "sha256": "f722d18cd78c7a4462701df18cf30d9a95efb58dfd39e13f27e0862cc635d319",
+    "checkpointSha256": "632617234a6fa64239b427be9a5325c930a26f3f3c11ede90d3040cf53d6b6dc"
+  },
+  "transformers": "4.3.1",
+  "optimization": "Tête MLM officielle restaurée avec projection limitée aux mots masqués ; embeddings, décodeur et activations en précision d’origine ; poids des projections internes quantifiés.",
+  "hashes": {
+    "config.json": "ae37c72814a8913efe40b78e6fea709d27c4e617e9d192787e7a2ac102d3ded5",
+    "tokenizer.json": "9a73847b1816a4ba8f99a11e602fc983d717b3cc393696239b2a57d32adbedca",
+    "tokenizer_config.json": "97d3f6f9628ffbf08fded0bed70f9f76f07b2d1e10bf62b2854eb53342963bb1",
+    "special_tokens_map.json": "02febc01c792e198ba17c4e094a0cddc27f3cf96bc5754314f8f1cd854b4326c",
+    "README.md": "a1d56583a9003815acec0038661a3787ac9d7927ef378b044d87d8dca013a54f",
+    "onnx/model-0.bin": "4fb123ecdc34aa67eed95e9f49cc7c7634b0cc44053ed323c4f1c928bc8e6fbe",
+    "onnx/model-1.bin": "2b7934abbc6414e076ca10d2a405187dfe57fe69be0390a072b1deaaceb3362b",
+    "TRANSFORMERS-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "model.json": "a4fd0d1ec839feea89710acb8498f04c1b36df0e187f3ef423a0030ecae511a9",
+    "onnx/weights-0.bin": "31d36c339fb13a5430c6615dfe1470fb18ef8fedcb9d2d8f304ec809818dd72f",
+    "onnx/weights-1.bin": "cad536a3945c92ba0ac4301df641ea15c4f7729d07495f4e2cf02a39a5dd936e"
+  },
+  "inference": "Calcul Finition intégré au plugin ; seuls les poids et données sont distribués séparément."
+}

@@ -131,8 +131,8 @@ export async function checkLocalSynonyms(Plugin: typeof FinitionPlugin, getMenu:
 	check(categories.map(heading => heading.textContent).join("|") === "Nom|Adjectif|Verbe|Nom ou adjectif", `Hiérarchie de modèle incorrecte : ${categories.map(heading => heading.textContent).join("|")}`);
 	check(categories.every(heading => heading.tagName === "H3" && Number(getComputedStyle(heading).fontWeight) >= 600), "Sections grammaticales sans titres en gras");
 	check(document.querySelectorAll(".finition-synonyms-section").length === 4, "Catégories non regroupées");
-	const copyBounds = document.querySelector(".finition-synonyms-copy")!.getBoundingClientRect();
-	check(copyBounds.top >= 0 && copyBounds.bottom <= innerHeight, "La longue liste masque le bouton de copie");
+	const copyBounds = document.querySelector(".finition-synonyms-insert")!.getBoundingClientRect();
+	check(copyBounds.top >= 0 && copyBounds.bottom <= innerHeight, "La longue liste masque le bouton de remarque");
 	modals.at(-1)!.close();
 	reset();
 	const personal = { format: "finition-synonymes", version: 1, language: "fr", name: "Personnel", description: "Lexique <b>personnel</b>", documentation: "https://example.org/lexique", sources: [{ id: "local", name: "Local", license: "unspecified", url: "" }], groups: [
@@ -169,19 +169,15 @@ export async function checkLocalSynonyms(Plugin: typeof FinitionPlugin, getMenu:
 	const labelBounds = document.querySelector(".finition-synonyms-label")!.getBoundingClientRect();
 	const wordBounds = document.querySelector('[aria-label="Remplacer par personnel"]')!.getBoundingClientRect();
 	check(labelBounds.top < wordBounds.bottom && wordBounds.top < labelBounds.bottom, "Le groupe et ses synonymes ne partagent pas la même ligne");
-	const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-	let copied = "";
-	Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (text: string) => { copied = text; } } });
-	try {
-		const copy = document.querySelector<HTMLButtonElement>(".finition-synonyms-copy")!;
-		check(copy.dataset.icon === "copy" && !copy.textContent && copy.getAttribute("aria-label") === "Copier toute la liste", "Copie locale sans icône accessible");
-		copy.click();
-		await Promise.resolve();
-		check(copied === "**Nom**\n\n**Personne qui soutient une cause.**\n\n- **Partisan** — personnel, fidèle\n  - **rare** — mainteneur\n- **Représentant** — apôtre\n  - **rare** — apôtre\n\n**Personne qui protège.**\n\n- **Protecteur** — personnel, gardien\n  - **québec** — obstineur\n    - **familier** — obstineux", "La copie locale perd ses sens ou registres");
-	} finally {
-		if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
-		else Reflect.deleteProperty(navigator, "clipboard");
-	}
+	// Obsidian réinitialise son champ interne selection à l’ouverture.
+	Reflect.set(modals.at(-1)!, "selection", null);
+	const insert = document.querySelector<HTMLButtonElement>(".finition-synonyms-insert")!;
+	check(insert.dataset.icon === "message-square-plus" && !insert.textContent && insert.getAttribute("aria-label") === "Insérer la liste en remarque", "Remarque locale sans icône accessible");
+	insert.click();
+	check(editor.getValue() === "Un pas rapide.\n\n%%\nSynonyme — rapide\n\n" + "**Nom**\n\n**Personne qui soutient une cause.**\n\n- **Partisan** — personnel, fidèle\n  - **rare** — mainteneur\n- **Représentant** — apôtre\n  - **rare** — apôtre\n\n**Personne qui protège.**\n\n- **Protecteur** — personnel, gardien\n  - **québec** — obstineur\n    - **familier** — obstineux" + "\n%%\n", "La remarque locale perd ses sens ou registres");
+	check(editor.getSelection() === "rapide" && view.hasFocus, "La remarque locale perd la sélection active");
+	reset();
+	await plugin.runSynonymsLocal();
 	document.querySelector<HTMLButtonElement>('[aria-label="Remplacer par mainteneur"]')!.click();
 	check(editor.getValue() === "Un pas mainteneur.", "Le remplacement inclut le libellé du registre");
 	check(editor.getSelection() === "mainteneur" && view.hasFocus, "Le synonyme plus long n’est pas entièrement sélectionné et actif");

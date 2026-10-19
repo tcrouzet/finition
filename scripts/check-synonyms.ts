@@ -62,26 +62,20 @@ export async function checkSynonyms(setHandler: (handler: (request: Request) => 
 	equal(body, { model: settings.aiModel, max_tokens: 1234, system: prompt, messages: [{ role: "user", content: "Premier.\n\nLe pas **rapide**.\n\nDernier." }] }, "Requête avec prompt dédié et sélection inversée");
 	const list = document.querySelector<HTMLElement>(".finition-synonyms")!;
 	check(list?.querySelectorAll("li").length === 2, "Propositions absentes");
-	let copied = "";
-	const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-	Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (value: string) => { copied = value; } } });
-	try {
+	{
 		const modal = list.closest<HTMLElement>(".modal")!;
 		const footer = modal.querySelector<HTMLElement>(".finition-synonyms-footer")!;
-		check(footer && modal.lastElementChild === footer, "Bouton de copie globale absent du pied de fenêtre");
-		const copy = footer.querySelector<HTMLButtonElement>("button")!;
-		check(copy.getAttribute("aria-label") === "Copier toute la liste" && copy.dataset.icon === "copy" && !copy.textContent, "Icône de copie sans nom accessible ou encore accompagnée de texte");
-		check(!list.querySelector('[aria-label^="Copier "]') && modal.querySelectorAll(".finition-synonyms-copy").length === 1, "Plusieurs boutons de copie dans la liste");
+		check(footer && modal.lastElementChild === footer, "Bouton de remarque absent du pied de fenêtre");
+		const insert = footer.querySelector<HTMLButtonElement>("button")!;
+		check(insert.getAttribute("aria-label") === "Insérer la liste en remarque" && insert.dataset.icon === "message-square-plus" && !insert.textContent, "Icône de remarque sans nom accessible ou encore accompagnée de texte");
+		check(!list.querySelector('[aria-label^="Copier "]') && modal.querySelectorAll(".finition-synonyms-insert").length === 1, "Plusieurs boutons de remarque dans la liste");
 		const rows = Array.from(list.querySelectorAll("li"));
 		equal(rows[0].getBoundingClientRect().top, rows[1].getBoundingClientRect().top, "Les mots ne sont pas disposés sur une ligne compacte");
 		const choice = rows[0].querySelector<HTMLButtonElement>("button")!;
 		choice.focus();
 		check(document.activeElement === choice && getComputedStyle(choice).outlineStyle === "solid", `Focus : actif=${document.activeElement === choice}, clavier=${choice.matches(":focus-visible")}, contour=${getComputedStyle(choice).outlineStyle}, accent=${getComputedStyle(choice).getPropertyValue("--interactive-accent")}`);
-		copy.focus();
-		check(document.activeElement === copy, "Icône de copie inaccessible au clavier");
-		copy.click();
-		await Promise.resolve();
-		equal(copied, "- vif, véloce", "Copie compacte de toute la liste");
+		insert.focus();
+		check(document.activeElement === insert, "Icône de remarque inaccessible au clavier");
 		const title = modal.querySelector("h2")!;
 		const bounds = modal.getBoundingClientRect();
 		const pointer = (target: EventTarget, type: string, x: number, y: number) => target.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, button: 0, buttons: 1, clientX: x, clientY: y }));
@@ -101,17 +95,21 @@ export async function checkSynonyms(setHandler: (handler: (request: Request) => 
 		pointer(document, "pointercancel", 0, 0);
 		pointer(document, "pointermove", 100, 100);
 		equal([modal.getBoundingClientRect().left, modal.getBoundingClientRect().top], [0, 0], "Annulation du déplacement");
-		equal(view.state.doc.toString(), text, "La copie ne modifie pas la note");
+		equal(view.state.doc.toString(), text, "La consultation ne modifie pas la note");
 		list.querySelector<HTMLButtonElement>(".finition-synonym-replace")!.click();
 		equal(view.state.doc.toString(), text.replace("rapide", "vif"), "Remplacement de la seule sélection");
 		equal(editor.getSelection(), "vif", "Le synonyme remplacé reste sélectionné");
 		check(view.hasFocus, "Le remplacement ne rend pas le focus à la note");
 		check(!document.querySelector(".finition-synonyms"), "La liste reste ouverte après remplacement");
-	} finally {
-		if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
-		else Reflect.deleteProperty(navigator, "clipboard");
 	}
 	const reset = () => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: from, head: to } });
+	reset();
+	await runSynonyms(app, settings);
+	// Obsidian réinitialise son champ interne selection à l’ouverture.
+	Reflect.set(modals.at(-1)!, "selection", null);
+	document.querySelector<HTMLButtonElement>(".finition-synonyms-insert")!.click();
+	equal(editor.getValue(), "Premier.\n\nLe pas rapide.\n\n%%\nSynonymes IA — rapide\n\n- vif, véloce\n%%\n\nDernier.", "Liste IA après le paragraphe sélectionné");
+	check(editor.getSelection() === "rapide" && view.hasFocus && !document.querySelector(".finition-synonyms"), "La remarque perd la sélection ou laisse la fenêtre ouverte");
 	reset();
 	await runSynonyms(app, settings);
 	document.querySelector<HTMLButtonElement>(".finition-synonym-replace")!.focus();
@@ -128,6 +126,25 @@ export async function checkSynonyms(setHandler: (handler: (request: Request) => 
 	equal(editor.getSelection(), "d’un pas vif", "La section remplacée reste sélectionnée");
 	check(view.hasFocus, "La section remplacée n’est pas active");
 	reset();
+	for (const source of ["Un pas rapide.\nSur deux lignes.", "Un pas rapide.\nSur deux lignes.\n", "Un pas rapide.\nSur deux lignes.\n \nSuite."]) {
+		view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: source }, selection: { anchor: 13, head: 7 } });
+		await runSynonyms(app, settings);
+		document.querySelector<HTMLButtonElement>(".finition-synonyms-insert")!.click();
+		equal(editor.getValue(), source.replace("Sur deux lignes.", "Sur deux lignes.\n\n%%\nSynonymes IA — rapide\n\n- d’un pas vif\n%%" + (source.endsWith("Sur deux lignes.") ? "\n" : "")), "Remarque après un paragraphe multiligne, avec ou sans suivant");
+		equal(editor.getSelection(), "rapide", "Sélection inversée conservée après remarque");
+	}
+	reset();
+	view.dispatch({ selection: { anchor: text.indexOf("Le"), head: text.length } });
+	await runSynonyms(app, settings);
+	document.querySelector<HTMLButtonElement>(".finition-synonyms-insert")!.click();
+	check(editor.getValue().startsWith(text + "\n\n%%\n") && editor.getValue().endsWith("- d’un pas vif\n%%\n"), "Une sélection sur plusieurs paragraphes insère avant sa fin");
+	equal(editor.getSelection(), text.slice(text.indexOf("Le")), "Sélection sur plusieurs paragraphes conservée");
+	reset();
+	setHandler(() => ({ status: 200, json: { content: [{ type: "text", text: "- 100%%% sûr" }] } }));
+	await runSynonyms(app, settings);
+	document.querySelector<HTMLButtonElement>(".finition-synonyms-insert")!.click();
+	check(editor.getValue().includes("100%\u200b%\u200b% sûr") && editor.getValue().split("%%").length === 3, "Un résultat ferme prématurément la remarque");
+	reset();
 	settings.aiModel = "gpt-test";
 	setHandler(() => ({ status: 200, json: { choices: [{ message: { content: "- prompt" } }] } }));
 	await runSynonyms(app, settings);
@@ -137,18 +154,11 @@ export async function checkSynonyms(setHandler: (handler: (request: Request) => 
 	equal(openai.headers.Authorization, "Bearer test-openai", "Clé OpenAI");
 	equal(openaiBody.model, settings.aiModel, "Modèle configuré");
 	equal(openaiBody.messages, [{ role: "system", content: prompt }, { role: "user", content: synonymContext(text, from, to) }], "Prompt OpenAI");
-	Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
-	try {
-		check(!document.querySelector('[aria-label="Copier prompt"]'), "Ancien bouton de copie par mot encore présent");
-		document.querySelector<HTMLButtonElement>(".finition-synonyms-footer button")!.click();
-		await Promise.resolve();
-		check(notices.at(-1) === "Copie impossible.", "Échec de la copie globale masqué");
-	} finally {
-		if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
-		else Reflect.deleteProperty(navigator, "clipboard");
-	}
 	view.dispatch({ changes: { from: 0, insert: "Modification. " } });
 	const changed = view.state.doc.toString();
+	document.querySelector<HTMLButtonElement>(".finition-synonyms-insert")!.click();
+	equal(editor.getValue(), changed, "Refus d’insérer dans une note modifiée");
+	check(notices.at(-1)?.includes("changé"), "Refus d’insertion sans explication");
 	document.querySelector<HTMLButtonElement>(".finition-synonym-replace")!.click();
 	equal(view.state.doc.toString(), changed, "Refus d’écraser une note modifiée");
 	const closing = document.querySelector<HTMLElement>(".finition-synonyms")!.closest<HTMLElement>(".modal")!;
@@ -160,6 +170,8 @@ export async function checkSynonyms(setHandler: (handler: (request: Request) => 
 	reset();
 	await runSynonyms(app, settings);
 	active = null;
+	document.querySelector<HTMLButtonElement>(".finition-synonyms-insert")!.click();
+	equal(editor.getValue(), text, "Refus d’insérer dans une note inactive");
 	document.querySelector<HTMLButtonElement>(".finition-synonym-replace")!.click();
 	equal(view.state.doc.toString(), text, "Refus d’écraser une note inactive");
 	const elsewhere = document.body.createEl("button");
@@ -168,6 +180,17 @@ export async function checkSynonyms(setHandler: (handler: (request: Request) => 
 	check(document.activeElement === elsewhere, "Fermer une note inactive vole le focus");
 	elsewhere.remove();
 	active = markdown;
+	reset();
+	setHandler(() => {
+		view.dispatch({ changes: { from: 0, insert: "Modification pendant la recherche. " } });
+		return { status: 200, json: { choices: [{ message: { content: "- prompt" } }] } };
+	});
+	await runSynonyms(app, settings);
+	const duringRequest = editor.getValue();
+	document.querySelector<HTMLButtonElement>(".finition-synonyms-insert")!.click();
+	equal(editor.getValue(), duringRequest, "Refus d’insérer après modification pendant la requête IA");
+	modals.at(-1)!.close();
+	reset();
 	setHandler(() => ({ status: 401, json: { error: { message: "Erreur simulée" } }, text: "Erreur simulée" }));
 	await runSynonyms(app, settings);
 	check(notices.at(-1)?.includes("Erreur simulée"), "Erreur API masquée");

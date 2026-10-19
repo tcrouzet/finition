@@ -79,6 +79,14 @@ export async function checkWordDictionaries(Plugin: typeof FinitionPlugin, getMe
 		modals.at(-1)!.close();
 		check(editor.getSelection() === "chat" && view.hasFocus, "La fermeture perd la sélection active");
 	}
+	for (const kind of ["definitions", "phonetique"] as const) {
+		await plugin.runWordDictionary(kind);
+		document.querySelector<HTMLButtonElement>(".finition-synonyms-insert")!.click();
+		const expected = kind === "definitions" ? "chat\n\nAnimal\nUn <b>félin</b>.\nLe chat dort." : "chat\n\nSa";
+		check(editor.getValue() === `Un chat.\n\n%%\n${expected}\n%%\n`, "Définition ou phonétique mal insérée en remarque");
+		check(editor.getSelection() === "chat" && view.hasFocus && !document.querySelector(".finition-word-information"), "L’insertion du dictionnaire perd le focus ou ne ferme pas la fenêtre");
+		view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "Un chat." }, selection: { anchor: 3, head: 7 } });
+	}
 	view.dispatch({ selection: { anchor: 3, head: 3 } });
 	check(!menu().find(item => item.title === "Définitions")?.disabled, "Absence de sélection grise un dictionnaire installé");
 	await plugin.runWordDictionary("definitions");

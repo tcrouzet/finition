@@ -1,0 +1,22 @@
+{
+  "model": "Xenova/camembert-base",
+  "revision": "c74ca76d8310cfe6ccf9fc51671716e494a66179",
+  "license": "MIT",
+  "upstream": "https://huggingface.co/almanach/camembert-base",
+  "transformers": "4.3.1",
+  "hashes": {
+    "config.json": "5c8f07e8262526c4df53da0d53f5ba175d6997e56224e2c1098231040f130f9b",
+    "tokenizer.json": "8a10e1cc766d776b0682caa224bb8592b8cea4735128676b5164d5997bc33474",
+    "tokenizer_config.json": "d67d4767f67c42401d0141ecf512dde63217b9d9681fa85dcabf43873090fe25",
+    "special_tokens_map.json": "cbe6c204e884a6f86e32acfd01bff06fdcd8b1baac8d8f0489de8ffd05a692bd",
+    "onnx/model-0.bin": "812639416ed7994a1d6562c5225679189f35d8956ecb4341b8c580f44a68cd85",
+    "onnx/model-1.bin": "5a7af66471f584f33853a5e314a8b7dccba7060cfd6a401f04a7038cf2dc3b88",
+    "README.md": "4831382123e2906c8ad600a2be3ce57e522990240aabb35a3ac472144d4b5db0",
+    "TRANSFORMERS-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "model.json": "a4f31049b9d1590541e091f347f59088db7723e1f3bf622976a654b1d520e834",
+    "onnx/weights-0.bin": "9d017467f142f288cc470a832dda8b3ca735445583d5089b586122c9ebbd6ca7",
+    "onnx/weights-1.bin": "e149af65ee09ad8d8127a4527d2b4724119ee8fb9b071d1ce05f12b6a0e9a8e5"
+  },
+  "optimization": "Projection du vocabulaire limitée au mot masqué ; poids et calcul contextuel conservés.",
+  "inference": "Calcul Finition intégré au plugin ; seuls les poids et données sont distribués séparément."
+}

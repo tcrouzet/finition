@@ -43,6 +43,7 @@ import { FinitionCorrectorEngine } from "./modes/finition-corrector";
 import { analyzeCorrections } from "./modes/corrections";
 import { finitionGrammalecteExtension } from "./grammalecte-extension";
 import { buildStructureReport } from "./modes/structure-report";
+import { buildStatisticsReport, statisticsWords } from "./modes/statistics";
 import { structureCategoryWords } from "./modes/structure-signature";
 import { loadingMessage } from "./ui/loading-message";
 import { AnalysisNavigation } from "./ui/analysis-navigation";
@@ -190,6 +191,11 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				return true;
 			},
 		});
+		this.addCommand({ id: "statistics-report", name: "Statistiques", checkCallback: checking => {
+			if (!this.settings.debugMode) return false;
+			if (!checking) void this.runStatisticsReport();
+			return true;
+		} });
 	}
 
 	onunload(): void {
@@ -520,6 +526,9 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				.setDisabled(!this.hasAnalysisResources)
 				.onClick(() => this.runStructureReport())
 		);
+		if (this.settings.debugMode) menu.addItem(item => item.setTitle("Statistiques").setIcon("chart-no-axes-column")
+			.setDisabled(!this.isLinguisticEngineInstalled("grammalecte"))
+			.onClick(() => this.runStatisticsReport()));
 
 		menu.addSeparator();
 
@@ -1055,14 +1064,15 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		}
 	}
 
-	private async createDebugNote(view: MarkdownView, content: string, prefix: string): Promise<TFile> {
+	private async createDebugNote(view: Pick<MarkdownView, "file">, content: string, prefix: string | ((name: string, timestamp: string) => string)): Promise<TFile> {
 		if (!hasResponseText(content)) throw new Error("Aucun texte à enregistrer : note horodatée non créée.");
 		const source = view.file;
 		const folder = source?.parent?.path && source.parent.path !== "/" ? `${source.parent.path}/` : "";
 		const pad = (number: number) => String(number).padStart(2, "0");
 		const now = new Date();
 		const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-		const base = `${folder}${prefix}${source?.basename ?? "sans titre"} (${timestamp})`;
+		const name = source?.basename ?? "sans titre";
+		const base = folder + (typeof prefix === "string" ? `${prefix}${name} (${timestamp})` : prefix(name, timestamp));
 		let path = `${base}.md`;
 		for (let suffix = 2; this.app.vault.getAbstractFileByPath(path); suffix++) path = `${base} ${suffix}.md`;
 		const file = await this.app.vault.create(path, content);
@@ -1071,6 +1081,27 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			if (await this.app.vault.read(file) !== content) throw new Error(`Le contenu de la note horodatée n’a pas été conservé : ${path}`);
 		}
 		return file;
+	}
+
+	private async runStatisticsReport(): Promise<void> {
+		if (!this.settings.debugMode) return;
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view) { new Notice("Statistiques : aucune note active."); return; }
+		if (!this.isLinguisticEngineInstalled("grammalecte")) { new Notice("Installez Grammalecte dans les paramètres de Finition."); return; }
+		const text = view.editor.getValue();
+		const source = { file: view.file };
+		const notice = new Notice(loadingMessage("Statistiques"), 0);
+		try {
+			const engine = await this.ensureGrammalecteEngine();
+			const words = [...new Set([...structureCategoryWords(text), ...statisticsWords(text)])];
+			const categories = await engine.getCategories(words);
+			const content = await buildStatisticsReport(text, word => categories[word.toLowerCase()] ?? "", this.lexicon);
+			const file = await this.createDebugNote(source, content, (name, timestamp) => `${name}_stats_${timestamp.replace(" ", "_")}`);
+			await this.app.workspace.getLeaf(true).openFile(file);
+		} catch (error) {
+			new Notice(`Statistiques : ${error instanceof Error ? error.message : String(error)}`, 10000);
+			console.error("Finition — Statistiques :", error);
+		} finally { notice.hide(); }
 	}
 
 	/**

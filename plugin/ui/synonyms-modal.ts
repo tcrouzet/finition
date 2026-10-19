@@ -1,4 +1,4 @@
-import { App, Component, MarkdownView, Modal, Notice, setIcon } from "obsidian";
+import { App, Component, MarkdownView, Modal, setIcon } from "obsidian";
 import { synonymKey, type SynonymGroup } from "../synonyms";
 
 type DisplayGroup = Omit<SynonymGroup, "sources">;
@@ -7,7 +7,7 @@ export class SynonymsModal extends Modal {
 	private events = new Component();
 	private restoreFocus: () => void;
 
-	constructor(app: App, view: MarkdownView, private selection: string, private synonyms: string[], private replace: (synonym: string) => boolean, private title = "Synonymes IA", private groups: SynonymGroup[] = []) {
+	constructor(app: App, view: MarkdownView, private selectedText: string, private synonyms: string[], private replace: (synonym: string) => boolean, private insertRemark: (text: string) => boolean, private title = "Synonymes IA", private groups: SynonymGroup[] = []) {
 		super(app);
 		this.shouldRestoreSelection = false;
 		const editor = view.editor, file = view.file;
@@ -21,7 +21,7 @@ export class SynonymsModal extends Modal {
 		this.setTitle(this.title);
 		this.enableDragging();
 		this.contentEl.addClass("finition-synonyms-content");
-		this.contentEl.createEl("p", { text: this.selection, cls: "finition-synonyms-selection" });
+		this.contentEl.createEl("p", { text: this.selectedText, cls: "finition-synonyms-selection" });
 		const groups: DisplayGroup[] = this.groups.length ? this.groups : [{ category: "", label: "", words: this.synonyms }];
 		const sections = this.sections(groups);
 		for (const section of sections) {
@@ -52,9 +52,9 @@ export class SynonymsModal extends Modal {
 			}
 		}
 		const footer = this.modalEl.createDiv({ cls: "modal-button-container finition-synonyms-footer" });
-		const copyAll = footer.createEl("button", { cls: "clickable-icon finition-synonyms-copy", attr: { "aria-label": "Copier toute la liste", title: "Copier toute la liste" } });
-		setIcon(copyAll, "copy");
-		this.events.registerDomEvent(copyAll, "click", () => {
+		const insert = footer.createEl("button", { cls: "clickable-icon finition-synonyms-insert", attr: { "aria-label": "Insérer la liste en remarque", title: "Insérer la liste en remarque" } });
+		setIcon(insert, "message-square-plus");
+		this.events.registerDomEvent(insert, "click", () => {
 			const escape = (text: string) => text.replace(/([\\*_`[\]<>])/gu, "\\$1");
 			const text = sections.map(section => [
 				section.category ? `**${escape(section.category)}**` : "",
@@ -69,7 +69,7 @@ export class SynonymsModal extends Modal {
 					}).join("\n"),
 				].filter(Boolean).join("\n\n")),
 			].filter(Boolean).join("\n\n")).join("\n\n");
-			void this.copyText(text, "Liste copiée.");
+			if (this.insertRemark(`${this.title} — ${this.selectedText}\n\n${text}`)) this.close();
 		});
 	}
 
@@ -152,14 +152,5 @@ export class SynonymsModal extends Modal {
 		this.events.registerDomEvent(doc, "pointerup", stop);
 		this.events.registerDomEvent(doc, "pointercancel", stop);
 		this.events.registerDomEvent(win, "blur", stop);
-	}
-
-	private async copyText(text: string, message: string): Promise<void> {
-		try {
-			await navigator.clipboard.writeText(text);
-			new Notice(message);
-		} catch {
-			new Notice("Copie impossible.");
-		}
 	}
 }

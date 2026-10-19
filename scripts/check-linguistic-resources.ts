@@ -115,7 +115,7 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	check(analysis().disabled && analysis().options.length === 0, "Un dictionnaire d’analyse absent est sélectionnable");
 	check(corrector().options.length === 0 && corrector().disabled && grammar().options.length === 0 && grammar().disabled && !row("Moteur linguistique") && !row("Modèle neuronal"), "Des correcteurs absents sont proposés dans les réglages");
 	check(row("Grammalecte")?.querySelector("button")?.textContent === "Charger", "Le chargement de Grammalecte est absent");
-	for (const [name, href] of [["Grammalecte", "https://grammalecte.net/"], ["CamemBERT", "https://huggingface.co/almanach/camembert-base"]]) {
+	for (const [name, href] of [["Grammalecte", "https://grammalecte.net/"], ["CamemBERT", "https://huggingface.co/almanach/camembertv2-base"]]) {
 		const link = row(name)?.querySelector<HTMLAnchorElement>("a");
 		check(link?.href === href && link.textContent === "Documentation" && link.parentElement?.textContent === "Documentation", "Le lien de documentation est absent ou accompagné de commentaires");
 	}

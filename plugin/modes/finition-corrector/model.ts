@@ -11,6 +11,8 @@ export interface LayerWeights {
 }
 export interface ModelData {
 	version: 1; kind: "camembert" | "electra"; hidden: number; heads: number;
+	maskTokenId?: number; padTokenId?: number;
+	floatActivations?: boolean;
 	embeddings: { word: EmbeddingWeights; position: EmbeddingWeights; token: EmbeddingWeights; norm: NormWeights };
 	projection?: DenseWeights;
 	layers: LayerWeights[];
@@ -23,6 +25,9 @@ const roundEven = (value: number): number => { const floor = Math.floor(value); 
 const f32 = Math.fround;
 
 export class FinitionModel {
+	readonly maskTokenId: number;
+	readonly padTokenId: number;
+	get maxBatchSize(): number { return this.data.floatActivations === true ? 16 : 4; }
 	private memory: WebAssembly.Memory;
 	private kernel: ReturnType<typeof createMatrixKernel>;
 	private base: number;
@@ -31,7 +36,11 @@ export class FinitionModel {
 	private quantized = new WeakMap<Float32Array, { data: Uint8Array; scale: number; zero: number }>();
 
 	constructor(private data: ModelData, weights: Uint8Array) {
-		if (data.version !== 1 || !["camembert", "electra"].includes(data.kind) || data.hidden !== (data.kind === "camembert" ? 768 : 256) || data.heads !== (data.kind === "camembert" ? 12 : 4) || !Array.isArray(data.layers) || data.layers.length !== (data.kind === "camembert" ? 12 : 6) || data.embeddings?.word?.weight?.dims?.[0] !== 32005 || data.embeddings.word.weight.dims[1] !== (data.kind === "camembert" ? 768 : 128) || weights.length > 256 * 1024 * 1024) throw new Error("Architecture neuronale incompatible.");
+		this.maskTokenId = data.maskTokenId ?? 32004;
+		this.padTokenId = data.padTokenId ?? 1;
+		const vocabulary = data.embeddings?.word?.weight?.dims?.[0];
+		const tokensValid = vocabulary === 32005 && this.maskTokenId === 32004 && this.padTokenId === 1 || data.kind === "camembert" && vocabulary === 32768 && this.maskTokenId === 4 && this.padTokenId === 0;
+		if (data.version !== 1 || !["camembert", "electra"].includes(data.kind) || data.hidden !== (data.kind === "camembert" ? 768 : 256) || data.heads !== (data.kind === "camembert" ? 12 : 4) || !Array.isArray(data.layers) || data.layers.length !== (data.kind === "camembert" ? 12 : 6) || !tokensValid || data.floatActivations !== undefined && typeof data.floatActivations !== "boolean" || data.embeddings.word.weight.dims[1] !== (data.kind === "camembert" ? 768 : 128) || weights.length > 256 * 1024 * 1024) throw new Error("Architecture neuronale incompatible.");
 		this.limit = weights.length;
 		this.base = Math.ceil(weights.length / 16) * 16;
 		const pages = Math.ceil((this.base + scratchBytes * 3 + 16384) / 65536);
@@ -78,9 +87,14 @@ export class FinitionModel {
 		const output = this.base + scratchBytes * 2;
 		if (weight instanceof Int8Array) {
 			if (!params.scale || !params.sums || this.floats(params.scale).length !== columns || !(this.view(params.sums) instanceof Int32Array) || this.view(params.sums).length !== columns) throw new Error("Quantification neuronale invalide.");
-			const q = this.quantize(input);
-			new Uint8Array(this.memory.buffer, this.base, input.length).set(q.data);
-			this.kernel.integerMatrix(this.base, params.weight.offset, output, rows, columns, inner, params.bias.offset, params.sums.offset, params.scale.offset, q.zero, q.scale);
+			if (this.data.floatActivations === true) {
+				new Float32Array(this.memory.buffer, this.base, input.length).set(input);
+				this.kernel.mixedMatrix(this.base, params.weight.offset, output, rows, columns, inner, params.bias.offset, params.scale.offset, this.base + scratchBytes);
+			} else {
+				const q = this.quantize(input);
+				new Uint8Array(this.memory.buffer, this.base, input.length).set(q.data);
+				this.kernel.integerMatrix(this.base, params.weight.offset, output, rows, columns, inner, params.bias.offset, params.sums.offset, params.scale.offset, q.zero, q.scale);
+			}
 		} else if (weight instanceof Float32Array) {
 			new Float32Array(this.memory.buffer, this.base, input.length).set(input);
 			this.kernel.floatMatrix(this.base, params.weight.offset, output, rows, columns, inner, params.bias.offset);
@@ -151,17 +165,17 @@ export class FinitionModel {
 	}
 
 	private forward(ids: number[][]): { hidden: Float32Array; length: number } {
-		if (!ids.length || ids.length > 4 || ids.some(row => !row.length || row.length > 130)) throw new Error("Lot neuronal invalide.");
+		if (!ids.length || ids.length > this.maxBatchSize || ids.some(row => !row.length || row.length > 130) || ids.length * Math.max(...ids.map(row => row.length)) > 520) throw new Error("Lot neuronal invalide.");
 		this.quantized = new WeakMap();
 		const length = Math.max(...ids.map(row => row.length)), embeddings = this.data.embeddings, width = embeddings.word.weight.dims[1];
 		const input = new Float32Array(ids.length * length * width), word = new Float32Array(width), position = new Float32Array(width), token = new Float32Array(width);
 		this.embedding(embeddings.token, 0, token);
 		for (let batch = 0; batch < ids.length; batch++) {
-			let currentPosition = 1;
+			let currentPosition = this.padTokenId;
 			for (let row = 0; row < length; row++) {
-				const id = ids[batch][row] ?? 1;
+				const id = ids[batch][row] ?? this.padTokenId;
 				this.embedding(embeddings.word, id, word);
-				this.embedding(embeddings.position, this.data.kind === "camembert" ? id === 1 ? 1 : ++currentPosition : row, position);
+				this.embedding(embeddings.position, this.data.kind === "camembert" ? id === this.padTokenId ? this.padTokenId : ++currentPosition : row, position);
 				for (let i = 0; i < width; i++) input[(batch * length + row) * width + i] = f32(word[i] + token[i]) + position[i];
 			}
 		}
@@ -182,12 +196,16 @@ export class FinitionModel {
 	score(ids: number[][], candidates: number[][]): number[][] {
 		if (this.data.kind !== "camembert" || !this.data.head || candidates.length !== ids.length) throw new Error("Tête lexicale indisponible.");
 		const { hidden, length } = this.forward(ids), head = this.data.head;
-		const normalized = this.norm(this.gelu(this.linear(hidden, head.dense)), head.norm), bias = this.floats(head.bias), width = this.data.hidden;
+		const width = this.data.hidden, masks = ids.map(row => row.indexOf(this.maskTokenId));
+		if (masks.some((mask, row) => mask < 0 || ids[row].lastIndexOf(this.maskTokenId) !== mask) || candidates.some(row => row.length > 256)) throw new Error("Mot masqué invalide.");
+		const compact = head.dense.weight.type === "f32";
+		const selected = compact ? new Float32Array(ids.length * width) : hidden;
+		if (compact) for (const [batch, mask] of masks.entries()) selected.set(hidden.subarray((batch * length + mask) * width, (batch * length + mask + 1) * width), batch * width);
+		const normalized = this.norm(this.gelu(this.linear(selected, head.dense)), head.norm), bias = this.floats(head.bias);
 		const a = this.base, b = a + scratchBytes, vector = new Float32Array(width);
-		return ids.map((row, batch) => {
-			const mask = row.indexOf(32004);
-			if (mask < 0 || row.lastIndexOf(32004) !== mask || candidates[batch].length > 256) throw new Error("Mot masqué invalide.");
-			new Float32Array(this.memory.buffer, a, width).set(normalized.subarray((batch * length + mask) * width, (batch * length + mask + 1) * width));
+		return masks.map((mask, batch) => {
+			const offset = (compact ? batch : batch * length + mask) * width;
+			new Float32Array(this.memory.buffer, a, width).set(normalized.subarray(offset, offset + width));
 			return candidates[batch].map(id => {
 				this.embedding(this.data.embeddings.word, id, vector);
 				new Float32Array(this.memory.buffer, b, width).set(vector);

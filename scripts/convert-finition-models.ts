@@ -44,20 +44,21 @@ export async function convertModel(kind: "camembert" | "electra", source: Uint8A
 		assert(value.dims.length === 0);
 		return value.dataType === 1 ? new DataView(raw.buffer, raw.byteOffset, raw.byteLength).getFloat32(0, true) : raw[0];
 	};
-	const nodePrefix = kind === "camembert" ? "/roberta" : "/model/electra";
-	const weightPrefix = kind === "camembert" ? "roberta" : "model.electra";
+	const robertaPrefix = tensors.has("roberta.embeddings.word_embeddings.weight_quantized");
+	const nodePrefix = kind === "camembert" ? robertaPrefix ? "/roberta" : "" : "/model/electra";
+	const weightPrefix = kind === "camembert" ? robertaPrefix ? "roberta." : "" : "model.electra.";
 	const norm = (name: string, path: string): NormWeights => {
 		const node = nodes.find(item => item.name === path + (kind === "camembert" ? "/Constant_1" : "/LayerNormalization"));
-		assert(node, `Normalisation absente : ${path}`);
-		const rawConstant = node.attribute.find(attribute => attribute.name === "value")?.t;
+		const rawConstant = node?.attribute.find(attribute => attribute.name === "value")?.t;
 		const constant = rawConstant ? onnx.TensorProto.create(rawConstant) : undefined;
-		const epsilon = kind === "camembert" ? constant?.rawData.length ? Buffer.from(constant.rawData).readFloatLE() : constant?.floatData[0] : node.attribute.find(attribute => attribute.name === "epsilon")?.f;
+		const epsilonInput = nodes.find(item => item.name === path + "/Add")?.input[1];
+		const epsilon = kind === "camembert" ? constant?.rawData.length ? Buffer.from(constant.rawData).readFloatLE() : constant?.floatData[0] ?? (epsilonInput ? scalar(epsilonInput) : undefined) : node?.attribute.find(attribute => attribute.name === "epsilon")?.f;
 		assert(epsilon && epsilon > 0 && epsilon < 0.01);
 		return { weight: array(name + ".weight"), bias: array(name + ".bias"), epsilon };
 	};
-	const embedding = (name: string): EmbeddingWeights => kind === "camembert" ? { weight: array(name + "_quantized"), scale: scalar(name + "_scale"), zero: scalar(name + "_zero_point") } : { weight: array(name), scale: 1, zero: 0 };
+	const embedding = (name: string): EmbeddingWeights => kind === "camembert" && !tensors.has(name) ? { weight: array(name + "_quantized"), scale: scalar(name + "_scale"), zero: scalar(name + "_zero_point") } : { weight: array(name), scale: 1, zero: 0 };
 	const linear = (name: string, path: string): DenseWeights => {
-		if (kind === "electra") return { weight: array(name + ".weight"), bias: array(name + ".bias") };
+		if (kind === "electra" || name === "lm_head.dense" && tensors.has(name + ".weight")) return { weight: array(name + ".weight"), bias: array(name + ".bias") };
 		const node = nodes.find(item => item.name === path + "/MatMul_quant");
 		assert(node?.input && node.opType === "MatMulInteger", `Projection absente : ${path}`);
 		const weight = tensor(node.input[1]), [inner, columns] = weight.dims.map(Number);
@@ -73,7 +74,7 @@ export async function convertModel(kind: "camembert" | "electra", source: Uint8A
 	};
 	const layers: LayerWeights[] = [];
 	for (let index = 0; index < (kind === "camembert" ? 12 : 6); index++) {
-		const prefix = `${weightPrefix}.encoder.layer.${index}`, path = `${nodePrefix}/encoder/layer.${index}`;
+		const prefix = `${weightPrefix}encoder.layer.${index}`, path = `${nodePrefix}/encoder/layer.${index}`;
 		layers.push({
 			query: linear(prefix + ".attention.self.query", path + "/attention/self/query"), key: linear(prefix + ".attention.self.key", path + "/attention/self/key"), value: linear(prefix + ".attention.self.value", path + "/attention/self/value"),
 			attention: linear(prefix + ".attention.output.dense", path + "/attention/output/dense"), attentionNorm: norm(prefix + ".attention.output.LayerNorm", path + "/attention/output/LayerNorm"),
@@ -83,10 +84,11 @@ export async function convertModel(kind: "camembert" | "electra", source: Uint8A
 	const model: ModelData = {
 		version: 1, kind, hidden: kind === "camembert" ? 768 : 256, heads: kind === "camembert" ? 12 : 4,
 		embeddings: {
-			word: embedding(weightPrefix + ".embeddings.word_embeddings.weight"), position: embedding(weightPrefix + ".embeddings.position_embeddings.weight"), token: embedding(weightPrefix + ".embeddings.token_type_embeddings.weight"),
-			norm: norm(weightPrefix + ".embeddings.LayerNorm", nodePrefix + "/embeddings/LayerNorm"),
+			word: embedding(weightPrefix + "embeddings.word_embeddings.weight"), position: embedding(weightPrefix + "embeddings.position_embeddings.weight"), token: embedding(weightPrefix + "embeddings.token_type_embeddings.weight"),
+			norm: norm(weightPrefix + "embeddings.LayerNorm", nodePrefix + "/embeddings/LayerNorm"),
 		}, layers,
 	};
+	if (kind === "camembert" && model.embeddings.word.weight.dims[0] === 32768) { model.maskTokenId = 4; model.padTokenId = 0; model.floatActivations = true; }
 	if (kind === "camembert") model.head = { dense: linear("lm_head.dense", "/lm_head/dense"), norm: norm("lm_head.layer_norm", "/lm_head/layer_norm"), bias: array("lm_head.bias") };
 	else {
 		model.projection = linear("model.electra.embeddings_project", "/model/electra/embeddings_project");
@@ -101,8 +103,10 @@ export async function convertModel(kind: "camembert" | "electra", source: Uint8A
 	await mkdir(new URL(kind === "camembert" ? "onnx/" : "./", weightRoot), { recursive: true });
 	await writeFile(new URL("model.json", root), JSON.stringify(model) + "\n");
 	if (kind === "camembert") {
-		await writeFile(new URL("onnx/weights-0.bin", weightRoot), weights.subarray(0, 64 * 1024 * 1024));
-		await writeFile(new URL("onnx/weights-1.bin", weightRoot), weights.subarray(64 * 1024 * 1024));
+		const chunk = (model.maskTokenId === 4 ? 96 : 64) * 1024 * 1024;
+		assert(weights.length <= 2 * chunk, "Poids trop volumineux pour les deux fichiers du pack.");
+		await writeFile(new URL("onnx/weights-0.bin", weightRoot), weights.subarray(0, chunk));
+		await writeFile(new URL("onnx/weights-1.bin", weightRoot), weights.subarray(chunk));
 	} else {
 		await writeFile(new URL("weights.bin", root), weights);
 		const files = [];

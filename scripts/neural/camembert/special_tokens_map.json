@@ -1,19 +1,51 @@
 {
-  "additional_special_tokens": [
-    "<s>NOTUSED",
-    "</s>NOTUSED"
-  ],
-  "bos_token": "<s>",
-  "cls_token": "<s>",
-  "eos_token": "</s>",
-  "mask_token": {
-    "content": "<mask>",
-    "lstrip": true,
-    "normalized": false,
+  "bos_token": {
+    "content": "[CLS]",
+    "single_word": false,
+    "lstrip": false,
     "rstrip": false,
-    "single_word": false
+    "normalized": true
   },
-  "pad_token": "<pad>",
-  "sep_token": "</s>",
-  "unk_token": "<unk>"
+  "eos_token": {
+    "content": "[SEP]",
+    "single_word": false,
+    "lstrip": false,
+    "rstrip": false,
+    "normalized": true
+  },
+  "unk_token": {
+    "content": "[UNK]",
+    "single_word": false,
+    "lstrip": false,
+    "rstrip": false,
+    "normalized": true
+  },
+  "sep_token": {
+    "content": "[SEP]",
+    "single_word": false,
+    "lstrip": false,
+    "rstrip": false,
+    "normalized": true
+  },
+  "pad_token": {
+    "content": "[PAD]",
+    "single_word": false,
+    "lstrip": false,
+    "rstrip": false,
+    "normalized": true
+  },
+  "cls_token": {
+    "content": "[CLS]",
+    "single_word": false,
+    "lstrip": false,
+    "rstrip": false,
+    "normalized": true
+  },
+  "mask_token": {
+    "content": "[MASK]",
+    "single_word": false,
+    "lstrip": true,
+    "rstrip": false,
+    "normalized": true
+  }
 }

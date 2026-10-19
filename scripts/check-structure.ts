@@ -18,7 +18,7 @@ async function main() {
 	const dataSources = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "plugin/data"], { encoding: "utf8" }).split("\0").filter(file => file && existsSync(file));
 	assert.ok(dataSources.every(file => file.endsWith(".json")), "Les sources de plugin/data doivent être uniquement des JSON d’analyse");
 	const modules = await build({
-		stdin: { contents: "export { default as gzipData } from \"./plugin/data/lexicon.json?gzip\"; export { EditorState } from \"@codemirror/state\"; export * from \"./plugin/ai/ai-extension\"; export * from \"./plugin/ai/protected-links\"; export * from \"./plugin/markdown-links\"; export * from \"./plugin/ai/clean\"; export * from \"./plugin/modes/punctuation\"; export * from \"./plugin/modes/clause-split\"; export * from \"./plugin/modes/structure-report\"; export * from \"./plugin/modes/structure-signature\"; export * from \"./plugin/modes/ternary\"; export * from \"./plugin/modes/tic-ia\"; export { engineScripts } from \"./plugin/modes/grammalecte-resources\"; export { default as FinitionPlugin } from \"./main\";", resolveDir: process.cwd() },
+		stdin: { contents: "export { default as gzipData } from \"./plugin/data/lexicon.json?gzip\"; export { EditorState } from \"@codemirror/state\"; export * from \"./plugin/ai/ai-extension\"; export * from \"./plugin/ai/protected-links\"; export * from \"./plugin/markdown-links\"; export * from \"./plugin/ai/clean\"; export * from \"./plugin/modes/punctuation\"; export * from \"./plugin/modes/clause-split\"; export * from \"./plugin/modes/structure-report\"; export * from \"./plugin/modes/statistics\"; export * from \"./plugin/modes/structure-signature\"; export * from \"./plugin/modes/ternary\"; export * from \"./plugin/modes/tic-ia\"; export { engineScripts } from \"./plugin/modes/grammalecte-resources\"; export { default as FinitionPlugin } from \"./main\";", resolveDir: process.cwd() },
 		bundle: true, platform: "node", format: "cjs", write: false, loader: { ".md": "text" }, external: ["obsidian"], plugins: [rawAssets],
 	});
 	const notices: string[] = [];
@@ -53,14 +53,17 @@ async function main() {
 		showAtMouseEvent() {}
 	}
 	const module = { exports: {} };
-	const sandbox = vm.createContext({ module, exports: module.exports, Buffer, TextEncoder, TextDecoder, Date: class extends Date { constructor() { super("2026-10-19T12:34:56"); } }, require: (name: string) => {
+	const sandbox = vm.createContext({ module, exports: module.exports, Buffer, TextEncoder, TextDecoder, CompressionStream, Response, Blob, Date: class extends Date { constructor() { super("2026-10-19T12:34:56"); } }, require: (name: string) => {
 		assert.equal(name, "obsidian");
-		return { Plugin, PluginSettingTab: class {}, Modal: class {}, Component: class {}, Menu, Notice, requestUrl: (request: { url: string; body: string }) => requestHandler(request) };
+		return { Plugin, PluginSettingTab: class {}, Modal: class {}, Component: class {}, Menu, Notice, setIcon() {}, requestUrl: (request: { url: string; body: string }) => requestHandler(request) };
 	} });
 	vm.runInContext(modules.outputFiles[0].text, sandbox);
 	sandbox.document = { body: { classList: { toggle() {} } } };
 	const api = module.exports as {
 		gzipData: Uint8Array;
+		buildStatisticsReport: typeof import("../plugin/modes/statistics").buildStatisticsReport;
+		rawStatisticNames: typeof import("../plugin/modes/statistics").rawStatisticNames;
+		statisticsWords: typeof import("../plugin/modes/statistics").statisticsWords;
 		EditorState: typeof EditorState;
 		finitionAIExtension: (host: AIGroupHost) => unknown;
 		cleanTypography: (text: string) => string;
@@ -84,6 +87,7 @@ async function main() {
 			loadSettings: () => Promise<void>;
 			showModeMenu: (event: unknown) => void;
 			runStructureReport: () => Promise<void>;
+			runStatisticsReport: () => Promise<void>;
 			runOrthoTypoIA: () => Promise<void>;
 			createDebugNote: (view: unknown, content: string, prefix: string) => Promise<{ path: string }>;
 		};
@@ -102,6 +106,7 @@ async function main() {
 	assert.equal(menuDisabled.get("Tricolons"), true);
 	assert.ok(menuTitles.includes("Synonymes IA"));
 	assert.deepEqual(menuTitles.filter(title => !menuParents.get(title)), ["Surlignages", "Dictionnaires", "Grammalecte", "Neuronal", "Corrections IA", "Ponctuations", "Paramètres"]);
+	assert.ok(!menuTitles.includes("Statistiques"));
 	assert.deepEqual(menuTitles.filter(title => menuParents.get(title) === "Surlignages"), ["Répétitions", "Atténuations", "Stéréotypes", "Monotonie", "Tricolons", "Cadence", "Charnières"]);
 	assert.deepEqual(menuTitles.filter(title => menuParents.get(title) === "Dictionnaires"), ["Synonyme", "Synonymes IA", "Définitions", "Antonymes", "Phonétique", "Rimes"]);
 	plugin.settings.debugMode = true;
@@ -110,11 +115,14 @@ async function main() {
 	menuTitles.length = 0;
 	plugin.showModeMenu({});
 	assert.ok(menuTitles.includes("Structure"));
+	assert.equal(menuTitles[menuTitles.indexOf("Structure") + 1], "Statistiques");
+	assert.equal(menuDisabled.get("Statistiques"), true);
 	assert.equal(menuDisabled.get("Structure"), true);
 	plugin.settings.debugMode = false;
 	menuTitles.length = 0;
 	plugin.showModeMenu({});
 	assert.ok(!menuTitles.includes("Structure"));
+	assert.ok(!menuTitles.includes("Statistiques"));
 	await plugin.runStructureReport();
 	Object.defineProperty(plugin, "hasLinguisticResources", { value: true });
 	Object.defineProperty(plugin, "hasAnalysisResources", { value: true });
@@ -188,7 +196,35 @@ async function main() {
 		assert.equal(apply(source, api.protectLinks(source).diff(revised)), expected, "Une suggestion IA perd la typographie française");
 		assert.equal(api.cleanTypography(revised), api.fixBlankLinesProtected(api.fixPunctuationSpacing(revised)), "Le retour IA ne suit pas les règles de Ponctuations");
 	}
+	for (const [source, revised] of [
+		["Le modèle pèse 40\u00a0Mo.", "Le modèle pèse 40 Mo."],
+		["Il avance –\u00a0à son rythme.", "Il avance – à son rythme."],
+	] as const) assert.equal(api.protectLinks(source).diff(revised).length, 0, "L’IA propose de retirer une insécable correcte");
+	for (const [source, expected] of [
+		["40 Mo, 2 Ko, 3 Go, 1 To.", "40\u00a0Mo, 2\u00a0Ko, 3\u00a0Go, 1\u00a0To."],
+		["40Mo, 3,5kg, 20 km/h, 10 m², 5 kWh, 2 µg, 25 °C.", "40\u00a0Mo, 3,5\u00a0kg, 20\u00a0km/h, 10\u00a0m², 5\u00a0kWh, 2\u00a0µg, 25\u00a0°C."],
+		["Il avance – à son rythme.", "Il avance –\u00a0à son rythme."],
+		["Il avance –à son rythme – puis s’arrête.", "Il avance –\u00a0à son rythme\u00a0– puis s’arrête."],
+		["Il avance – doucement.\r\n\r\nIl recule – lentement.", "Il avance –\u00a0doucement.\r\n\r\nIl recule –\u00a0lentement."],
+		["2019–2025, 10 – 20 km, 2 modèles, 3 minutes.", "2019–2025, 10 – 20\u00a0km, 2 modèles, 3 minutes."],
+		["`40 Mo` [40 Mo](https://example.org/40Mo) ![10 kg](image.png)", "`40 Mo` [40 Mo](https://example.org/40Mo) ![10 kg](image.png)"],
+	] as const) {
+		assert.equal(api.fixPunctuationSpacing(source), expected, "Ponctuations perd une unité, un tiret ou une zone protégée");
+		assert.equal(api.cleanTypography(source), expected, "La normalisation IA diffère de Ponctuations");
+		assert.equal(api.fixPunctuationSpacing(expected), expected, "La normalisation des unités et incises n’est pas idempotente");
+	}
 	process.stdout.write("Typographie IA : insécables, apostrophes, guillemets, tirets, paragraphes et liens vérifiés\n");
+	const tagged = "# Une fote.\nUne fote #bonjor une errer.";
+	const withoutTags = api.protectLinks(tagged);
+	assert.equal(withoutTags.text, "# Une fote.\nUne fote une errer.", "Un hashtag est soumis au correcteur IA ou un titre est masqué");
+	assert.equal(apply(tagged, withoutTags.diff(withoutTags.text.replaceAll("fote", "faute").replace("errer", "erreur"))), tagged.replaceAll("fote", "faute").replace("errer", "erreur"), "Les corrections autour d’un hashtag perdent leurs positions");
+	const tagOnly = "#école/test #40Mo #🌿";
+	assert.equal(api.protectLinks(tagOnly).text.trim(), "", "Un tag Unicode, imbriqué ou contenant un nombre est envoyé à l’IA");
+	assert.equal(api.fixPunctuationSpacing(tagOnly), tagOnly, "Ponctuations modifie un hashtag");
+	const tagStart = tagged.indexOf("#bonjor");
+	assert.equal(api.protectLinks(tagged, tagStart + 2, tagStart + 5).text, "", "Une sélection partielle expose le contenu d’un hashtag");
+	assert.equal(api.protectLinks("[Un #bonjor](https://example.org/#section)").text.trim(), "Un", "Un hashtag dans un libellé de lien est envoyé à l’IA");
+	assert.equal(api.protectLinks("# Titre\n## Titre\n#1984 et C#code").text, "# Titre\n## Titre\n#1984 et C#code", "Une syntaxe qui n’est pas un hashtag est masquée");
 	const linkCases = [
 		"[Finition](https://example.org/article?q=1&lang=fr)", "![Image](app://local/a(b).webp?123)",
 		"[des [mots]](https://example.org/a_(b) \"titre (avec parenthèses)\")", "[titre](<https://example.org/a)b> \"titre\")",
@@ -332,7 +368,8 @@ async function main() {
 	};
 	await aiPlugin.runOrthoTypoIA();
 	assert.equal(apply(sourceText, aiPlugin.aiGroups), sourceText.replace("fote", "faute").replace("errer", "erreur"), "Les corrections IA altèrent les liens ou leurs positions");
-	for (const [document, from, to, expected] of [["Avant [mot](https://example.org/page?q=1) après.", 17, 27, ""], ["Voir [r].\n\n[r]: https://example.org/ref", 5, 8, "r"], ["Avant [libellé](https://example.org) après.", 8, 12, "ibel"]] as const) {
+	const onlyTags = "#bonjor #école/été #🌿", taggedTitle = "# Une fote. #bonjor";
+	for (const [document, from, to, expected] of [["Avant [mot](https://example.org/page?q=1) après.", 17, 27, ""], ["Voir [r].\n\n[r]: https://example.org/ref", 5, 8, "r"], ["Avant [libellé](https://example.org) après.", 8, 12, "ibel"], [onlyTags, 0, onlyTags.length, ""], [taggedTitle, 0, taggedTitle.length, "# Une fote."], [taggedTitle, taggedTitle.indexOf("#bonjor") + 2, taggedTitle.length - 1, ""]] as const) {
 		sourceText = document;
 		aiFrom = from; aiTo = to;
 		let calls = 0;
@@ -343,8 +380,8 @@ async function main() {
 			return { status: 200, json: { choices: [{ message: { content: body.messages[1].content } }] } };
 		};
 		await aiPlugin.runOrthoTypoIA();
-		assert.equal(calls, expected ? 1 : 0, "Une adresse sans texte est envoyée à l’IA");
-		assert.equal(aiPlugin.aiGroups.length, 0, "Une sélection partielle de lien est modifiée");
+		assert.equal(calls, expected ? 1 : 0, "Un contenu protégé sans prose est envoyé à l’IA");
+		assert.equal(aiPlugin.aiGroups.length, 0, "Une sélection protégée est modifiée");
 	}
 	aiFrom = 0; aiTo = undefined;
 	sourceText = "Depuis le mois d’août, je développe [Unshiter](https://github.com/tcrouzet/unshiter), une app.\n\n[Antidote](https://antidote.info), le correcteur de [Druide](https://druide.com), intégré à [Obsidian](https://obsidian.md). Je code [Finition](https://github.com/tcrouzet/finition).";
@@ -426,6 +463,84 @@ async function main() {
 		const categories = response.result;
 		return (word: string) => categories[word.toLowerCase()] ?? "";
 	}
+
+
+	const readStats = (report: string): Record<string, number | string> => Object.fromEntries(report.split("---")[1].trim().split("\n").map(line => {
+		const [name, value] = line.split(": ");
+		return [name, JSON.parse(value) as number | string];
+	}));
+	const emptyStats = readStats(await api.buildStatisticsReport("", () => "", lexicon));
+	assert.equal(Object.keys(emptyStats).length, 108);
+	assert.equal(new Set(api.rawStatisticNames).size, 108);
+	assert.deepEqual(Object.keys(emptyStats), Array.from(api.rawStatisticNames));
+	for (const name of ["word_count", "sentence_count", "paragraph_count", "document_char_count", "utf8_byte_count", "gzip_byte_count", "ternary_count", "hapax_count", "bigram_count"]) assert.equal(emptyStats[name], 0, name);
+	for (const name of ["relative_clause_count", "passive_sentence_count", "local_phonetic_repetition_count", "adjective_count"]) assert.equal(emptyStats[name], "-", name);
+	const sample = "# Titre\r\n\r\nÉté 😀...\r\n\r\n— Oui ! Encore !\r\n\r\nIl dit : « Bonjour ! » (demain) – ici – ?;";
+	const normalized = sample.replace(/\r\n/g, "\n").replace(/\.{3}/g, "…");
+	const sampleReport = await api.buildStatisticsReport(sample, categoriesFor(sample), lexicon);
+	const sampleStats = readStats(sampleReport);
+	assert.equal(sampleStats.document_char_count, [...normalized].length);
+	assert.equal(sampleStats.utf8_byte_count, new TextEncoder().encode(normalized).length);
+	assert.equal(sampleStats.paragraph_count, 4);
+	assert.equal(sampleStats.dialog_word_count, 2);
+	assert.equal(sampleStats.exclamation_point_count, 1);
+	assert.equal(sampleStats.dash_count, 2);
+	assert.equal(sampleStats.suspention_point_count, 1);
+	assert.equal(sampleStats.period_count, 0);
+	assert.equal(sampleStats.parenthesis_count, 1);
+	assert.equal(sampleStats.quote_mark_count, 2);
+	assert.ok(Number(sampleStats.gzip_byte_count) > 0);
+	assert.equal(await api.buildStatisticsReport(sample, categoriesFor(sample), lexicon), sampleReport, "Le rapport change entre deux analyses identiques");
+	const repetitionSample = "chats chat chiens chien. ".repeat(251);
+	const repeatStats = readStats(await api.buildStatisticsReport(repetitionSample, () => "nom", new Map([["chats", "chat"], ["chiens", "chien"]])));
+	assert.equal(repeatStats.word_count, 1004);
+	assert.equal(repeatStats.unique_lemma_count, 2);
+	assert.equal(repeatStats.global_repetition_count, 1002);
+	assert.equal(repeatStats.local_repetition_count, 1000, "Le dernier bloc incomplet est perdu");
+	assert.equal(repeatStats.hapax_count, 0);
+	assert.equal(repeatStats.bigram_count, 4);
+	const ternaryText = "Je prends des pommes, des poires et des cerises.";
+	assert.equal(readStats(await api.buildStatisticsReport(ternaryText, categoriesFor(ternaryText), lexicon)).ternary_count, 1);
+	assert.equal(api.tricolonRuns(ternaryText, categoriesFor(ternaryText)).length, 1);
+	const statsPlugin = new api.FinitionPlugin();
+	statsPlugin.app = aiPlugin.app;
+	statsPlugin.settings = { ...aiPlugin.settings, debugMode: false, analysisEngine: "finition-corrector" };
+	let installed = false, engineCalls = 0;
+	Object.assign(statsPlugin, { lexicon, isLinguisticEngineInstalled: (engine: string) => installed && engine === "grammalecte", ensureGrammalecteEngine: async () => {
+		engineCalls++;
+		return { getCategories: async (words: string[]) => {
+			assert.ok(words.includes("cerises"), "Seule la sélection est analysée");
+			context.onmessage({ data: { sCommand: "lexicalCategories", oParam: { words } } });
+			return response.result;
+		} };
+	} });
+	sourceText = ternaryText;
+	aiFrom = 0; aiTo = 2;
+	const previousNoteCount = notes.size;
+	statsPlugin.settings.debugMode = true;
+	await statsPlugin.runStatisticsReport();
+	assert.equal(engineCalls, 0, "Le moteur est lancé sans dictionnaire installé");
+	assert.equal(notes.size, previousNoteCount);
+	installed = true;
+	statsPlugin.settings.debugMode = false;
+	await statsPlugin.runStatisticsReport();
+	assert.equal(notes.size, previousNoteCount, "Statistiques crée une note hors mode debug");
+	statsPlugin.settings.debugMode = true;
+	statsPlugin.showModeMenu({});
+	assert.equal(menuDisabled.get("Statistiques"), false);
+	sandbox.createFragment = () => ({ append() {} });
+	sandbox.createSpan = () => ({});
+	await statsPlugin.runStatisticsReport();
+	const statsPath = "Dossier/Article_stats_2026-10-19_123456.md";
+	assert.ok(notes.has(statsPath), "La note Statistiques n’est pas créée");
+	assert.equal(readStats(notes.get(statsPath) ?? "").word_count, api.statisticsWords(ternaryText).length);
+	assert.equal(opened.at(-1), statsPath);
+	await statsPlugin.runStatisticsReport();
+	assert.ok(notes.has("Dossier/Article_stats_2026-10-19_123456 2.md"));
+	assert.equal(sourceText, ternaryText);
+	assert.equal(statsPlugin.settings.analysisEngine, "finition-corrector");
+	assert.equal(statsPlugin.settings.debugMode, true);
+	process.stdout.write("Statistiques : 108 variables YAML, Unicode, dialogues, gzip stable, lemmes, blocs de répétitions, tricolons, note complète et collisions vérifiés\n");
 
 	let enumerationFailures = 0;
 	let enumerationChecks = 0;

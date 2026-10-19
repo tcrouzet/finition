@@ -316,7 +316,7 @@ body.finition-hide-backlinks-count .status-bar-item.plugin-backlink {
 }
 
 .finition-synonyms .finition-synonym-replace:focus-visible,
-.finition-synonyms-copy:focus-visible {
+.finition-synonyms-insert:focus-visible {
 	outline: 2px solid var(--interactive-accent);
 	outline-offset: 2px;
 }
@@ -326,7 +326,7 @@ body.is-mobile .finition-synonyms {
 }
 
 body.is-mobile .finition-synonym-replace,
-body.is-mobile .finition-synonyms-copy {
+body.is-mobile .finition-synonyms-insert {
 	min-height: 44px;
 	min-width: 44px;
 }
@@ -397,4 +397,22 @@ body.is-mobile .finition-synonyms-copy {
 	color: #1e8449;
 	cursor: pointer;
 	margin-left: 0.15em;
+}
+
+.finition-ai-delete {
+	display: inline-flex;
+	vertical-align: middle;
+	margin-left: 0.2em;
+	padding: 2px;
+	color: var(--color-green, #1e8449);
+}
+
+.finition-ai-delete:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+body.is-mobile .finition-ai-delete {
+	min-width: 44px;
+	min-height: 44px;
 }

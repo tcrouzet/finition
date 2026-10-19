@@ -1,23 +1,57 @@
 {
-  "additional_special_tokens": [
-    "<s>NOTUSED",
-    "</s>NOTUSED"
-  ],
-  "bos_token": "<s>",
-  "clean_up_tokenization_spaces": true,
-  "cls_token": "<s>",
-  "eos_token": "</s>",
-  "mask_token": {
-    "__type": "AddedToken",
-    "content": "<mask>",
-    "lstrip": true,
-    "normalized": true,
-    "rstrip": false,
-    "single_word": false
+  "add_prefix_space": true,
+  "added_tokens_decoder": {
+    "0": {
+      "content": "[PAD]",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "1": {
+      "content": "[CLS]",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "2": {
+      "content": "[SEP]",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "3": {
+      "content": "[UNK]",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "4": {
+      "content": "[MASK]",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    }
   },
-  "model_max_length": 512,
-  "pad_token": "<pad>",
-  "sep_token": "</s>",
-  "tokenizer_class": "CamembertTokenizer",
-  "unk_token": "<unk>"
+  "bos_token": "[CLS]",
+  "clean_up_tokenization_spaces": true,
+  "cls_token": "[CLS]",
+  "eos_token": "[SEP]",
+  "errors": "replace",
+  "mask_token": "[MASK]",
+  "model_max_length": 1024,
+  "pad_token": "[PAD]",
+  "sep_token": "[SEP]",
+  "tokenizer_class": "PreTrainedTokenizerFast",
+  "trim_offsets": true,
+  "unk_token": "[UNK]"
 }

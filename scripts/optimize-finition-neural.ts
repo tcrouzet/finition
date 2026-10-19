@@ -44,10 +44,10 @@ export function optimizeNeuralModel(bytes: Uint8Array): Uint8Array {
 }
 
 async function main() {
-  const root = new URL("./neural/camembert/", import.meta.url);
+  const root = new URL("./neural/camembert-v1/", import.meta.url);
   const original = Buffer.concat(await Promise.all(neuralModelParts.map(file => readFile(new URL(file, root)))));
   const optimized = optimizeNeuralModel(original);
-  const provenance = new URL("../resources/camembert/source.json", import.meta.url);
+  const provenance = new URL("./neural/camembert-v1/source.json", import.meta.url);
   const source = JSON.parse(await readFile(provenance, "utf8")) as { hashes: Record<string, string>; optimization?: string };
   for (const [index, file] of neuralModelParts.entries()) {
     const part = optimized.subarray(index * 64 * 1024 * 1024, (index + 1) * 64 * 1024 * 1024);

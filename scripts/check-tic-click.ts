@@ -36,6 +36,7 @@ async function main() {
 	import { DEFAULT_SETTINGS } from "./plugin/types";
 	import { notices, menuOpenCount, setRequestHandler, requests, modals, lastMenu } from "obsidian";
 	import { checkAnalysisNavigation } from "./scripts/check-analysis-navigation";
+	import { checkAICorrections } from "./scripts/check-ai-corrections";
 	import { checkSynonyms } from "./scripts/check-synonyms";
 	import { checkLocalSynonyms } from "./scripts/check-local-synonyms";
 	import { checkWordDictionaries } from "./scripts/check-word-dictionaries";
@@ -76,6 +77,7 @@ async function main() {
 	    check(notices.length === 2, "Notification hors mode Tic IA");
 	    view.destroy();
 	    await checkAnalysisNavigation(() => menuOpenCount, () => lastMenu.items);
+	    checkAICorrections();
 	    await checkSynonyms(setRequestHandler, requests, notices, modals);
 	    await checkLinguisticInstallation(ReleasedPlugin, () => lastMenu.items, setRequestHandler);
 	    await checkLocalSynonyms(ReleasedPlugin, () => lastMenu.items, setRequestHandler, requests, notices, modals);

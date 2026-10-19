@@ -1,27 +1,30 @@
 {
-  "_name_or_path": "camembert-base",
+  "_name_or_path": "camembertv2-base",
   "architectures": [
-    "CamembertForMaskedLM"
+    "RobertaForMaskedLM"
   ],
   "attention_probs_dropout_prob": 0.1,
-  "bos_token_id": 5,
+  "bos_token_id": 1,
   "classifier_dropout": null,
-  "eos_token_id": 6,
+  "embedding_size": 768,
+  "eos_token_id": 2,
   "hidden_act": "gelu",
   "hidden_dropout_prob": 0.1,
   "hidden_size": 768,
   "initializer_range": 0.02,
   "intermediate_size": 3072,
-  "layer_norm_eps": 1e-05,
-  "max_position_embeddings": 514,
-  "model_type": "camembert",
+  "layer_norm_eps": 1e-07,
+  "max_position_embeddings": 1025,
+  "model_name": "camembertv2-base",
+  "model_type": "roberta",
   "num_attention_heads": 12,
   "num_hidden_layers": 12,
-  "output_past": true,
-  "pad_token_id": 1,
+  "pad_token_id": 0,
+  "position_biased_input": true,
   "position_embedding_type": "absolute",
-  "transformers_version": "4.34.0.dev0",
+  "torch_dtype": "float32",
+  "transformers_version": "4.18.0.dev0",
   "type_vocab_size": 1,
   "use_cache": true,
-  "vocab_size": 32005
+  "vocab_size": 32768
 }

@@ -220,7 +220,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 		for (const engine of resourceEngines) {
 			const installed = this.plugin.isLinguisticEngineInstalled(engine);
 			const setting = engine === "grammalecte" ? grammar : new Setting(containerEl).setName("CamemBERT");
-			this.describeResource(setting, { name: engine, documentation: engine === "grammalecte" ? "https://grammalecte.net/" : "https://huggingface.co/almanach/camembert-base" });
+			this.describeResource(setting, { name: engine, documentation: engine === "grammalecte" ? "https://grammalecte.net/" : "https://huggingface.co/almanach/camembertv2-base" });
 			setting.addButton(button => button.setButtonText(this.downloadingEngine === engine ? "Téléchargement…" : installed ? "Recharger" : "Charger")
 					.setDisabled(busy).onClick(async () => {
 						this.downloadingEngine = engine;

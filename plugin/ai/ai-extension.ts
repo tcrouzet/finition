@@ -5,10 +5,9 @@
  * suite (un widget, PAS du texte réel) — à la manière d'un commentaire.
  *
  * Le document n'est JAMAIS modifié automatiquement : un clic sur une
- * suggestion (sa partie rouge ou verte, peu importe) l'applique — et
- * SEULEMENT à ce moment le texte change réellement, via une transaction
- * CM6 classique. Tant que rien n'est cliqué, le fichier reste identique à
- * avant l'appel IA.
+ * proposition verte ou sur la coche l'applique. Le rouge conserve
+ * l'original et écarte la suggestion. Tant que rien n'est cliqué, le
+ * fichier reste identique à avant l'appel IA.
  *
  * L'état des suggestions en attente vit sur FinitionPlugin (`aiGroups`),
  * pas ici : cette extension se contente de le lire et d'y réagir, comme
@@ -17,7 +16,7 @@
 
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
-import { editorInfoField } from "obsidian";
+import { editorInfoField, setIcon } from "obsidian";
 
 export interface AIGroup {
 	id: number;
@@ -36,19 +35,19 @@ export interface AIGroupHost {
 
 class InsertionWidget extends WidgetType {
 	constructor(
-		private readonly text: string,
+		private readonly text: string | null,
 		private readonly groupId: number
 	) {
 		super();
 	}
 
 	toDOM(): HTMLElement {
-		const span = createSpan();
-		span.className = "finition-ai-ins";
-		span.textContent = this.text;
+		const span = this.text === null ? createEl("button", { cls: "clickable-icon finition-ai-delete", attr: { type: "button", "aria-label": "Valider la suppression" } }) : createSpan();
+		if (this.text === null) setIcon(span, "check");
+		else { span.className = "finition-ai-ins"; span.textContent = this.text; }
 		span.dataset.finitionAiGroup = String(this.groupId);
 		span.dataset.finitionAiAction = "accept";
-		span.setAttribute("title", "Cliquer pour appliquer la correction");
+		span.setAttribute("title", this.text === null ? "Valider la suppression" : "Cliquer pour appliquer la correction");
 		return span;
 	}
 
@@ -75,11 +74,11 @@ function buildAIDecorations(groups: AIGroup[]): DecorationSet {
 				})
 			);
 		}
-		if (g.insText) {
+		if (g.insText || g.delFrom < g.delTo) {
 			builder.add(
 				g.delTo,
 				g.delTo,
-				Decoration.widget({ widget: new InsertionWidget(g.insText, g.id), side: 1 })
+				Decoration.widget({ widget: new InsertionWidget(g.insText || null, g.id), side: 1 })
 			);
 		}
 	}
@@ -114,12 +113,11 @@ export function finitionAIExtension(host: AIGroupHost) {
 					const action = marker.dataset.finitionAiAction;
 					const group = host.aiGroups.find((g) => g.id === id);
 					if (!group) return;
-					if (action === "accept") {
-						this.view.dispatch({ changes: { from: group.delFrom, to: group.delTo, insert: group.insText ?? "" } });
-					}
-					// action === "reject" : aucune transaction, le texte original reste.
 					host.aiGroups = host.aiGroups.filter((g) => g.id !== id);
 					host.aiGroupsVersion++;
+					if (action === "accept") {
+						this.view.dispatch({ changes: { from: group.delFrom, to: group.delTo, insert: group.insText ?? "" } });
+					} else this.view.dispatch({});
 					event.preventDefault();
 				};
 				view.dom.addEventListener("click", this.handleClick);

@@ -13,7 +13,7 @@ async function main() {
   if (hash(model) !== "eb24ed40a5d8f384c8c1eb3d3f3614080751fb92b6e1f165a059e4d1ca3ea998" || hash(vocabulary) !== "5f58ad5c488f2fb5830cdeeca38097413ef31ba8f54d78de262eb8dacceff4fe" || hash(classes) !== "6f30f47911a5b94149ff88f65aea29a7764d122619a090fbbb54d3997d3365fd") throw new Error("Empreinte des ressources locales invalide.");
   const schema = protobuf.parse('syntax="proto2"; message Model { message Piece { optional string piece=1; optional float score=2; optional int32 type=3 [default=1]; } repeated Piece pieces=1; message Normalizer { optional string name=1; optional bytes precompiled_charsmap=2; } optional Normalizer normalizer=3; }').root.lookupType("Model");
   const decoded = schema.toObject(schema.decode(vocabulary)) as { pieces: Array<{ piece: string; score: number; type?: number }>; normalizer: { name: string; precompiledCharsmap: Buffer } };
-  const tokenizer = JSON.parse(await readFile(new URL("../resources/camembert/tokenizer.json", import.meta.url), "utf8")) as {
+  const tokenizer = JSON.parse(await readFile(new URL("./neural/camembert-v1/tokenizer.json", import.meta.url), "utf8")) as {
     model: { vocab: Array<[string, number]>; unk_id: number };
     normalizer: { precompiled_charsmap: string };
     added_tokens: Array<{ id: number; content: string; special: boolean; normalized: boolean; single_word: boolean; lstrip: boolean; rstrip: boolean }>;

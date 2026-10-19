@@ -10,8 +10,9 @@ export async function createNeuralCorrector(readAsset: ReadNeuralAsset) {
   const alternatives = new Map(Object.entries(phonetics.alternatives) as Array<[string, string[]]>);
   const [vocabulary, config, model] = await Promise.all([readAsset("tokenizer.json"), readAsset("tokenizer_config.json"), loadModel(readAsset, "camembert")]);
   const tokenizer = new Tokenizer(JSON.parse(new TextDecoder().decode(vocabulary)) as object, JSON.parse(new TextDecoder().decode(config)) as object);
-  const maskId = tokenizer.token_to_id("<mask>");
-  if (maskId !== 32004) throw new Error("Vocabulaire neuronal incompatible.");
+  const maskToken = model.maskTokenId === 4 ? "[MASK]" : "<mask>";
+  const maskId = tokenizer.token_to_id(maskToken);
+  if (maskId !== model.maskTokenId) throw new Error("Vocabulaire neuronal incompatible.");
   const cache = new Map<string, readonly Correction[]>();
   return async (text: string): Promise<Correction[]> => {
     const results: Correction[] = [];
@@ -34,13 +35,13 @@ export async function createNeuralCorrector(readAsset: ReadNeuralAsset) {
             if (!group || word === word.toLocaleUpperCase("fr")) continue;
             const from = tokens[Math.max(0, i - 12)].index;
             const last = tokens[Math.min(tokens.length - 1, i + 12)];
-            const to = last.index + last[0].length;
-            const context = sentence[0].slice(from, start) + "<mask>" + sentence[0].slice(token.index + token[0].length, to);
+            const to = i + 12 >= tokens.length - 1 ? sentence[0].length : last.index + last[0].length;
+            const context = sentence[0].slice(from, start) + maskToken + sentence[0].slice(token.index + token[0].length, to);
             const ids = tokenizer.encode(context).ids;
             if (ids.length > 128 || ids.filter(id => id === maskId).length !== 1) continue;
             const mask = ids.indexOf(maskId);
             // Après une élision, l'identifiant diffère souvent de celui du mot isolé.
-            const candidates = group.map(candidate => ({ word: candidate, ids: tokenizer.encode(context.replace("<mask>", preserveCase(word, candidate))).ids })).filter(candidate => candidate.ids.length === ids.length && candidate.ids.every((id, index) => index === mask || id === ids[index]));
+            const candidates = group.map(candidate => ({ word: candidate, ids: tokenizer.encode(context.replace(maskToken, preserveCase(word, candidate))).ids })).filter(candidate => candidate.ids.length === ids.length && candidate.ids.every((id, index) => index === mask || id === ids[index]));
             const originalIndex = candidates.findIndex(candidate => candidate.word === original);
             if (originalIndex < 0 || candidates.length < 2) continue;
             jobs.push({ context, length: ids.length, errors, word, start: sentence.index + start, original: originalIndex, words: candidates.map(candidate => candidate.word), ids: candidates.map(candidate => candidate.ids[mask]) });
@@ -51,8 +52,11 @@ export async function createNeuralCorrector(readAsset: ReadNeuralAsset) {
       nextCache.set(paragraph[0], local);
     }
     jobs.sort((a, b) => a.length - b.length);
-    for (let from = 0; from < jobs.length; from += 4) {
-      const batch = jobs.slice(from, from + 4);
+    for (let from = 0; from < jobs.length;) {
+      let to = Math.min(jobs.length, from + model.maxBatchSize);
+      while ((to - from) * jobs[to - 1].length > 512) to--;
+      const batch = jobs.slice(from, to);
+      from = to;
       const output = model.score(batch.map(job => tokenizer.encode(job.context).ids), batch.map(job => job.ids));
       for (const [row, job] of batch.entries()) {
           const scores = output[row];

@@ -1,6 +1,7 @@
 import { App, MarkdownView, Notice } from "obsidian";
 import type { FinitionSettings } from "../types";
 import { SynonymsModal } from "../ui/synonyms-modal";
+import { createRemarkInsertion } from "../ui/insert-remark";
 import { callAnthropic } from "./anthropic";
 import { callOpenAI } from "./openai";
 import { splitIntoChunks } from "./chunk";
@@ -47,6 +48,7 @@ export async function runSynonyms(app: App, settings: FinitionSettings): Promise
 	const file = view.file;
 	const from = editor.posToOffset(editor.getCursor("from"));
 	const to = editor.posToOffset(editor.getCursor("to"));
+	const insertRemark = createRemarkInsertion(app, view);
 	const progress = new Notice("Synonymes IA : recherche en cours…", 0);
 	try {
 		const request = provider === "openai" ? callOpenAI : callAnthropic;
@@ -56,13 +58,13 @@ export async function runSynonyms(app: App, settings: FinitionSettings): Promise
 		if (!synonyms.length) throw new Error("Aucun synonyme dans la réponse.");
 		new SynonymsModal(app, view, document.slice(from, to), synonyms, (synonym) => {
 			if (app.workspace.getActiveViewOfType(MarkdownView) !== view || view.file !== file || view.editor !== editor || editor.getValue() !== document) {
-				new Notice("La note ou le texte a changé. Relance la recherche pour remplacer ; la copie reste disponible.");
+				new Notice("La note ou le texte a changé. Relance la recherche.");
 				return false;
 			}
 			editor.replaceRange(synonym, editor.offsetToPos(from), editor.offsetToPos(to));
 			editor.setSelection(editor.offsetToPos(from), editor.offsetToPos(from + synonym.length));
 			return true;
-		}).open();
+		}, insertRemark).open();
 	} catch (error) {
 		new Notice(`Synonymes IA : ${error instanceof Error ? error.message : String(error)}`, 10000);
 	} finally {
