@@ -20,4 +20,4 @@ export const resourceFiles: Record<ResourcePack, readonly string[]> = {
 	rimes: ["rimes.json", "CC-BY-SA-4.0.txt"],
 };
 export const resourceAssetName = (engine: ResourcePack, file: string): string => `${engine}-${file.replace(/\//g, "__")}`;
-export const resourceSource = (engine: ResourcePack, file: string): string => `ressources/${file === "phonet_data.json" ? "grammalecte" : engine === "finition-corrector" ? "camembert" : engine}/${file}`;
+export const resourceSource = (engine: ResourcePack, file: string): string => `${file.endsWith(".bin") ? "scripts/neural" : "resources"}/${file === "phonet_data.json" ? "grammalecte" : engine === "finition-corrector" ? "camembert" : engine}/${file}`;

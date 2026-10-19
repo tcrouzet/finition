@@ -50,7 +50,7 @@ Rouvrir Obsidian et activer **Finition** dans **Réglages → Plugins communauta
 Cliquer sur **♫**, en bas d’Obsidian, puis choisir une analyse :
 
 - **Répétitions** : mots répétés, en tenant compte de leurs formes conjuguées ou accordées.
-- **Atténuation** : expressions comme « il semblerait que » ou « dans une certaine mesure ».
+- **Atténuations** : expressions comme « il semblerait que » ou « dans une certaine mesure ».
 - **Stéréotypes** : clichés et lieux communs.
 - **Monotonie** : suites de phrases de longueur proche.
 - **Tricolons** : séries de trois groupes de même construction. Les listes de plus de trois éléments sont exclues.
@@ -71,7 +71,7 @@ Dans la même section du menu ♫, **Grammalecte**, **Neuronal** et **Correction
 
 **Correcteur neuronal par défaut** permet de choisir **CamemBERT**, pour les confusions lexicales en contexte, ou un modèle grammatical local par son nom, en complément de CamemBERT. **Charger un modèle neuronal** l’importe dans le stockage privé ignoré par Git ; **Effacer** supprime sa copie après confirmation. Le choix **CamemBERT** utilise le modèle public sans ce complément grammatical. Voir [la structure des modèles, leur installation et l’entraînement Python](doc/neural-model.md). Les ressources locales privées sont exclues des packs téléchargeables.
 
-Les données publiques distribuées séparément du plugin sont regroupées dans [ressources/](ressources/README.md) : Grammalecte, dictionnaire Finition, CamemBERT, synonymes, définitions, antonymes, phonétique et rimes. Chaque section de dictionnaire propose **Finition → Charger/Recharger** ; les quatre nouveaux packs proviennent du Wiktionnaire via Kaikki, sous CC BY-SA 4.0, avec attribution et provenance dans le champ `license` de chaque JSON. Voir [les sources et limites](doc/dictionnaires.md). Le code des moteurs reste livré dans `main.js`.
+Les données publiques distribuées séparément du plugin sont regroupées dans [resources/](resources/README.md) : Grammalecte, dictionnaire Finition, CamemBERT, synonymes, définitions, antonymes, phonétique et rimes. Chaque section de dictionnaire propose **Finition → Charger/Recharger** ; les quatre nouveaux packs proviennent du Wiktionnaire via Kaikki, sous CC BY-SA 4.0, avec attribution et provenance dans le champ `license` de chaque JSON. Voir [les sources et limites](doc/dictionnaires.md). Le code des moteurs reste livré dans `main.js`.
 
 La commande **Ponctuations** modifie directement toute la note : espaces insécables, apostrophes, tirets et lignes vides. Le code, les liens web, images, liens internes, références et horaires sont préservés.
 
@@ -106,7 +106,7 @@ Les boutons **Copier** écrivent uniquement les résultats affichés dans le pre
 
 `main.ts` est le point d’entrée ; l’implémentation et les modules sont regroupés dans `plugin/`. Le code tiers de Grammalecte se trouve dans `plugin/vendor/grammalecte/` ; `plugin/data/` contient uniquement les JSON d’analyse embarqués. Ces JSON sont des sources publiques nécessaires à la compilation, donc versionnées. Les réglages utilisateur et les copies de dictionnaires importés sont des fichiers `data.json` ignorés par Git.
 
-Les outils de développement, de préparation des ressources et de publication sont dans `helper/` ; `git.sh`, `install.sh` et `release.sh` restent à la racine. Les données publiques téléchargeables restent dans `ressources/`, l’entraînement Python dans `helper/neural/`, la documentation dans `doc/` et les fichiers privés dans le dossier ignoré par Git. `manifest.json`, `styles.css`, la licence et les configurations npm, TypeScript et ESLint restent à la racine.
+Les outils de développement, de préparation des ressources et de publication sont dans `scripts/` ; `git.sh`, `install.sh` et `release.sh` restent à la racine. Les JSON et notices publics téléchargeables restent dans `resources/`, les binaires et l’entraînement Python dans `scripts/neural/`, la documentation dans `doc/` et les fichiers privés dans le dossier ignoré par Git. `manifest.json`, `styles.css`, la licence et les configurations npm, TypeScript et ESLint restent à la racine.
 
 La version de Node est fixée dans `.nvmrc`. `npm run typecheck` vérifie les outils Node puis le plugin avec les seules bibliothèques du navigateur. `release.sh` prépare le tag ; GitHub Actions construit les fichiers du plugin, vérifie la répétabilité du build et atteste `main.js`, `manifest.json` et `styles.css`. Les données publiques sont publiées séparément sous le tag de préversion `resources-VERSION`, sans remplacer la dernière release stable du plugin.
 
@@ -115,8 +115,8 @@ npm ci
 npm run typecheck
 npm run build
 npm run lint
-npx --no-install jiti helper/check-install.ts
-npx --no-install jiti helper/check-structure.ts
-npx --no-install jiti helper/check-synonym-dictionary.ts
-PYTHONDONTWRITEBYTECODE=1 python3 helper/check-synonym-data.py
+npx --no-install jiti scripts/check-install.ts
+npx --no-install jiti scripts/check-structure.ts
+npx --no-install jiti scripts/check-synonym-dictionary.ts
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/check-synonym-data.py
 ```

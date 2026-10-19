@@ -4,7 +4,7 @@
   "description": "Finition — plugin Obsidian d'aide à l'écriture",
   "main": "main.js",
   "scripts": {
-    "resources": "jiti helper/package-resources.ts",
+    "resources": "jiti scripts/package-resources.ts",
     "dev": "node plugin/esbuild.config.mjs",
     "build": "node plugin/esbuild.config.mjs production",
     "lint": "eslint . --max-warnings=0",

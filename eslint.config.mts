@@ -40,7 +40,7 @@ export default defineConfig(
 	},
 	{
 		// Ces outils de développement s’exécutent sous Node, hors du plugin.
-		files: ['helper/**/*.ts', 'plugin/raw-assets.mjs'],
+		files: ['scripts/**/*.ts', 'plugin/raw-assets.mjs'],
 		languageOptions: { globals: globals.node },
 		rules: {
 			'obsidianmd/no-nodejs-modules': 'off',

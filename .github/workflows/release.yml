@@ -33,7 +33,7 @@ jobs:
                   node -e 'const assert = require("node:assert/strict"); assert.equal(process.env.RELEASE_TAG, require("./manifest.json").version); assert.equal(require("./package.json").version, process.env.RELEASE_TAG);'
                   npm run typecheck
                   npm run lint
-                  npx --no-install jiti helper/check-structure.ts
+                  npx --no-install jiti scripts/check-structure.ts
                   npm run build
                   sha256sum main.js > "$RUNNER_TEMP/main.sha256"
                   npm run build

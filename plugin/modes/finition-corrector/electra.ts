@@ -44,20 +44,23 @@ export async function createElectraCorrector(readAsset: ReadNeuralAsset) {
                   const originalIndex = windowStart + index - 1;
                   if (windowStart > 1 && index <= 16 || windowEnd < encoded.ids.length - 1 && index >= ids.length - 17) continue;
                   const scores = tensor.data.subarray(index * size, (index + 1) * size);
-                  const winner = winningClass(scores, head === "est" || head === "ces" ? 0.99 : 0.95);
+                  const homophone = head === "est" || head === "ou" || head === "ces";
+                  const winner = winningClass(scores, head === "ou" ? 0.84 : homophone ? 0 : 0.95);
                   if (winner === 0) continue;
                   const position = positions[originalIndex];
-                  const word = words.find(candidate => candidate.index === position.start);
+                  const word = words.find(candidate => candidate.index === position.start || homophone && position.start > candidate.index && position.start < candidate.index + candidate[0].length && /['’]/u.test(sentence[0][position.start - 1]));
                   if (!word) continue;
-                  const original = word[0];
+                  const original = sentence[0].slice(position.start, word.index + word[0].length);
                   const replacement = labels[head][winner];
-                  let start = sentence.index + word.index;
+                  let start = sentence.index + position.start;
                   let selectedOriginal = original;
                   let suggestion: string;
                   let message: string;
                   if (head === "est" || head === "ou" || head === "ces") {
                     const normalized = original.toLocaleLowerCase("fr").replace(/’/gu, "'");
                     if (!labels[head].includes(normalized) || normalized === replacement || original === original.toLocaleUpperCase("fr")) continue;
+                    // Ces/ses peut exprimer un choix de référent, pas une faute grammaticale.
+                    if (head === "ces" && /^(ces|ses)$/u.test(normalized) && /^(ces|ses)$/u.test(replacement) || head === "ou" && replacement === "ou") continue;
                     suggestion = preserveCase(original, replacement).replace(/'/gu, original.includes("’") ? "’" : "'");
                     message = "Le contexte suggère une autre graphie. Vérifier cette proposition.";
                   } else {
@@ -96,7 +99,7 @@ function winningClass(scores: Float32Array, threshold: number): number {
   }
   if (!winner) return 0;
   const probability = 1 / scores.reduce((sum, score) => sum + Math.exp(score - scores[winner]), 0);
-  // shortcut: seuils prudents de 95/99 %, à calibrer sur un corpus annoté ; ils ne reproduisent pas les arbitrages natifs.
+  // Les sorties spécialisées n'ont pas toutes la même politique de confiance.
   return probability >= threshold ? winner : 0;
 }
 

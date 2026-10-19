@@ -34,7 +34,7 @@ self.onmessage = (event: MessageEvent<{ id: number; text: string; words?: string
 		corrector ??= loadDictionnaire(readAsset).then(dictionary => new FinitionCorrector(dictionary)).catch((error: unknown) => { corrector = undefined; throw error; });
 		if (phonetics) {
 			const data = JSON.parse(new TextDecoder().decode(await readAsset("phonet_data.json"))) as { lSet?: unknown };
-			return (await corrector).getNeuralAlternatives(data.lSet);
+			return (await corrector).getNeuralAlternatives(data.lSet, Boolean(event.data.specialized));
 		}
 		if (words) return (await corrector).getCategories(words);
 		const masked = maskMarkdown(text);

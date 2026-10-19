@@ -12,7 +12,7 @@ Chaque import valide est copié dans `data/synonymes-<empreinte SHA-256>/data.js
 
 Le pack fusionne [myThes français 2.3](https://github.com/LibreOffice/dictionaries/tree/master/fr_FR/dictionaries), de Frédéric Labbé / Dicollecte, distribué par LibreOffice sous LGPL-2.1-or-later, et [WOLF](https://almanach.inria.fr/software_and_resources/custom/WOLF-en.html), de Benoît Sagot et Darja Fišer, sous CeCILL-C, dans sa [distribution Open Multilingual Wordnet](https://github.com/omwn/omw-data/tree/main/wns/fra). Ce sont des données libres sous conditions de licence ; leurs notices et licences accompagnent le pack. La licence MIT du code du plugin ne remplace pas celles des données.
 
-Les originaux sont conservés dans `ressources/synonymes/sources/`. [SOURCE.json](../ressources/synonymes/SOURCE.json) consigne les URL exactes, révisions, tailles et empreintes SHA-256. Le script vérifie ces empreintes avant chaque conversion. WOLF comporte des relations construites automatiquement : une proposition peut être approximative. Aucun score de qualité ni choix contextuel n’est déduit de la fusion.
+Les originaux sont conservés dans `scripts/synonymes/sources/`. [SOURCE.json](../resources/synonymes/SOURCE.json) consigne les URL exactes, révisions, tailles et empreintes SHA-256. Le script vérifie ces empreintes avant chaque conversion. WOLF comporte des relations construites automatiquement : une proposition peut être approximative. Aucun score de qualité ni choix contextuel n’est déduit de la fusion.
 
 ## JSON version 1
 
@@ -52,16 +52,16 @@ L’interface regroupe les propositions sous un seul titre en gras par catégori
 Depuis la racine du projet, sans dépendance Python supplémentaire :
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python3 helper/prepare-synonyms.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/prepare-synonyms.py
 npm run resources -- /chemin/de/destination
 ```
 
-Le premier script produit `ressources/synonymes/synonymes.json` de manière déterministe et refuse d’écraser un fichier différent. Le second prépare les fichiers de téléchargement et leur catalogue d’intégrité. Seuls le JSON fusionné, sa provenance et les notices/licences sont ajoutés au pack ; les originaux restent accessibles dans le dépôt. Le téléchargement passe par les fichiers joints à la version GitHub du plugin, sur demande dans les réglages, puis fonctionne hors ligne.
+Le premier script produit `resources/synonymes/synonymes.json` de manière déterministe et refuse d’écraser un fichier différent. Le second prépare les fichiers de téléchargement et leur catalogue d’intégrité. Seuls le JSON fusionné, sa provenance et les notices/licences sont ajoutés au pack ; les originaux restent accessibles dans le dépôt. Le téléchargement passe par les fichiers joints à la version GitHub du plugin, sur demande dans les réglages, puis fonctionne hors ligne.
 
 Un export personnel compatible peut être utilisé directement. Le convertisseur accepte aussi les exports locaux `dictionnaire.json` et `synonymes.json` :
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python3 helper/prepare-synonyms.py /chemin/exports /chemin/personnel.json
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/prepare-synonyms.py /chemin/exports /chemin/personnel.json
 ```
 
 Cette conversion conserve les groupes de synonymes identifiés dans ces exports, leurs libellés, leur ordre par entrée et les entrées canoniques disponibles. Si `definitions.json` est présent à côté des exports, les définitions sont reliées par identifiant de mot et de sens. Les marques reconnues deviennent des registres (rare, vieux, vieilli, familier, soutenu, anciennement, droit, sports, québec), en conservant leurs imbrications ; les codes non identifiés apparaissent sous « Autres usages ». Pour les variantes balisées reconnues, la première graphie est retenue, sans concaténer les variantes. Les précisions annexes propres à chaque candidat et les renvois « Plus spécifique » ou « Ensemble » ne sont pas convertis en synonymes remplaçables. Les groupes d’antonymes identifiés restent exclus ; les catégories grammaticales privées non décodées ne sont pas inventées. La mention `unspecified` dans un fichier personnel n’accorde aucun droit de redistribution. Les données personnelles restent séparées du pack public.

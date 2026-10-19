@@ -1,6 +1,8 @@
 import { Lexicon, wordKey } from "./lexicon";
 import type { Lexeme } from "./lexicon";
 import { buildNeuralAlternatives } from "./confusions";
+import { analyzeSyntax, infinitiveCoordinations, nominalParents } from "./syntax";
+import type { SyntaxToken } from "./syntax";
 
 export interface Correction {
   nStart: number;
@@ -13,7 +15,7 @@ export interface Correction {
   sOriginal: string;
 }
 
-type Token = { text: string; start: number; end: number; analyses: readonly Lexeme[] };
+type Token = SyntaxToken;
 const determiners: Record<string, [string, string]> = {
   le: ["m", "s"], la: ["f", "s"], les: ["", "p"], un: ["m", "s"], une: ["f", "s"], des: ["", "p"],
   ce: ["m", "s"], cet: ["m", "s"], cette: ["f", "s"], ces: ["", "p"],
@@ -21,6 +23,8 @@ const determiners: Record<string, [string, string]> = {
   son: ["", "s"], sa: ["f", "s"], ses: ["", "p"], notre: ["", "s"], nos: ["", "p"], votre: ["", "s"], vos: ["", "p"], leur: ["", "s"], leurs: ["", "p"],
 };
 const persons: Record<string, string> = { je: "1s", tu: "2s", il: "3s", elle: "3s", on: "3s", nous: "1p", vous: "2p", ils: "3p", elles: "3p" };
+const quantities = new Set(["dizaine", "douzaine", "quinzaine", "vingtaine", "trentaine", "quarantaine", "cinquantaine", "soixantaine", "centaine", "millier", "million", "milliard", "billion", "billiard", "trillion"]);
+const degrees = new Set(["plus", "moins", "aussi", "très", "trop", "assez", "si", "bien", "vraiment", "beaucoup", "peu"]);
 const hasCategory = (token: Token | undefined, category: string): boolean => Boolean(token?.analyses.some(item => item.category === category) && (!["nom", "adjectif"].includes(category) || !token.analyses.some(item => item.category === "préposition" || item.category === "conjonction")));
 export const preserveCase = (source: string, replacement: string): string => source === source.toLocaleUpperCase("fr") ? replacement.toLocaleUpperCase("fr") : /^\p{Lu}/u.test(source) ? replacement[0].toLocaleUpperCase("fr") + replacement.slice(1) : replacement;
 
@@ -57,8 +61,8 @@ export class FinitionCorrector {
     return this.lexicon.lookup(head).filter(item => item.category === "verbe" && item.inflection.split(";").some(tag => tag.startsWith("imp:")));
   }
 
-  getNeuralAlternatives(groups: unknown): Record<string, string[]> {
-    return buildNeuralAlternatives(groups, word => this.lexicon.lookup(word));
+  getNeuralAlternatives(groups: unknown, specialized = true): Record<string, string[]> {
+    return buildNeuralAlternatives(groups, word => this.lexicon.lookup(word), specialized);
   }
 
   async parse(text: string): Promise<Correction[]> {
@@ -128,13 +132,7 @@ export class FinitionCorrector {
           const expectedGender = gender || (nounGenders.length === 1 ? nounGenders[0] : "");
           const target = adjective ?? (hasCategory(tokens[i + 2], "adjectif") && /^\s+$/u.test(text.slice(noun.end, tokens[i + 2].start)) ? tokens[i + 2] : undefined);
           if (target && !target.analyses.some(item => item.category === "adjectif" && agrees(item, expectedGender, number))) {
-            // shortcut: rattachement local ; utiliser les dépendances syntaxiques pour les compléments imbriqués.
-            const previous = tokens[i - 1];
-            const elided = previous && /^\s+d['’]$/iu.test(text.slice(previous.end, token.start));
-            const contracted = key === "des" && previous && /^\s+$/u.test(text.slice(previous.end, token.start));
-            const preposition = previous && hasCategory(previous, "préposition") && tokens[i - 2] && /^\s+$/u.test(text.slice(tokens[i - 2].end, previous.start)) && /^\s+$/u.test(text.slice(previous.end, token.start));
-            const parent = elided || contracted ? previous : preposition ? tokens[i - 2] : undefined;
-            const parentAgrees = !adjective && hasCategory(parent, "nom") && parent?.analyses.some(item => item.category === "nom" && item.gender && item.number && target.analyses.some(form => form.category === "adjectif" && agrees(form, item.gender, item.number)));
+            const parentAgrees = !adjective && nominalParents(text, tokens, i + 1).some(parent => parent.analyses.some(item => item.category === "nom" && item.gender && item.number && target.analyses.some(form => form.category === "adjectif" && agrees(form, item.gender, item.number))));
             if (!parentAgrees) {
               const forms = alternatives(target, "adjectif", expectedGender, number);
               if (forms.length) add(target, "accord.nom-adjectif", "Vérifier l’accord de l’adjectif.", forms);
@@ -151,6 +149,49 @@ export class FinitionCorrector {
           if (forms.length) add(next, "accord.sujet-verbe", "Vérifier l’accord du verbe avec le pronom sujet.", forms);
         }
       }
+    }
+    const quantity = (token: Token | undefined) => Boolean(token?.analyses.some(item => item.category === "nom" && quantities.has(item.lemma)));
+    const agrees = (form: Lexeme, donor: Lexeme) => (!donor.gender || !form.gender || donor.gender === form.gender) && (!donor.number || !form.number || donor.number === form.number);
+    for (let i = 0; i < tokens.length; i++) {
+      const noun = tokens[i], previous = tokens[i - 1];
+      const nouns = hasCategory(noun, "nom") && !hasCategory(noun, "déterminant") && !degrees.has(wordKey(noun.text)) ? noun.analyses.filter(item => item.category === "nom") : [];
+      if (!nouns.length) continue;
+      const gap = previous ? text.slice(previous.end, noun.start) : "";
+      const de = previous && wordKey(previous.text) === "de" && /^\s+$/u.test(gap);
+      const governedQuantity = de && i > 1 && /^\s+$/u.test(text.slice(tokens[i - 2].end, previous.start)) ? tokens[i - 2] : /^\s+d['’]$/iu.test(gap) ? previous : undefined;
+      const bareQuantity = de && quantity(noun) && wordKey(tokens[i + 1]?.text ?? "") === "de" && /^\s+$/u.test(text.slice(noun.end, tokens[i + 1].start));
+      if ((quantity(governedQuantity) || bareQuantity) && !nouns.some(item => !item.number || item.number === "p")) {
+        const forms = nouns.flatMap(item => this.lexicon.forms(item.lemma).filter(form => form.category === "nom" && form.number === "p").map(form => form.form));
+        if (forms.length) add(noun, "accord.quantite", "Vérifier le pluriel dans cette expression de quantité.", forms);
+      }
+      if (results.some(error => error.nStart === noun.start && error.sRuleId.startsWith("accord."))) continue;
+      let next = i + 1;
+      while (tokens[next] && degrees.has(wordKey(tokens[next].text)) && /^\s+$/u.test(text.slice(tokens[next - 1].end, tokens[next].start))) next++;
+      const target = tokens[next];
+      if (!target || !hasCategory(target, "adjectif") || target.analyses.some(item => item.category === "verbe" && /(?:^|;)(?:ind|sub|cond):/u.test(item.inflection)) || !/^\s+$/u.test(text.slice(tokens[next - 1].end, target.start)) || results.some(error => error.nStart === target.start && error.sRuleId === "accord.nom-adjectif")) continue;
+      const donors = [noun, ...nominalParents(text, tokens, i)].flatMap(token => token.analyses.filter(item => item.category === "nom"));
+      if (target.analyses.some(item => item.category === "adjectif" && donors.some(donor => agrees(item, donor)))) continue;
+      const forms = target.analyses.filter(item => item.category === "adjectif").flatMap(item => this.lexicon.forms(item.lemma).filter(form => form.category === "adjectif" && nouns.some(donor => agrees(form, donor))).map(form => form.form));
+      if (forms.length) add(target, "accord.adjectif", "Vérifier l’accord de l’adjectif avec le nom, même après un adverbe.", forms);
+    }
+    for (const relation of infinitiveCoordinations(text, tokens)) {
+      const forms = relation.dependent.analyses.filter(item => item.category === "verbe").flatMap(item => this.lexicon.forms(item.lemma).filter(form => form.category === "verbe" && form.inflection.split(";").includes("inf")).map(form => form.form));
+      if (forms.length) add(relation.dependent, "verbe.infinitif-coordonne", "Un infinitif est attendu comme dans le groupe verbal coordonné.", forms);
+    }
+    for (const sentence of analyzeSyntax(text, tokens)) {
+      for (const relation of sentence.dependencies) {
+        const [left, right] = relation.boundary;
+        const gap = text.slice(left.end, right.start);
+        const comma = /^[ \t\u00a0\u202f]*,(?=[ \t\u00a0\u202f]+(?:d['’])?$)/u.exec(gap);
+        if (!comma) continue;
+        const rule = relation.role === "infinitif" ? "complement-infinitif" : relation.role === "sujet" ? "sujet-verbe" : "verbe-complement";
+        add({ ...left, end: left.end + comma[0].length, text: text.slice(left.start, left.end + comma[0].length) }, "ponctuation." + rule, relation.role === "sujet" ? "Cette virgule semble séparer le sujet de son verbe." : "Cette virgule semble séparer le verbe de son complément.", [left.text]);
+      }
+      if (!sentence.interrogative) continue;
+      const ending = /[ \t\u00a0\u202f]*\.(?=[ \t\u00a0\u202f]*[»”"]*[ \t\u00a0\u202f]*$)/u.exec(text.slice(sentence.start, sentence.end));
+      if (!ending || text[sentence.start + ending.index - 1] === ".") continue;
+      const start = sentence.start + ending.index;
+      add({ text: ending[0], start, end: start + ending[0].length, analyses: [] }, "ponctuation.interrogation", "Cette interrogation directe semble appeler un point d’interrogation.", ["\u00a0?"]);
     }
     return results.sort((a, b) => a.nStart - b.nStart || a.nEnd - b.nEnd || a.sRuleId.localeCompare(b.sRuleId));
   }

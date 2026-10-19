@@ -6,7 +6,7 @@ Après **Synonymes**, chaque section de dictionnaire propose son propre sélecte
 
 Sélectionner un seul mot, puis utiliser **Définitions**, **Antonymes**, **Phonétique** ou **Rimes** dans le menu ♫ ou la palette de commandes. Sans sélection valable, un message demande de sélectionner un mot. Sans dictionnaire sélectionné et disponible, la commande du menu est grisée. Les définitions et transcriptions sont consultables et copiables ; les antonymes et rimes peuvent remplacer le mot sélectionné. La sélection reste active après remplacement ou fermeture de la fenêtre. L’affichage est construit en HTML natif, sans interprétation Markdown ou HTML des données.
 
-L’import valide le JSON et crée une copie identique dans `data/dictionnaires-<kind>-<empreinte SHA-256>/data.json` à la racine du plugin. Les packs publics téléchargés sont conservés dans `resources/<kind>/<empreinte>/`, séparément. Le nom et le choix actif sont mémorisés pour chaque section ; le chemin vide désigne Finition lorsqu’il est installé. Réimporter un fichier identique ne crée pas de doublon. **Effacer**, après confirmation, retire uniquement la copie personnelle et son entrée dans les réglages ; la source reste intacte. Finition devient actif s’il est disponible, sinon un autre dictionnaire de la même section. Les fichiers absents restent indisponibles et les imports invalides conservent le choix précédent. Aucune donnée privée n’est téléchargée, publiée ni intégrée à la compilation du plugin.
+L’import valide le JSON et crée une copie identique dans `data/dictionnaires-<kind>-<empreinte SHA-256>/data.json` à la racine du plugin. Les packs publics téléchargés sont conservés dans `data/resources/<kind>/<empreinte>/`, séparément. Le nom et le choix actif sont mémorisés pour chaque section ; le chemin vide désigne Finition lorsqu’il est installé. Réimporter un fichier identique ne crée pas de doublon. **Effacer**, après confirmation, retire uniquement la copie personnelle et son entrée dans les réglages ; la source reste intacte. Finition devient actif s’il est disponible, sinon un autre dictionnaire de la même section. Les fichiers absents restent indisponibles et les imports invalides conservent le choix précédent. Aucune donnée privée n’est téléchargée, publiée ni intégrée à la compilation du plugin.
 
 ## Sources publiques
 
@@ -17,12 +17,12 @@ Ce snapshot contient 386 711 entrées de définitions françaises, 12 146 entré
 Pour reproduire les packs depuis la racine, avec le dump épinglé et le texte officiel de la licence déjà téléchargés :
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python3 helper/prepare-public-dictionaries.py /chemin/raw-wiktextract-data.jsonl.gz /chemin/CC-BY-SA-4.0.txt
-PYTHONDONTWRITEBYTECODE=1 python3 helper/check-public-dictionaries.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/prepare-public-dictionaries.py /chemin/raw-wiktextract-data.jsonl.gz /chemin/CC-BY-SA-4.0.txt
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/check-public-dictionaries.py
 npm run resources -- /chemin/de/destination
 ```
 
-Le convertisseur vérifie l’empreinte du dump avant lecture et refuse d’écraser un fichier différent. L’URL Kaikki fournit un dump régulièrement renouvelé ; un nouveau snapshot exige une mise à jour explicite de sa provenance et de l’empreinte attendue. Les sorties sont `ressources/definitions/definitions.json`, `ressources/antonymes/antonymes.json`, `ressources/phonetique/phonetique.json` et `ressources/rimes/rimes.json`. Elles sont jointes séparément à la release par `release.sh` ; aucun code ou runtime n’est téléchargé.
+Le convertisseur vérifie l’empreinte du dump avant lecture et refuse d’écraser un fichier différent. L’URL Kaikki fournit un dump régulièrement renouvelé ; un nouveau snapshot exige une mise à jour explicite de sa provenance et de l’empreinte attendue. Les sorties sont `resources/definitions/definitions.json`, `resources/antonymes/antonymes.json`, `resources/phonetique/phonetique.json` et `resources/rimes/rimes.json`. Elles sont jointes séparément à la release par `release.sh` ; aucun code ou runtime n’est téléchargé.
 
 ## Format JSON version 1
 
@@ -57,6 +57,6 @@ Le champ facultatif `encoding: "phonetic-internal"` indique une notation phonét
 
 ## Conversion privée
 
-`PYTHONDONTWRITEBYTECODE=1 python3 helper/prepare-private-dictionaries.py` convertit les exports JSON locaux conservés dans le dossier privé ignoré par Git, sans exécuter ni modifier l’application source. Les sorties `finition-definitions.json`, `finition-antonymes.json`, `finition-phonetique.json` et `finition-rimes.json` restent dans ce même dossier privé ; elles s’importent depuis leur section respective. Un fichier existant différent n’est jamais écrasé.
+`PYTHONDONTWRITEBYTECODE=1 python3 scripts/prepare-private-dictionaries.py` convertit les exports JSON locaux conservés dans le dossier privé ignoré par Git, sans exécuter ni modifier l’application source. Les sorties `finition-definitions.json`, `finition-antonymes.json`, `finition-phonetique.json` et `finition-rimes.json` restent dans ce même dossier privé ; elles s’importent depuis leur section respective. Un fichier existant différent n’est jamais écrasé.
 
 Les définitions conservent leurs textes, exemples et titres de section disponibles ; les antonymes conservent leurs groupes de sens. Les codes grammaticaux et régionaux non identifiés ne sont pas interprétés. Les transcriptions retenues correspondent aux graphies canoniques selon les correspondances morphologiques observées ; les cas sans correspondance sûre sont exclus. La conversion conserve la notation interne, sans conversion supposée vers l’API. Les exports bruts restent disponibles pour reprendre ces limites ultérieurement.

@@ -33,7 +33,7 @@ export class NeuralModels {
 	get options(): Array<SynonymMetadata & { id: string }> { return [...this.packs].map(([id, pack]) => ({ id, name: pack.name, description: pack.description, documentation: pack.documentation })); }
 	async refresh(): Promise<void> {
 		const roots = ["Antidote/model"];
-		for (const directory of ["helper/neural/models", "neural/models", "Antidote/models"]) {
+		for (const directory of ["scripts/neural/models", "helper/neural/models", "neural/models", "Antidote/models"]) {
 			try {
 				const root = `${this.directory}/${directory}`;
 				const { folders } = await this.adapter.list(root);
@@ -76,7 +76,7 @@ export class NeuralModels {
 		return id;
 	}
 	async remove(id: string): Promise<void> {
-		if (!this.packs.has(id) || !(id === "Antidote/model" || /^(?:helper\/neural|neural|Antidote)\/models\/[a-zA-Z0-9_-]+$/u.test(id))) throw new Error("Sélectionne un modèle installé à effacer.");
+		if (!this.packs.has(id) || !(id === "Antidote/model" || /^(?:(?:scripts|helper)\/neural|neural|Antidote)\/models\/[a-zA-Z0-9_-]+$/u.test(id))) throw new Error("Sélectionne un modèle installé à effacer.");
 		await this.adapter.rmdir(`${this.directory}/${id}`, true);
 		await this.refresh();
 	}

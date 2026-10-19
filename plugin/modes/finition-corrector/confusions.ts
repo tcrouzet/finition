@@ -4,7 +4,7 @@ const grammar = ["a à", "son sont", "on ont", "sa ça", "ce se"];
 const delegated = new Set("et est ou où ces ses".split(" "));
 const closed = new Set(["préposition", "conjonction", "déterminant", "pronom", "adverbe"]);
 
-export function buildNeuralAlternatives(groups: unknown, lookup: (word: string) => readonly Lexeme[]): Record<string, string[]> {
+export function buildNeuralAlternatives(groups: unknown, lookup: (word: string) => readonly Lexeme[], specialized = true): Record<string, string[]> {
   if (!Array.isArray(groups) || groups.some(group => !Array.isArray(group) || group.some(word => typeof word !== "string"))) throw new Error("Données phonétiques invalides.");
   const alternatives = new Map<string, Set<string>>();
   const content = (item: Lexeme) => item.category === "nom" || item.category === "adjectif";
@@ -29,8 +29,8 @@ export function buildNeuralAlternatives(groups: unknown, lookup: (word: string) 
       alternatives.set(word, values);
     }
   }
-  // Les trois autres familles grammaticales sont traitées par le modèle spécialisé.
-  for (const pair of grammar) {
+  // Sans complément spécialisé, les homophones restent confiés au modèle lexical.
+  for (const pair of specialized ? grammar : [...grammar, "et est", "ou où"]) {
     const words = pair.split(" ");
     for (const word of words) alternatives.set(word, new Set([...(alternatives.get(word) ?? []), ...words]));
   }

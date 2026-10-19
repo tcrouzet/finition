@@ -23,22 +23,27 @@ export async function createNeuralCorrector(readAsset: ReadNeuralAsset) {
         const errors: Correction[] = [];
         for (const sentence of paragraph[0].matchAll(/[^.!?;]+(?:[.!?;]|$)/gu)) {
           const tokens = [...sentence[0].matchAll(/\p{L}[\p{L}\p{M}]*(?:[-'’][\p{L}\p{M}]+)*/gu)];
-          if (tokens.length < 4) continue;
+          if (tokens.length < 2) continue;
           for (let i = 0; i < tokens.length; i++) {
             const token = tokens[i];
-            const original = token[0].toLocaleLowerCase("fr");
+            const prefix = /^(?:[cdjlmnst]|qu|jusqu|lorsqu|puisqu|quoiqu)['’]/iu.exec(token[0])?.[0].length ?? 0;
+            const word = token[0].slice(prefix);
+            const start = token.index + prefix;
+            const original = word.toLocaleLowerCase("fr");
             const group = alternatives.get(original);
-            if (!group || token[0] === token[0].toLocaleUpperCase("fr")) continue;
+            if (!group || word === word.toLocaleUpperCase("fr")) continue;
             const from = tokens[Math.max(0, i - 12)].index;
             const last = tokens[Math.min(tokens.length - 1, i + 12)];
             const to = last.index + last[0].length;
-            const context = sentence[0].slice(from, token.index) + "<mask>" + sentence[0].slice(token.index + token[0].length, to);
+            const context = sentence[0].slice(from, start) + "<mask>" + sentence[0].slice(token.index + token[0].length, to);
             const ids = tokenizer.encode(context).ids;
             if (ids.length > 128 || ids.filter(id => id === maskId).length !== 1) continue;
-            const candidates = group.map(word => ({ word, ids: tokenizer.encode(preserveCase(token[0], word), { add_special_tokens: false }).ids })).filter(candidate => candidate.ids.length === 1);
+            const mask = ids.indexOf(maskId);
+            // Après une élision, l'identifiant diffère souvent de celui du mot isolé.
+            const candidates = group.map(candidate => ({ word: candidate, ids: tokenizer.encode(context.replace("<mask>", preserveCase(word, candidate))).ids })).filter(candidate => candidate.ids.length === ids.length && candidate.ids.every((id, index) => index === mask || id === ids[index]));
             const originalIndex = candidates.findIndex(candidate => candidate.word === original);
             if (originalIndex < 0 || candidates.length < 2) continue;
-            jobs.push({ context, length: ids.length, errors, word: token[0], start: sentence.index + token.index, original: originalIndex, words: candidates.map(candidate => candidate.word), ids: candidates.map(candidate => candidate.ids[0]) });
+            jobs.push({ context, length: ids.length, errors, word, start: sentence.index + start, original: originalIndex, words: candidates.map(candidate => candidate.word), ids: candidates.map(candidate => candidate.ids[mask]) });
           }
         }
         local = errors;

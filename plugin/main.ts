@@ -66,7 +66,7 @@ import syntaxHingesData from "./data/syntax-hinges.json";
 
 const analysisModes: Array<{ mode: FinitionMode; name: string; icon: string }> = [
 	{ mode: "repetition", name: "Répétitions", icon: "repeat" },
-	{ mode: "hedging", name: "Atténuation", icon: "shield-question" },
+	{ mode: "hedging", name: "Atténuations", icon: "shield-question" },
 	{ mode: "stereotype", name: "Stéréotypes", icon: "sparkles" },
 	{ mode: "burstiness", name: "Monotonie", icon: "activity" },
 	{ mode: "ternary", name: "Tricolons", icon: "git-branch" },
@@ -465,11 +465,27 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	private showModeMenu(evt: MouseEvent): void {
 		const menu = new Menu();
 
-		for (const { mode, name, icon } of analysisModes) menu.addItem(item => item
-			.setTitle(name).setIcon(icon)
-			.setDisabled(mode === "ternary" && !this.hasAnalysisResources)
-			.setChecked(this.settings.mode === mode)
-			.onClick(() => this.setMode(mode)));
+		menu.addItem(item => {
+			item.setTitle("Surlignages").setIcon("highlighter");
+			const submenu = (item as typeof item & { setSubmenu(): Menu }).setSubmenu();
+			for (const { mode, name, icon } of analysisModes) submenu.addItem(item => item
+				.setTitle(name).setIcon(icon)
+				.setDisabled(mode === "ternary" && !this.hasAnalysisResources)
+				.setChecked(this.settings.mode === mode)
+				.onClick(() => this.setMode(mode)));
+		});
+
+		menu.addItem(item => {
+			item.setTitle("Dictionnaires").setIcon("book-open");
+			const submenu = (item as typeof item & { setSubmenu(): Menu }).setSubmenu();
+			submenu.addItem(item => item.setTitle("Synonyme").setIcon("book-open")
+				.setDisabled(!this.hasSynonyms)
+				.onClick(() => this.runSynonymsLocal()));
+			submenu.addItem(item => item.setTitle("Synonymes IA").setIcon("book-open")
+				.onClick(() => runSynonyms(this.app, this.settings)));
+			for (const kind of dictionaryKinds) submenu.addItem(item => item.setTitle(dictionaryLabels[kind]).setIcon("book-open")
+				.setDisabled(!this.wordDictionaries?.has(kind)).onClick(() => this.runWordDictionary(kind)));
+		});
 
 		menu.addSeparator();
 
@@ -490,17 +506,6 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				.setChecked(this.aiGroups.length > 0)
 				.onClick(() => this.toggleOrthoTypoIA())
 		);
-		menu.addSeparator();
-
-		menu.addItem(item => item.setTitle("Synonyme").setIcon("book-open")
-			.setDisabled(!this.hasSynonyms)
-			.onClick(() => this.runSynonymsLocal()));
-		menu.addItem((item) =>
-			item.setTitle("Synonymes IA").setIcon("book-open").onClick(() => runSynonyms(this.app, this.settings))
-		);
-		for (const kind of dictionaryKinds) menu.addItem(item => item.setTitle(dictionaryLabels[kind]).setIcon("book-open")
-			.setDisabled(!this.wordDictionaries?.has(kind)).onClick(() => this.runWordDictionary(kind)));
-
 		menu.addItem((item) =>
 			item
 				.setTitle("Ponctuations")
@@ -936,6 +941,11 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		await this.linguisticResources.refresh(this.settings.resourcePacks);
 		this.neuralModels ??= new NeuralModels(this.app.vault.adapter, this.manifest.dir);
 		await this.neuralModels.refresh();
+		const renamedModel = this.settings.neuralModel.replace(/^helper\/neural\/models\//u, "scripts/neural/models/");
+		if (renamedModel !== this.settings.neuralModel && !this.neuralModels.options.some(model => model.id === this.settings.neuralModel) && this.neuralModels.options.some(model => model.id === renamedModel)) {
+			this.settings.neuralModel = renamedModel;
+			await this.saveSettings();
+		}
 		if (this.settings.synonymDictionaryPath && !this.settings.synonymDictionaries.some(entry => entry.path === this.settings.synonymDictionaryPath)) {
 			try {
 				await this.setSynonymDictionaryPath(this.settings.synonymDictionaryPath);

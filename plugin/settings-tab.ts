@@ -12,7 +12,7 @@ import { dictionaryDocumentation, dictionaryLabels, publicDictionaryMetadata, ty
 type ColorFunctionKey = "hedgingColorIndex" | "stereotypeColorIndex" | "hingeColorIndex" | "grammalecteColorIndex";
 
 const COLOR_FUNCTIONS: Array<{ key: ColorFunctionKey; label: string }> = [
-	{ key: "hedgingColorIndex", label: "Atténuation" },
+	{ key: "hedgingColorIndex", label: "Atténuations" },
 	{ key: "stereotypeColorIndex", label: "Stéréotypes" },
 	{ key: "hingeColorIndex", label: "Charnières" },
 	{ key: "grammalecteColorIndex", label: "Orthographe" },

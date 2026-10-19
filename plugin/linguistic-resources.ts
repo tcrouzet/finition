@@ -26,7 +26,7 @@ export class LinguisticResources {
 	available(engine: ResourcePack): boolean { return this.installed.has(engine); }
 	private root(engine: ResourcePack, revision: string): string {
 		if (!/^[a-f0-9]{64}$/.test(revision)) throw new Error("Version de ressources invalide.");
-		return `${this.directory}/resources/${engine}/${revision}`;
+		return `${this.directory}/data/resources/${engine}/${revision}`;
 	}
 	async refresh(revisions: Partial<Record<ResourcePack, string>>): Promise<void> {
 		const installed = new Map<ResourcePack, string>();
@@ -40,14 +40,15 @@ export class LinguisticResources {
 				if (local.every(Boolean)) installed.set(engine, "local");
 				continue;
 			}
-			try {
-				const root = this.root(engine, revision);
-				const raw = await this.adapter.readBinary(`${root}/resources.json`);
-				if (await resourceHash(raw) !== revision) continue;
-				const manifest = parseResourceManifest(new TextDecoder().decode(raw), engine);
-				const complete = await Promise.all(manifest.files.map(async file => (await this.adapter.stat(`${root}/${file.path}`))?.size === file.bytes));
-				if (complete.every(Boolean)) installed.set(engine, root);
-			} catch { /* Une installation absente ou incomplète reste désactivée. */ }
+			for (const root of [this.root(engine, revision), `${this.directory}/resources/${engine}/${revision}`]) {
+				try {
+					const raw = await this.adapter.readBinary(`${root}/resources.json`);
+					if (await resourceHash(raw) !== revision) continue;
+					const manifest = parseResourceManifest(new TextDecoder().decode(raw), engine);
+					const complete = await Promise.all(manifest.files.map(async file => (await this.adapter.stat(`${root}/${file.path}`))?.size === file.bytes));
+					if (complete.every(Boolean)) { installed.set(engine, root); break; }
+				} catch { /* Une installation absente ou incomplète reste désactivée. */ }
+			}
 		}
 		this.installed = installed;
 	}
