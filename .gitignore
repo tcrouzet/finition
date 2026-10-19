@@ -27,3 +27,6 @@ AGENTS.md
 submit.sh
 temp
 /Antidote/
+
+# Installed linguistic data and local caches
+/data/
