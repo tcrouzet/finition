@@ -213,5 +213,47 @@ export async function checkSynonyms(setHandler: (handler: (request: Request) => 
 	view.dispatch({ selection: { anchor: 0 } });
 	await runSynonyms(app, settings);
 	check(requests.length === calls, "Appel sans sélection");
+	reset();
+	settings.localAIServer = "http://localhost:11434/v1/";
+	settings.localAIModel = "modele-local:test";
+	settings.aiModel = "claude-test";
+	settings.openaiApiKey = "test-openai";
+	setHandler(request => {
+		equal(request.url, "http://localhost:11434/v1/chat/completions", "Serveur local prioritaire");
+		check(!("Authorization" in request.headers) && !("x-api-key" in request.headers), "Une clé cloud est envoyée au serveur local");
+		equal(JSON.parse(request.body), { model: "modele-local:test", max_tokens: 1234, stream: false,
+			messages: [{ role: "system", content: prompt }, { role: "user", content: synonymContext(text, from, to) }],
+		}, "Requête locale avec contexte et consignes inchangés");
+		return { status: 200, json: { choices: [{ message: { content: "- vif\n- véloce" } }] } };
+	});
+	await runSynonyms(app, settings);
+	equal(document.querySelectorAll(".finition-synonyms li").length, 2, "Synonymes locaux absents");
+	document.querySelector<HTMLButtonElement>(".finition-synonym-replace")!.click();
+	equal(editor.getValue(), text.replace("rapide", "vif"), "Remplacement par un synonyme local");
+	reset();
+	settings.aiApiKey = settings.openaiApiKey = "";
+	await runSynonyms(app, settings);
+	check(document.querySelector(".finition-synonyms"), "Le serveur local exige une clé cloud");
+	modals.at(-1)!.close();
+	const localCalls = requests.length;
+	settings.localAIModel = "";
+	await runSynonyms(app, settings);
+	check(requests.length === localCalls && notices.at(-1)?.includes("Modèle local"), "Un modèle local absent déclenche une requête");
+	settings.localAIModel = "modele-local:test";
+	setHandler(request => {
+		equal(request.url, "http://localhost:11434/v1/chat/completions", "Une panne locale déclenche un repli cloud");
+		throw new Error("Connexion locale refusée");
+	});
+	await runSynonyms(app, settings);
+	check(requests.length === localCalls + 1 && notices.at(-1)?.includes("Connexion locale refusée") && !document.querySelector(".finition-synonyms"), "La panne locale est masquée ou ouvre une liste");
+	settings.localAIServer = "";
+	settings.aiApiKey = "test-anthropic";
+	setHandler(request => {
+		equal(request.url, "https://api.anthropic.com/v1/messages", "Le champ Serveur local vide ne rétablit pas Claude");
+		return { status: 200, json: { content: [{ type: "text", text: "- prompt" }] } };
+	});
+	await runSynonyms(app, settings);
+	check(document.querySelector(".finition-synonyms"), "Les synonymes cloud ne fonctionnent plus après le mode local");
+	modals.at(-1)!.close();
 	view.destroy();
 }

@@ -1,6 +1,8 @@
 import * as assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
+import { createServer } from "node:http";
 import { Buffer } from "node:buffer";
 import * as vm from "node:vm";
 import * as process from "node:process";
@@ -26,7 +28,7 @@ async function main() {
 		bundle: true, platform: "node", format: "cjs", write: false, loader: { ".md": "text" }, external: ["obsidian"], plugins: [rawAssets],
 	});
 	const notices: string[] = [];
-	let requestHandler: (request: { url: string; body: string }) => unknown = () => { throw new Error("Appel API inattendu"); };
+	let requestHandler: (request: { url: string; body: string; headers: Record<string, string> }) => unknown = () => { throw new Error("Appel API inattendu"); };
 	class Notice {
 		constructor(message: string) { notices.push(message); }
 		setMessage(message: string) { notices.push(message); }
@@ -35,6 +37,7 @@ async function main() {
 	const menuTitles: string[] = [];
 	const menuDisabled = new Map<string, boolean>();
 	const menuParents = new Map<string, string>();
+	const menuActions = new Map<string, () => void | Promise<void>>();
 	class Plugin {
 		app = { workspace: { getActiveViewOfType: () => null } };
 		saved: Partial<FinitionSettings> | null = null;
@@ -49,7 +52,7 @@ async function main() {
 			const item = {
 				setTitle(value: string) { title = value; menuTitles.push(value); menuParents.set(value, parent); return this; },
 				setSubmenu() { return new Menu(title); },
-				setIcon() { return this; }, setChecked() { return this; }, setDisabled(value: boolean) { menuDisabled.set(menuTitles[menuTitles.length - 1], value); return this; }, onClick() { return this; },
+				setIcon() { return this; }, setChecked() { return this; }, setDisabled(value: boolean) { menuDisabled.set(menuTitles[menuTitles.length - 1], value); return this; }, onClick(callback: () => void | Promise<void>) { menuActions.set(title, callback); return this; },
 			};
 			callback(item);
 		}
@@ -57,12 +60,13 @@ async function main() {
 		showAtMouseEvent() {}
 	}
 	const module = { exports: {} };
-	const sandbox = vm.createContext({ module, exports: module.exports, Buffer, TextEncoder, TextDecoder, CompressionStream, Response, Blob, Date: class extends Date { constructor() { super("2026-10-19T12:34:56"); } }, require: (name: string) => {
+	const sandbox = vm.createContext({ module, exports: module.exports, Buffer, TextEncoder, TextDecoder, CompressionStream, Response, Blob, URL, setTimeout, clearTimeout, Date: class extends Date { constructor() { super("2026-10-19T12:34:56"); } }, require: (name: string) => {
 		assert.equal(name, "obsidian");
-		return { Plugin, PluginSettingTab: class {}, Modal: class {}, Component: class {}, Menu, Notice, setIcon() {}, requestUrl: (request: { url: string; body: string }) => requestHandler(request) };
+		return { Plugin, PluginSettingTab: class {}, Modal: class {}, Component: class {}, Menu, Notice, setIcon() {}, requestUrl: (request: { url: string; body: string; headers: Record<string, string> }) => requestHandler(request) };
 	} });
+	sandbox.window = sandbox;
 	vm.runInContext(modules.outputFiles[0].text, sandbox);
-	sandbox.document = { body: { classList: { toggle() {} } } };
+	sandbox.document = { body: { classList: { toggle() {} }, style: { setProperty() {} } } };
 	const api = module.exports as {
 		gzipData: Uint8Array;
 		buildStatisticsReport: typeof import("../plugin/modes/statistics").buildStatisticsReport;
@@ -90,6 +94,7 @@ async function main() {
 		FinitionPlugin: new () => Plugin & {
 			settings: FinitionSettings;
 			aiGroups: DiffGroup[];
+			grammalecteErrors: import("../plugin/modes/grammalecte").GrammalecteError[];
 			loadSettings: () => Promise<void>;
 			showModeMenu: (event: unknown) => void;
 			runStructureReport: () => Promise<void>;
@@ -111,7 +116,7 @@ async function main() {
 	assert.ok(menuTitles.includes("Tricolons") && !menuTitles.includes("Structure"));
 	assert.equal(menuDisabled.get("Tricolons"), true);
 	assert.ok(menuTitles.includes("Synonymes IA"));
-	assert.deepEqual(menuTitles.filter(title => !menuParents.get(title)), ["Surlignages", "Dictionnaires", "Grammalecte", "Neuronal", "Corrections IA", "Ponctuations", "Paramètres"]);
+	assert.deepEqual(menuTitles.filter(title => !menuParents.get(title)), ["Surlignages", "Dictionnaires", "Grammalecte", "Neuronal", "Corrections IA", "Ponctuations", "Paramètres", "Reset"]);
 	assert.ok(!menuTitles.includes("Statistiques"));
 	assert.deepEqual(menuTitles.filter(title => menuParents.get(title) === "Surlignages"), ["Répétitions", "Atténuations", "Stéréotypes", "Monotonie", "Tricolons", "Cadence", "Charnières"]);
 	assert.deepEqual(menuTitles.filter(title => menuParents.get(title) === "Dictionnaires"), ["Synonyme", "Synonymes IA", "Définitions", "Antonymes", "Phonétique", "Rimes"]);
@@ -211,15 +216,59 @@ async function main() {
 		["40Mo, 3,5kg, 20 km/h, 10 m², 5 kWh, 2 µg, 25 °C.", "40\u00a0Mo, 3,5\u00a0kg, 20\u00a0km/h, 10\u00a0m², 5\u00a0kWh, 2\u00a0µg, 25\u00a0°C."],
 		["Il avance – à son rythme.", "Il avance –\u00a0à son rythme."],
 		["Il avance –à son rythme – puis s’arrête.", "Il avance –\u00a0à son rythme\u00a0– puis s’arrête."],
+		["Il avance — doucement — puis repart.", "Il avance –\u00a0doucement\u00a0– puis repart."],
+		["Il avance—doucement—puis repart.", "Il avance –\u00a0doucement\u00a0– puis repart."],
+		["Il avance – doucement. Il recule – lentement – puis repart.", "Il avance –\u00a0doucement. Il recule –\u00a0lentement\u00a0– puis repart."],
+		["Il avance — doucement —. Il recule – lentement – .", "Il avance –\u00a0doucement. Il recule –\u00a0lentement."],
+		["– Il avance — doucement — puis repart.\n— Il recule – lentement.", "—\u00a0Il avance –\u00a0doucement\u00a0– puis repart.\n—\u00a0Il recule –\u00a0lentement."],
+		["Il avance – doucement\n— Il recule – lentement – puis repart.", "Il avance –\u00a0doucement\n—\u00a0Il recule –\u00a0lentement\u00a0– puis repart."],
+		["Il avance – à 3.5 km – puis repart, de 2019—2025.", "Il avance –\u00a0à 3.5\u00a0km\u00a0– puis repart, de 2019–2025."],
+		["Il avance – doucement –, puis repart.", "Il avance –\u00a0doucement\u00a0–, puis repart."],
+		["- Une liste avec — une incise — dedans.\n`a—b` [a — b](https://example.org)\n```\na — b\n```", "- Une liste avec –\u00a0une incise\u00a0– dedans.\n`a—b` [a — b](https://example.org)\n```\na — b\n```"],
 		["Il avance – doucement.\r\n\r\nIl recule – lentement.", "Il avance –\u00a0doucement.\r\n\r\nIl recule –\u00a0lentement."],
 		["2019–2025, 10 – 20 km, 2 modèles, 3 minutes.", "2019–2025, 10 – 20\u00a0km, 2 modèles, 3 minutes."],
+		["« Il dit : « bonjour » puis « au revoir ». »", "«\u00a0Il dit\u00a0: “bonjour” puis “au revoir”.\u00a0»"],
+		["😀 ««mot»» puis «autre».", "😀 «\u00a0“mot”\u00a0» puis «\u00a0autre\u00a0»."],
+		["« Une « citation « imbriquée »\ncontinue » ici. »", "«\u00a0Une “citation “imbriquée”\ncontinue” ici.\u00a0»"],
+		["« Déjà “correct”. »\n« Une « ouverture", "«\u00a0Déjà “correct”.\u00a0»\n«\u00a0Une «\u00a0ouverture"],
+		["« `«code»` [«lien»](https://example.org) «\u202ftexte\u00a0» »\n```\n« «code» »\n```", "«\u00a0`«code»` [«lien»](https://example.org) “texte”\u00a0»\n```\n« «code» »\n```"],
 		["`40 Mo` [40 Mo](https://example.org/40Mo) ![10 kg](image.png)", "`40 Mo` [40 Mo](https://example.org/40Mo) ![10 kg](image.png)"],
 	] as const) {
-		assert.equal(api.fixPunctuationSpacing(source), expected, "Ponctuations perd une unité, un tiret ou une zone protégée");
+		assert.equal(api.fixPunctuationSpacing(source), expected, "Ponctuations altère les unités, tirets, guillemets ou zones protégées");
 		assert.equal(api.cleanTypography(source), expected, "La normalisation IA diffère de Ponctuations");
-		assert.equal(api.fixPunctuationSpacing(expected), expected, "La normalisation des unités et incises n’est pas idempotente");
+		assert.equal(api.fixPunctuationSpacing(expected), expected, "La normalisation typographique n’est pas idempotente");
 	}
 	process.stdout.write("Typographie IA : insécables, apostrophes, guillemets, tirets, paragraphes et liens vérifiés\n");
+	const productionModule = { exports: {} as { default: typeof api.FinitionPlugin } };
+	const localRequire = createRequire(import.meta.url);
+	vm.runInNewContext(readFileSync("main.js", "utf8"), { ...sandbox, module: productionModule, exports: productionModule.exports,
+		require: (name: string): unknown => name === "obsidian" ? (sandbox.require as (name: string) => unknown)(name) : localRequire(name),
+	});
+	const punctuationPlugin = new productionModule.exports.default();
+	await punctuationPlugin.loadSettings();
+	let punctuationNote = "– Bonjour! Oui? Il dit: «bonjour»; 40 Mo. Il avance — doucement —. Il recule — lentement — puis repart.";
+	const expectedPunctuationNote = "—\u00a0Bonjour\u00a0! Oui\u00a0? Il dit\u00a0: «\u00a0bonjour\u00a0»\u00a0; 40\u00a0Mo. Il avance –\u00a0doucement. Il recule –\u00a0lentement\u00a0– puis repart.";
+	const punctuationCursor = { line: 0, ch: 5 };
+	let punctuationSelections = [{ anchor: { line: 0, ch: 12 }, head: punctuationCursor }];
+	let punctuationScroll = { top: 480, left: 12 };
+	Object.assign(punctuationPlugin.app.workspace, { getActiveViewOfType: () => ({ editor: {
+		getValue: () => punctuationNote, setValue: (value: string) => { punctuationNote = value; punctuationSelections = []; punctuationScroll = { top: 0, left: 0 }; },
+		getCursor: () => punctuationCursor, setCursor: (value: unknown) => assert.equal(value, punctuationCursor),
+		listSelections: () => punctuationSelections, setSelections: (value: typeof punctuationSelections) => { punctuationSelections = value; },
+		getScrollInfo: () => punctuationScroll, scrollTo: (left: number, top: number) => { punctuationScroll = { left, top }; },
+	} }) });
+	punctuationPlugin.showModeMenu({});
+	const punctuationAction = menuActions.get("Ponctuations");
+	assert.ok(punctuationAction, "La commande Ponctuations est absente du menu compilé");
+	await punctuationAction();
+	assert.equal(punctuationNote, expectedPunctuationNote, "Le menu du plugin compilé n’insère pas les vrais caractères U+00A0");
+	assert.equal(notices.at(-1), "Ponctuation : corrections appliquées.");
+	assert.deepEqual(punctuationSelections, [{ anchor: { line: 0, ch: 12 }, head: punctuationCursor }], "Ponctuations perd la sélection inversée");
+	assert.deepEqual(punctuationScroll, { top: 480, left: 12 }, "Ponctuations perd le défilement");
+	await punctuationAction();
+	assert.equal(punctuationNote, expectedPunctuationNote);
+	assert.equal(notices.at(-1), "Ponctuation : rien à corriger.");
+	process.stdout.write("Ponctuations : menu de main.js, caractères U+00A0, tirets, point fermant et second clic vérifiés\n");
 	for (const link of ["[signal](https://example.org/signal)", "https://example.org/signal", "![signal](signal.png)", "[[Note|signal]]", "<a href='https://example.org/signal'>signal</a>", "<signal@example.org>", "[signal][ref]\n\n[ref]: https://example.org/signal"]) {
 		const text = `😀 signal ${link}\n\nsignal`;
 		const highlights = api.computeRepetitions(text, new Map(), new Set(), 1500, 2);
@@ -452,6 +501,124 @@ async function main() {
 	assert.ok([...notes.values()].includes("Modification manuelle."), "La vérification écrase une modification extérieure");
 	writeOverride = null;
 	process.stdout.write("Debug IA : réponses vides refusées, blocs de texte conservés, réponse brute, tronçons, collision, erreurs et annulation vérifiés\n");
+	aiPlugin.settings.debugMode = false;
+	aiPlugin.settings.mode = "none";
+	aiPlugin.settings.aiModel = "gpt-test";
+	sourceText = "Une fote.";
+	const responses: Array<(response: unknown) => void> = [];
+	requestHandler = () => new Promise(resolve => { responses.push(resolve); });
+	const cancelledAnalysis = aiPlugin.runOrthoTypoIA();
+	assert.equal(responses.length, 1);
+	aiPlugin.showModeMenu({});
+	assert.equal(menuTitles.at(-1), "Reset", "Reset est absent pendant l’attente du correcteur IA");
+	await menuActions.get("Reset")!();
+	aiPlugin.showModeMenu({});
+	assert.equal(menuTitles.at(-1), "Paramètres", "Reset reste affiché après annulation");
+	const nextAnalysis = aiPlugin.runOrthoTypoIA();
+	assert.equal(responses.length, 2);
+	const correctedResponse = { status: 200, json: { choices: [{ message: { content: "Une faute." } }] } };
+	responses[0](correctedResponse);
+	await cancelledAnalysis;
+	assert.equal(aiPlugin.aiGroups.length, 0, "Une réponse annulée réaffiche ses suggestions");
+	aiPlugin.showModeMenu({});
+	assert.equal(menuTitles.at(-1), "Reset", "L’ancienne requête annule l’état de la nouvelle");
+	responses[1](correctedResponse);
+	await nextAnalysis;
+	assert.ok(aiPlugin.aiGroups.length > 0, "Une nouvelle analyse ne fonctionne plus après Reset");
+	aiPlugin.grammalecteErrors = [{ nStart: 4, nEnd: 8, sRuleId: "test", sType: "orthographe", sMessage: "Faute", aSuggestions: [] }];
+	aiPlugin.settings.mode = "hinges";
+	aiPlugin.showModeMenu({});
+	await menuActions.get("Reset")!();
+	assert.equal(aiPlugin.settings.mode, "none");
+	assert.equal(aiPlugin.saved!.mode, "none", "Reset n’est pas persisté");
+	assert.equal(aiPlugin.aiGroups.length, 0);
+	assert.equal(aiPlugin.grammalecteErrors.length, 0);
+	assert.equal(sourceText, "Une fote.", "Reset applique ou annule une modification du texte");
+	process.stdout.write("Reset : menu conditionnel, surlignages et corrections effacés, requête annulée et relance concurrente vérifiés\n");
+	let localStatus = 200;
+	let localReply: unknown = { choices: [{ message: { content: "Une faute Finition." } }] };
+	const localRequests: Array<{ path?: string; authorization?: string; body: unknown }> = [];
+	const server = createServer((request, response) => {
+		let body = "";
+		request.setEncoding("utf8");
+		request.on("data", (chunk: string) => { body += chunk; });
+		request.on("end", () => {
+			localRequests.push({ path: request.url, authorization: request.headers.authorization, body: JSON.parse(body) as unknown });
+			response.writeHead(localStatus, { "content-type": "application/json" });
+			response.end(JSON.stringify(localReply));
+		});
+	});
+	await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+	const address = server.address();
+	assert.ok(address && typeof address !== "string");
+	const localServer = `http://127.0.0.1:${address.port}`;
+	let localAttempts = 0;
+	requestHandler = async request => {
+		localAttempts++;
+		assert.equal(request.url, `${localServer}/v1/chat/completions`, "Un appel local part vers un autre fournisseur");
+		assert.ok(!request.headers.Authorization && !request.headers["x-api-key"], "Le client envoie une clé cloud au serveur local");
+		const response = await fetch(request.url, { method: "POST", headers: request.headers, body: request.body });
+		const text = await response.text();
+		return { status: response.status, text, json: JSON.parse(text) as unknown };
+	};
+	aiPlugin.settings.localAIModel = "modele-local:test";
+	aiPlugin.settings.aiModel = "claude-test";
+	sourceText = "Une fote [Finition](https://example.org/article).";
+	try {
+		for (const suffix of ["", "/v1", "/v1/"]) {
+			aiPlugin.settings.localAIServer = localServer + suffix;
+			await aiPlugin.runOrthoTypoIA();
+			assert.equal(apply(sourceText, aiPlugin.aiGroups), sourceText.replace("fote", "faute"), "La correction locale perd les positions ou le lien");
+			assert.deepEqual(localRequests.at(-1), { path: "/v1/chat/completions", authorization: undefined,
+				body: { model: "modele-local:test", max_tokens: aiPlugin.settings.aiMaxTokens, stream: false,
+					messages: [{ role: "system", content: aiPlugin.settings.aiPrompt }, { role: "user", content: "Une fote Finition." }],
+				},
+			});
+		}
+		aiPlugin.settings.aiApiKey = aiPlugin.settings.openaiApiKey = "";
+		await aiPlugin.runOrthoTypoIA();
+		assert.ok(aiPlugin.aiGroups.length, "La correction locale exige une clé API cloud");
+		for (const [status, reply, message] of [[404, { error: "Modèle absent" }, "Modèle absent"], [200, { invalid: true }, "aucun contenu"]] as const) {
+			localStatus = status; localReply = reply;
+			const before = localAttempts;
+			await aiPlugin.runOrthoTypoIA();
+			assert.equal(localAttempts, before + 1, "Une erreur locale déclenche des tentatives supplémentaires");
+			assert.equal(aiPlugin.aiGroups.length, 0);
+			assert.ok(notices.at(-1)?.includes(message), "Une erreur locale est masquée");
+		}
+		const beforeInvalid = localAttempts;
+		for (const value of ["invalide", "file:///tmp/model", "ftp://127.0.0.1", `${localServer}/?key=secret`, "http://user:secret@localhost:11434", `${localServer}/#fragment`]) {
+			aiPlugin.settings.localAIServer = value;
+			await aiPlugin.runOrthoTypoIA();
+			assert.ok(notices.at(-1)?.includes("Serveur local"));
+		}
+		aiPlugin.settings.localAIServer = localServer;
+		aiPlugin.settings.localAIModel = "";
+		await aiPlugin.runOrthoTypoIA();
+		assert.ok(notices.at(-1)?.includes("Modèle local"));
+		assert.equal(localAttempts, beforeInvalid, "Une configuration invalide envoie le texte");
+	} finally {
+		server.closeAllConnections();
+		await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+	}
+	aiPlugin.settings.localAIModel = "modele-local:test";
+	const beforeOffline = localAttempts;
+	await aiPlugin.runOrthoTypoIA();
+	assert.equal(localAttempts, beforeOffline + 1);
+	assert.equal(aiPlugin.aiGroups.length, 0);
+	assert.ok(notices.at(-1)?.includes("Erreur réseau"), "Le serveur arrêté n’est pas signalé");
+	let expire: (() => void) | undefined;
+	sandbox.setTimeout = (callback: () => void, delay: number) => { assert.equal(delay, 120_000); expire = callback; return 1; };
+	sandbox.clearTimeout = (id: number) => assert.equal(id, 1);
+	requestHandler = () => new Promise(() => {});
+	const timeoutAnalysis = aiPlugin.runOrthoTypoIA();
+	assert.ok(expire, "La requête locale n’a aucun délai limite");
+	expire();
+	await timeoutAnalysis;
+	assert.ok(notices.at(-1)?.includes("deux minutes"), "Le délai local dépassé reste silencieux");
+	sandbox.setTimeout = setTimeout; sandbox.clearTimeout = clearTimeout;
+	assert.equal(sourceText, "Une fote [Finition](https://example.org/article).");
+	process.stdout.write("IA locale : serveur HTTP simulé, formats Ollama, clés exclues, liens, erreurs, validation et délai limite vérifiés\n");
 	const lexicon = adaptRepetitions(await decodeDictionary(JSON.parse(readFileSync(new URL("../resources/lexique/finition-dictionnaire.json", import.meta.url), "utf8")) as unknown, "neural"));
 	const analyze = (text: string, category: GetCategory) => api.analyzeTicIA(text, category, lexicon);
 	const root = new URL("../plugin/vendor/grammalecte/", import.meta.url);

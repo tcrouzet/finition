@@ -143,6 +143,8 @@ export interface FinitionSettings {
 	// chiffré natif disponible pour un plugin tiers).
 	aiApiKey: string;
 	aiModel: string;
+	localAIServer: string;
+	localAIModel: string;
 	// Taille maximale d'un tronçon envoyé à l'IA, en caractères (le texte est
 	// découpé par paragraphes, comme dans le pipeline Python d'origine).
 	aiChunkSize: number;
@@ -245,6 +247,8 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	palette: DEFAULT_PALETTE,
 	aiApiKey: "",
 	aiModel: "claude-sonnet-5-5",
+	localAIServer: "",
+	localAIModel: "",
 	aiChunkSize: 5000,
 	aiMaxTokens: 8000,
 	// Le premier prompt système (BUILTIN_PROMPT_RAWS[0], "Corrections") est

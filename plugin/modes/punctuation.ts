@@ -1,5 +1,6 @@
 import { linkRanges, mergeRanges } from "../markdown-links";
 import { hashtagRanges } from "../markdown-tags";
+import { SENTENCE_SEPARATOR_RE } from "./clause-split";
 
 /**
  * Correction automatique et déterministe des espaces insécables et des
@@ -14,11 +15,9 @@ import { hashtagRanges } from "../markdown-tags";
  *    d'une espace insécable. On ne touche QUE les lignes qui commencent déjà
  *    par un tiret (– ou —), jamais un simple "-", pour ne jamais casser une
  *    liste à puces Markdown ("- item").
- * 4. Tirets d'incise à l'intérieur du texte (en dash –) : la première
- *    moitié d'une paire reçoit une espace insécable APRÈS, la seconde une
- *    espace insécable AVANT — ex. "Il pleut – ça m'emmerde – mais je
- *    m'adapte." Le pairage se fait par ordre d'apparition, par paragraphe ;
- *    un tiret resté seul ouvre une incise jusqu'à la fin du paragraphe.
+ * 4. Tirets intérieurs : demi-cadratins, avec une insécable après l'ouvrant
+ *    et avant le fermant. La fin de phrase ferme l'incise. Un tiret fermant
+ *    devant un point est supprimé.
  * 5. Apostrophes droites (') remplacées par des apostrophes typographiques (’).
  * 6. Jamais plus de deux sauts de ligne consécutifs (un pour finir le
  *    paragraphe, un pour le séparer du suivant) — SAUF entre deux entrées
@@ -57,9 +56,23 @@ export function protectSpans(text: string): { text: string; restore: (s: string)
 }
 
 function fixGuillemets(text: string): string {
-	// « suivi d'une espace insécable, quel que soit ce qu'il y avait avant
-	// (espace normale, insécable, ou rien). L'espace AVANT « n'est pas touchée.
-	return text.replace(/«[\u00A0\u202F \t]*/g, "«\u00A0");
+	const openings: number[] = [];
+	const nested = new Set<number>();
+	for (const match of text.matchAll(/[«»]/g)) {
+		if (match[0] === "«") openings.push(match.index);
+		else {
+			const opening = openings.pop();
+			if (opening !== undefined && openings.length > 0) {
+				nested.add(opening);
+				nested.add(match.index);
+			}
+		}
+	}
+	return text.replace(/«[\u00A0\u202F \t]*|[\u00A0\u202F \t]*»/g, (mark: string, offset: number) => {
+		const opening = mark.startsWith("«");
+		if (nested.has(opening ? offset : offset + mark.length - 1)) return opening ? "“" : "”";
+		return opening ? "«\u00A0" : mark;
+	});
 }
 
 function fixDoublePunctuation(text: string): string {
@@ -75,33 +88,34 @@ function fixLineStartDashes(text: string): string {
 }
 
 function fixInciseDashesInParagraph(paragraph: string): string {
-	const DASH_RE = /[\u00A0\u202F \t]+–[\u00A0\u202F \t]*/g;
-	const matches: RegExpExecArray[] = [];
-	let m: RegExpExecArray | null;
-	while ((m = DASH_RE.exec(paragraph)) !== null) {
-		if (/\d$/u.test(paragraph[m.index - 1] ?? "") && /^\d/u.test(paragraph[m.index + m[0].length] ?? "")) continue;
-		matches.push(m);
-	}
-
+	const separator = new RegExp(`[\\u00A0\\u202F \\t]*[–—][\\u00A0\\u202F \\t]*|${SENTENCE_SEPARATOR_RE.source}`, "gm");
 	let result = "";
 	let cursor = 0;
-	for (let i = 0; i < matches.length; i++) {
-		const match = matches[i];
+	let open = false;
+	for (const match of paragraph.matchAll(separator)) {
 		result += paragraph.slice(cursor, match.index);
-		if (i % 2 === 0) {
-			result += " –\u00A0"; // ouvrant : espace normale avant, insécable après
-		} else {
-			result += "\u00A0– "; // fermant : espace insécable avant, normale après
-		}
 		cursor = match.index + match[0].length;
+		if (!/[–—]/u.test(match[0]) || match.index === 0 || paragraph[match.index - 1] === "\n") {
+			open = false;
+			result += match[0];
+		} else if (/\d/u.test(paragraph[match.index - 1] ?? "") && /^\d/u.test(paragraph[cursor] ?? "")) {
+			result += match[0].replace("—", "–");
+		} else if (open) {
+			if (paragraph[cursor] !== ".") {
+				result += "\u00A0–";
+				if (cursor < paragraph.length && !/[\r\n,;:!?…)\]»”]/u.test(paragraph[cursor])) result += " ";
+			}
+			open = false;
+		} else {
+			result += " –\u00A0";
+			open = true;
+		}
 	}
 	result += paragraph.slice(cursor);
 	return result;
 }
 
 function fixInciseDashes(text: string): string {
-	// Découpage par paragraphe (ligne vide) : le pairage des tirets d'incise
-	// ne doit pas traverser les paragraphes.
 	const parts = text.split(/(\r?\n[ \t]*(?:\r?\n)+)/);
 	return parts.map((part, i) => (i % 2 === 1 ? part : fixInciseDashesInParagraph(part))).join("");
 }

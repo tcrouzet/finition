@@ -1,132 +1,117 @@
 # Finition
 
-Finition aide à relire les textes français dans Obsidian : répétitions, clichés, rythme des phrases, orthographe et ponctuation.
+**Un regard neuf sur vos textes, sans quitter Obsidian.**
 
-Obsidian 1.14 ou ultérieur est requis. Les réglages sont indexés par la recherche des paramètres.
+Les mots qu’on répète sans les entendre, les phrases qui prennent toujours le même rythme… Finition les met en couleur dans vos notes. Vous gardez la main sur votre prose, avec des outils de correction et des dictionnaires français à portée de clic.
 
-Les identifiants des commandes Ponctuations, Corrections et Structure ont été normalisés pour Obsidian ; réattribuer leurs raccourcis personnalisés après cette mise à jour.
+[Installer Finition depuis Obsidian](https://community.obsidian.md/plugins/finition) · [Signaler un problème](https://github.com/tcrouzet/finition/issues)
 
-Le plugin se télécharge gratuitement depuis GitHub, hors du catalogue officiel d’Obsidian. Seules les fonctions IA peuvent entraîner des frais auprès du fournisseur choisi.
+![Un texte français dans Obsidian : les répétitions sont regroupées par couleur et le menu Finition permet de choisir l’analyse.](doc/screenshots/repetitions.webp)
 
-## Installer
+## Installer Finition
 
-### Sans terminal, avec BRAT
+1. Dans Obsidian, ouvrir **Réglages → Plugins communautaires → Parcourir**.
+2. Chercher **Finition**, puis choisir **Installer** et **Activer**.
+3. Cliquer sur **♫**, dans la barre d’état, pour ouvrir les outils.
 
-[BRAT](https://github.com/TfTHacker/obsidian42-brat) est un plugin qui installe d’autres plugins depuis GitHub.
+Obsidian **1.14 ou ultérieur** est requis. Le plugin est gratuit ; les fonctions IA sont facultatives.
 
-1. Dans **Réglages → Plugins communautaires → Parcourir**, installer et activer **BRAT**.
-2. Ouvrir la palette de commandes (`Cmd+P` sur Mac, `Ctrl+P` sur Windows/Linux) et lancer **BRAT: Add a beta plugin for testing**.
-3. Saisir `tcrouzet/finition`, puis cliquer sur **Add Plugin**.
-4. Activer **Finition** dans **Réglages → Plugins communautaires**.
+Pour commencer avec les répétitions, ouvrir **Réglages → Finition → Corrections**, puis **Charger** en face de **Dictionnaire Finition**. Les autres dictionnaires et moteurs se téléchargent depuis leurs sections des réglages. Une fonction grisée indique qu’une ressource manque encore.
 
-Pour mettre à jour Finition, utiliser la recherche de mises à jour de BRAT. Répéter l’installation dans chaque coffre concerné. [Guide de BRAT](https://tfthacker.com/brat-quick-guide).
+## Relire en couleurs
 
-### Avec le terminal
+Ouvrir **♫ → Surlignages** et choisir ce que l’on veut observer :
 
-Il faut **Bash, curl et jq** : sur Mac ou Linux, ou sous Windows avec Git Bash.
+- **Répétitions** retrouve les mots qui reviennent à proximité, y compris sous leurs formes conjuguées ou accordées. Chaque groupe reçoit sa couleur.
+- **Atténuations** fait ressortir les précautions de langage : « il semblerait que », « dans une certaine mesure »…
+- **Stéréotypes** repère les clichés et lieux communs, comme « serrer les poings ».
+- **Monotonie** révèle les suites de phrases de longueur proche.
+- **Tricolons** repère les séries de trois groupes de même construction. Les listes plus longues sont exclues.
+- **Cadence** rapproche des phrases voisines de construction comparable.
+- **Charnières** montre les articulations du texte : « mais », « et », « que », « comme »…
 
-Fermer Obsidian, puis lancer :
+L’analyse conserve la position du curseur. Le compteur et la flèche descendante permettent de parcourir les passages repérés. Cliquer sur un passage surligné fait ressortir son groupe en noir. Quand une analyse est active, **Reset**, en bas du menu musique, efface ses surlignages et suggestions sans modifier le texte.
 
-```sh
-curl -fL https://raw.githubusercontent.com/tcrouzet/finition/main/install.sh -o install.sh
-bash install.sh
-```
+Une seule analyse stylistique est active à la fois ; recliquer sur son nom la désactive. Les couleurs, les distances de recherche et les sensibilités se règlent dans **Réglages → Finition**. Sur les longues notes, l’analyse porte sur le début jusqu’à la limite configurée : le texte reste entier.
 
-Choisir le coffre dans la liste et confirmer. Le script installe la dernière version publiée sur GitHub, conserve les notes et les réglages, et sauvegarde l’ancienne version dans `.obsidian/finition-backups/`.
+### Structure et statistiques
 
-Si le coffre n’apparaît pas, indiquer son chemin :
+Pour regarder le texte de plus près, activer **Mode debug** dans les réglages :
 
-```sh
-bash install.sh "/chemin/vers/Mon coffre"
-bash install.sh "/chemin/vers/Mon coffre" ".obsidian-perso"
-```
+- **Structure** crée une note d’analyse phrase par phrase : cadratifs, sujets, verbes, compléments et groupes de trois.
+- **Statistiques** exporte les mesures disponibles dans une note séparée : décomptes, lemmes, répétitions et tricolons.
 
-Le second exemple sert aux coffres dont le dossier de configuration ne s’appelle pas `.obsidian`.
+L’original reste intact. Structure et Tricolons demandent un moteur linguistique installé ; Statistiques demande aussi Grammalecte et le lexique commun. Ces analyses restent indicatives : elles peuvent manquer des passages ou en signaler à tort.
 
-Rouvrir Obsidian et activer **Finition** dans **Réglages → Plugins communautaires**. Pour mettre à jour, relancer le script après avoir fermé Obsidian.
+## Corriger le français
 
-## Utiliser Finition
+Choisir **Grammalecte** ou **Neuronal** dans le menu **♫** :
 
-Cliquer sur **♫**, en bas d’Obsidian, puis choisir une analyse :
+- **Grammalecte** vérifie l’orthographe et la grammaire, avec le dictionnaire classique ou les rectifications de 1990.
+- **Neuronal** associe le dictionnaire morphologique à un modèle local pour rechercher aussi des confusions de mots en contexte. Ce moteur reste expérimental.
 
-- **Répétitions** : mots répétés, en tenant compte de leurs formes conjuguées ou accordées.
-- **Atténuations** : expressions comme « il semblerait que » ou « dans une certaine mesure ».
-- **Stéréotypes** : clichés et lieux communs.
-- **Monotonie** : suites de phrases de longueur proche.
-- **Tricolons** : séries de trois groupes de même construction. Les listes de plus de trois éléments sont exclues.
-- **Cadence** : phrases voisines construites de façon comparable.
-- **Charnières** : mots de liaison comme « mais », « et » ou « que ».
+Les deux analysent la sélection, ou toute la note si rien n’est sélectionné. Cliquer sur une faute pour choisir une correction ou ignorer le signalement. Les mots inconnus peuvent être ajoutés au dictionnaire personnel. La flèche de la barre d’état mène à la faute suivante. Recliquer sur le correcteur coché efface ses suggestions.
 
-Une seule analyse est active à la fois. Cliquer à nouveau sur son nom la désactive. Le compteur indique le nombre de passages repérés ; la flèche descendante mène au suivant. Les couleurs et les critères d’analyse se règlent dans **Réglages → Finition**.
+Le modèle public **CamemBERT** se charge dans les réglages. Des modèles personnels peuvent aussi être importés ; le choix du moteur d’analyse de Structure, Tricolons et Cadence reste indépendant du correcteur utilisé.
 
-Dans **Réglages → Finition → Compteur du document**, choisir mots, signes, les deux ou masquer le compteur. Il apparaît à gauche de ♫ et suit le document entier ; les signes incluent les espaces. Au-delà de 1 000, les valeurs sont abrégées : 1K, 1,1K, 10K, 10,5K. Au survol du compteur, l’infobulle affiche toujours les deux totaux exacts, mots et signes, sans arrondi.
+### Soigner la ponctuation
 
-### Orthographe et ponctuation
+**Ponctuations** harmonise les espaces insécables, les apostrophes, les tirets et les lignes vides, y compris les espaces entre un nombre et son unité. Le code, les liens et les horaires sont préservés.
 
-Les trois fichiers du plugin (`main.js`, `manifest.json`, `styles.css`) doivent totaliser moins de 5 Mo ; la suite de vérification contrôle ce plafond. Le lexique linguistique commun est téléchargé séparément ; seules les petites listes stylistiques et les règles exécutables restent embarquées.
+Cette commande modifie directement toute la note, sans étape de validation.
 
-Dans **Réglages → Finition → Corrections**, **Lexique** choisit le dictionnaire de flexions commun aux répétitions, stéréotypes, statistiques et correcteurs. **Dictionnaire Finition → Charger/Recharger** installe et sélectionne le lexique public. **Charger un lexique** importe un JSON au [format Finition](doc/lexique.md), par chemin ou bouton **Parcourir…** ; les alternatives apparaissent sous leur nom, avec remarque, lien éventuel et bouton **Effacer**. Répétitions et Stéréotypes restent grisés tant qu’aucun lexique n’est disponible. **Grammalecte** permet de charger ses données et de choisir **Classique** ou **Réforme 1990**. La même section contient le sélecteur **Correcteur neuronal par défaut**, vide avant installation, puis **CamemBERT**, installable depuis GitHub, et les modèles locaux. Les deux variantes Grammalecte partagent le même moteur et utilisent des dictionnaires différents ; changer de variante recharge le dictionnaire à la prochaine analyse. Les modèles neuronaux locaux apparaissent dans ce même sélecteur sous leur propre nom et sont listés avec description, lien éventuel et bouton **Effacer**. **Charger un modèle neuronal** importe un dossier conforme au [format neuronal Finition](doc/neural-model.md), par chemin ou sélecteur de dossiers, après vérification des empreintes ; seule la copie dans le plugin est utilisée. Les correcteurs locaux absents restent grisés ; **Tricolons** et **Structure** demandent un moteur linguistique installé. Chaque téléchargement provient de la préversion de données `resources-VERSION` correspondant à la version du plugin sur GitHub ; tailles et empreintes sont vérifiées avant activation. Il contient uniquement des dictionnaires, poids, vocabulaires et notices. Tout le code de correction est livré avec le plugin ; aucun runtime n’est téléchargé ni installé. Les packs neuronaux de l’ancien format doivent être téléchargés à nouveau après mise à jour.
+## Trouver le mot juste
 
-Le pack public utilise [CamemBERTv2](https://huggingface.co/almanach/camembertv2-base), avec son tokenizer WordPiece. Les anciens packs CamemBERT restent lisibles. Les embeddings conservent leur précision d’origine ; les projections internes restent quantifiées. Le calcul utilise des fenêtres locales de texte, sans serveur.
+Sélectionner un mot, puis ouvrir **♫ → Dictionnaires** :
 
-Dans la même section du menu ♫, **Grammalecte**, **Neuronal** et **Corrections IA** lancent directement le correcteur choisi. Les correcteurs locaux analysent la sélection, ou toute la note sans sélection. Neuronal active la correction contextuelle locale. Cliquer sur une faute pour la corriger, l’ignorer ou ajouter le mot au dictionnaire personnel. Un second clic sur le correcteur coché efface ses suggestions. La flèche de la barre d’état passe à la faute suivante. Grammalecte propose l’orthographe classique et les rectifications de 1990. Neuronal associe dictionnaire morphologique, accords simples, modèles neuronaux locaux et groupes phonétiques ; ce moteur reste expérimental. Choisir un modèle active les corrections contextuelles correspondantes, sans interrupteur supplémentaire.
+- **Synonyme** propose des variantes, regroupées par sens et catégorie lorsque le dictionnaire le permet.
+- **Définitions** aide à vérifier le sens d’un mot.
+- **Antonymes** propose ses contraires.
+- **Phonétique** donne sa prononciation.
+- **Rimes** cherche des mots à rapprocher par leur sonorité.
 
-**Correcteur neuronal par défaut** permet de choisir **CamemBERT**, pour les confusions lexicales en contexte, ou un modèle grammatical local par son nom, en complément de CamemBERT. **Charger un modèle neuronal** l’importe dans le stockage privé ignoré par Git ; **Effacer** supprime sa copie après confirmation. Le choix **CamemBERT** utilise le modèle public sans ce complément grammatical. Voir [la structure des modèles, leur installation et l’entraînement Python](doc/neural-model.md). Les ressources locales privées sont exclues des packs téléchargeables.
+Cliquer sur un synonyme remplace la sélection. Le bouton **Insérer la liste en remarque** conserve les résultats après le paragraphe dans un commentaire Obsidian `%% … %%`. La fenêtre se déplace par son titre pour laisser voir le texte.
 
-Les données publiques distribuées séparément du plugin sont regroupées dans [resources/](resources/README.md) : Grammalecte, dictionnaire Finition, CamemBERT, synonymes, définitions, antonymes, phonétique et rimes. Chaque section de dictionnaire propose **Finition → Charger/Recharger** ; les quatre nouveaux packs proviennent du Wiktionnaire via Kaikki, sous CC BY-SA 4.0, avec attribution et provenance dans le champ `license` de chaque JSON. Voir [les sources et limites](doc/dictionnaires.md). Le code des moteurs reste livré dans `main.js`.
+Chaque dictionnaire se charge dans sa section des réglages. Vous pouvez aussi importer vos propres dictionnaires au format Finition.
 
-La commande **Ponctuations** modifie directement toute la note : espaces insécables (ponctuation, nombres suivis d’une unité comme Mo, km ou kg, tirets d’incise), apostrophes, tirets et lignes vides. Le code, les liens web, images, liens internes, références et horaires sont préservés.
+## Une IA, si vous la souhaitez
 
-Les hashtags (`#mot`, `#projet/sujet`) sont exclus des corrections locales et retirés du texte soumis au correcteur IA. Les titres Markdown (`# Titre`) restent analysés.
+Les fonctions locales n’exigent aucune clé API. Pour utiliser une IA, renseigner une clé **Anthropic** ou **OpenAI** et choisir le modèle dans **Réglages → Finition → Corrections IA**. Ces appels peuvent être payants auprès du fournisseur choisi.
 
-Les répétitions et stéréotypes ignorent les liens complets, y compris leurs libellés, les images, liens internes et adresses web. Les recherches de synonymes locales et IA refusent une sélection qui touche un lien ou une adresse web.
+Avec Ollama ou un autre serveur compatible OpenAI, renseigner **Serveur local** (par exemple `http://localhost:11434`, avec ou sans `/v1`) et **Modèle local**, sous les clés API. Le serveur doit déjà fonctionner et disposer du modèle indiqué. Ces champs remplacent le fournisseur et le modèle cloud pour les deux fonctions ci-dessous, sans transmettre les clés API. Vider **Serveur local** pour revenir à Claude/GPT. Finition ne télécharge aucun modèle et ne bascule jamais vers le cloud en cas d’erreur locale.
 
-Dans **Réglages → Finition → Corrections**, après le chargement des ressources, choisir **Grammalecte** ou **Neuronal** pour Structure, Tricolons et Cadence syntaxique. Ce choix est indépendant du correcteur utilisé. Les anciennes configurations conservent leur moteur d’analyse. Les modèles neuronaux de correction restent réglés dans **Corrections**.
+- **Corrections IA** relit le texte sélectionné. Les propositions apparaissent dans la note : cliquer sur le vert pour appliquer une correction, sur la coche pour valider une suppression, ou sur le rouge pour garder l’original.
+- **Synonymes IA**, dans le menu Dictionnaires, cherche des variantes adaptées au contexte de la sélection.
 
-Les répétitions, stéréotypes, statistiques et les deux moteurs partagent un [lexique commun avec adaptateurs TypeScript](doc/lexique.md), téléchargé une seule fois. Il fusionne Morphalou, Lexique et Grammalecte en conservant les deux variantes orthographiques et les annotations natives. Les compléments personnels restent locaux. Recharger les données installe ce format ; les anciennes installations restent compatibles.
-
-### Synonymes
-
-Après les réglages généraux, les sections sont ordonnées ainsi : **Corrections**, **Corrections IA**, **Synonymes**, **Définitions**, **Antonymes**, **Phonétique**, **Rimes**, **Répétitions**, **Cadence**, **Monotonie**, **Palette**. Elles sont toutes repliées par défaut ; cliquer sur leur titre pour les ouvrir. Les dictionnaires supplémentaires se règlent juste après Synonymes : choix du dictionnaire, import JSON, description et suppression de la copie. Les commandes correspondantes cherchent un seul mot sélectionné, hors ligne. Voir le [format des dictionnaires et les limites de la recherche de rimes](doc/dictionnaires.md).
-
-Dans **Réglages → Finition → Synonymes**, le sélecteur **Dictionnaire** liste les dictionnaires disponibles et mémorise le choix actif ; la liste est vide avant toute installation. En dessous, une liste commune affiche **Finition** avec **Charger/Recharger** depuis GitHub, puis chaque dictionnaire personnel avec son propre bouton **Effacer**. Finition ne peut pas être effacé. Sous la liste, **Charger un dictionnaire** permet d’importer un JSON par son chemin ou, si le champ reste vide, avec le sélecteur de fichiers. Le lien **JSON au format Finition** ouvre le [format documenté](doc/synonymes.md) sur GitHub. Le champ `name` fournit le nom affiché ; les champs facultatifs `description` et `documentation` ajoutent une description et son lien sous le nom du dictionnaire. Les imports valides sont copiés dans `data/` à la racine du plugin ; la source reste intacte. Sélectionner un seul mot et choisir **Synonyme** dans ♫ ou la palette pour chercher hors ligne, remplacer la sélection ou insérer la liste dans une remarque Obsidian `%% … %%` après son paragraphe. Les données sont téléchargées séparément du plugin et conservent leurs licences libres respectives.
-
-### Fonctions IA
-
-Renseigner une clé API Anthropic ou OpenAI et choisir le modèle dans **Réglages → Finition**, puis sélectionner du texte :
-
-- **Corrections IA** propose des corrections. Cliquer sur le vert pour appliquer un remplacement, sur la coche verte pour valider une suppression seule, ou sur le rouge pour conserver le texte original ; rien n’est remplacé sans validation.
-- **Synonymes IA** propose une liste compacte de variantes. Cliquer sur un mot pour remplacer la sélection ; l’icône de remarque insère toute la liste après le paragraphe sélectionné, dans un commentaire Obsidian. **Synonyme** utilise la même présentation, organisée par catégorie, définition de sens et groupe lorsque ces informations sont disponibles. Les libellés sont en gras sur la même ligne que les synonymes ; les registres apparaissent en sous-listes indentées. L’affichage reste en HTML natif ; la remarque conserve la hiérarchie en Markdown. Déplacer la fenêtre par son titre pour lire le texte en dessous.
-
-Les consignes de Corrections IA sont personnalisables dans les réglages. Le texte des liens et les descriptions des images sont conservés dans le texte envoyé, sans leurs adresses ni marqueurs. Les liens restent intacts dans la note ; les suggestions qui les englobent sont ignorées. Les insertions et suppressions restent proposées séparément, y compris lorsqu’elles correspondent à un déplacement de texte.
-
-### Analyse de structure
-
-Le réglage **Mode debug**, placé avant **Corrections**, affiche **Structure** dans le menu ♫ et la palette de commandes. Désactivé par défaut, il masque ces accès lorsqu’il est coupé. **Structure** utilise le moteur linguistique installé pour créer une note qui décrit chaque phrase : cadratifs, sujets, verbes, compléments et groupes de trois. L’original reste intact. Les analyses de structure et de tricolons peuvent manquer des passages ou en signaler à tort. En mode debug, **Corrections IA** enregistre également les réponses IA avant normalisation typographique dans une note `Nom (date heure).md`, placée dans le dossier de la note source. Les réponses des tronçons sont séparées par une ligne vide ; la note est créée à la fin d’une analyse réussie.
-
-**Statistiques**, juste après **Structure** dans le menu ♫ et dans la palette de commandes, est visible uniquement en mode debug. Elle analyse toute la note avec Grammalecte installé, indépendamment du correcteur sélectionné. Elle crée à côté de l’original une note `Nom_stats_AAAA-MM-JJ_HHMMSS.md`. Son en-tête YAML contient les 108 identifiants des [données brutes d’Unshiter](https://github.com/tcrouzet/unshiter/blob/main/assets/stats-notes.md) : comptes textuels, lemmes, répétitions et tricolons disponibles ; `"-"` pour les mesures que la structure simplifiée et les ressources embarquées ne permettent pas de calculer. Les conventions et limites sont précisées dans la note ; aucun score combiné n’est exporté.
+Les consignes de relecture sont personnalisables et peuvent être enregistrées avec leur modèle. Les liens restent intacts dans la note.
 
 ## Confidentialité
 
-Les analyses, les moteurs de correction locaux, Synonyme et Ponctuations restent sur l’appareil. Une connexion sert uniquement au téléchargement initial des ressources linguistiques, déclenché dans les réglages ; aucune note n’est envoyée à GitHub. Les fonctions IA envoient du texte au fournisseur choisi, uniquement sur demande : la sélection pour Corrections IA, et le paragraphe de la sélection avec celui d’avant et celui d’après pour Synonymes IA, s’ils existent. Les clés API sont conservées dans les réglages du plugin. L’installation et les mises à jour passent par GitHub sans envoyer les notes.
+Après téléchargement des dictionnaires et modèles, les surlignages, les correcteurs locaux et les dictionnaires fonctionnent hors ligne. Les ressources viennent de GitHub ; aucune note n’y est envoyée.
 
-Le bouton **Insérer la liste en remarque** ajoute les résultats des dictionnaires et des synonymes IA après le dernier paragraphe sélectionné, dans un commentaire Obsidian `%% … %%`. Finition n’accède pas au presse-papiers. Les fichiers du coffre et les copies de dictionnaires sont gérés par l’API Obsidian ; un fichier extérieur n’est lu que lorsqu’il est choisi dans le sélecteur d’import ou que son modèle est chargé depuis un chemin absolu saisi dans les réglages.
+Les fonctions IA s’exécutent uniquement sur demande. **Corrections IA** envoie la sélection au fournisseur choisi ou au serveur configuré ; **Synonymes IA** envoie aussi les paragraphes voisins pour tenir compte du contexte. Avec un serveur et un modèle exécutés sur votre machine, le texte reste local. Si vous indiquez un serveur distant ou un modèle cloud via Ollama, le texte peut quitter votre machine. Les clés API sont conservées dans les réglages du plugin.
 
-## Développement
+Finition n’accède pas au presse-papiers. Les notes et les copies de dictionnaires sont gérées par l’API Obsidian. Les fichiers extérieurs ne sont lus que lors d’un import choisi par l’utilisateur ou du chargement d’un modèle depuis un chemin renseigné dans les réglages.
 
-`main.ts` est le point d’entrée ; l’implémentation et les modules sont regroupés dans `plugin/`. Le code tiers de Grammalecte se trouve dans `plugin/vendor/grammalecte/` ; `plugin/data/` contient uniquement les JSON d’analyse embarqués. Ces JSON sont des sources publiques nécessaires à la compilation, donc versionnées. Les réglages utilisateur et les copies de dictionnaires importés sont des fichiers `data.json` ignorés par Git.
+## Documentation
 
-Les outils de développement, de préparation des ressources et de publication sont dans `scripts/` ; `git.sh`, `install.sh` et `release.sh` restent à la racine. Les JSON et notices publics téléchargeables restent dans `resources/`, les binaires et l’entraînement Python dans `scripts/neural/`, la documentation dans `doc/` et les fichiers privés dans le dossier ignoré par Git. `manifest.json`, `styles.css`, la licence et les configurations npm, TypeScript et ESLint restent à la racine.
+Pour les formats d’import, les sources et les limites des données :
 
-La version de Node est fixée dans `.nvmrc`. `npm run typecheck` vérifie les outils Node puis le plugin avec les seules bibliothèques du navigateur. `release.sh` prépare le tag ; GitHub Actions construit les fichiers du plugin, vérifie la répétabilité du build et atteste `main.js`, `manifest.json` et `styles.css`. Les données publiques sont publiées séparément sous le tag de préversion `resources-VERSION`, sans remplacer la dernière release stable du plugin.
+- [Lexique commun et dictionnaires personnels](doc/lexique.md)
+- [Dictionnaires de synonymes](doc/synonymes.md)
+- [Définitions, antonymes, phonétique et rimes](doc/dictionnaires.md)
+- [Modèles neuronaux locaux](doc/neural-model.md)
+- [Ressources publiques et leurs licences](resources/README.md)
+- [Licence du code](LICENSE)
 
-```sh
-npm ci
-npm run typecheck
-npm run build
-npm run lint
-npx --no-install jiti scripts/check-install.ts
-npx --no-install jiti scripts/check-structure.ts
-npx --no-install jiti scripts/check-synonym-dictionary.ts
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/check-synonym-data.py
-```
+Un problème ou une idée ? [Ouvrir un ticket sur GitHub](https://github.com/tcrouzet/finition/issues), en précisant la version d’Obsidian, le système et, si possible, un court exemple.
+
+## Versions bêta
+
+L’installation courante se fait depuis le catalogue Obsidian. **[BRAT](https://github.com/TfTHacker/obsidian42-brat)** sert à tester les versions bêta :
+
+1. Installer et activer BRAT depuis les plugins communautaires d’Obsidian.
+2. Ajouter le dépôt `tcrouzet/finition` dans BRAT et choisir la version bêta à tester.
+3. Activer Finition dans les plugins communautaires.
+
+Voir le [guide de BRAT](https://tfthacker.com/brat-quick-guide) pour le choix d’une version et les mises à jour.

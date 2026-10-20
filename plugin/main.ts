@@ -35,7 +35,7 @@ import { hasResponseText } from "./ai/clean";
 import { markdownLinks } from "./markdown-links";
 import { reviseChunkWithRetryAnthropic } from "./ai/anthropic";
 import { reviseChunkWithRetryOpenAI } from "./ai/openai";
-import { detectProvider } from "./ai/provider";
+import { getAIConnection } from "./ai/provider";
 import { runSynonyms } from "./ai/synonyms";
 import { fixPunctuationSpacing, fixBlankLinesProtected } from "./modes/punctuation";
 import { GrammalecteEngine, GrammalecteError } from "./modes/grammalecte";
@@ -110,6 +110,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	private grammalecteEngine: GrammalecteEngine | null = null;
 	private finitionCorrectorEngine: FinitionCorrectorEngine | null = null;
 	private spellingRequest = 0;
+	private pendingCorrectionRequest: number | null = null;
 	private linguisticResources: LinguisticResources | null = null;
 	private neuralModels: NeuralModels | null = null;
 	wordDictionaries: WordDictionaries | null = null;
@@ -161,6 +162,11 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		});
 		this.addCommand({ id: "corrections-ia", name: "Corrections IA", callback: () => this.toggleOrthoTypoIA() });
 		this.addCommand({ id: "settings", name: "Paramètres", callback: () => this.openSettingsTab() });
+		this.addCommand({ id: "reset", name: "Reset", checkCallback: checking => {
+			if (!this.hasActiveAnalysis) return false;
+			if (!checking) void this.resetAnalysis();
+			return true;
+		} });
 
 		this.addCommand({
 			id: "synonymes-ia",
@@ -218,6 +224,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	async loadSettings(): Promise<void> {
 		const saved = (await this.loadData()) as Partial<FinitionSettings> | null;
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, saved ?? {});
+		this.settings.localAIServer = typeof this.settings.localAIServer === "string" ? this.settings.localAIServer.trim() : "";
+		this.settings.localAIModel = typeof this.settings.localAIModel === "string" ? this.settings.localAIModel.trim() : "";
 		if (!["none", "words", "characters", "both"].includes(this.settings.documentCountDisplay)) this.settings.documentCountDisplay = "none";
 		this.settings.hideBacklinksCount = this.settings.hideBacklinksCount === true;
 		document.body.classList.toggle("finition-hide-backlinks-count", this.settings.hideBacklinksCount);
@@ -479,7 +487,6 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		}
 		// Recliquer sur le mode déjà actif l'éteint (retour à "none").
 		this.settings.mode = this.settings.mode === mode ? "none" : mode;
-		this.analysisNavigation?.requestFirst();
 		await this.saveSettings();
 		this.updateStatusBarIcon();
 		this.refreshAllEditors();
@@ -491,6 +498,22 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		if (engine === "finition-corrector") this.settings.spellingNeural = true;
 		await this.setSpellingEngine(engine);
 		await this.runGrammalecte();
+	}
+
+	private get hasActiveAnalysis(): boolean {
+		return this.settings.mode !== "none" || this.pendingCorrectionRequest === this.spellingRequest || this.grammalecteErrors.length > 0 || this.aiGroups.length > 0;
+	}
+
+	private async resetAnalysis(): Promise<void> {
+		this.spellingRequest++;
+		this.pendingCorrectionRequest = null;
+		this.settings.mode = "none";
+		this.grammalecteErrors = [];
+		this.grammalecteErrorsVersion++;
+		this.clearAISuggestions();
+		await this.saveSettings();
+		this.updateStatusBarIcon();
+		this.refreshAllEditors();
 	}
 
 	private showModeMenu(evt: MouseEvent): void {
@@ -564,6 +587,11 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				.onClick(() => this.openSettingsTab())
 		);
 
+		if (this.hasActiveAnalysis) {
+			menu.addSeparator();
+			menu.addItem(item => item.setTitle("Reset").setIcon("rotate-ccw").onClick(() => this.resetAnalysis()));
+		}
+
 		menu.showAtMouseEvent(evt);
 	}
 
@@ -610,21 +638,18 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			new Notice("Sélectionner d'abord un texte.");
 			return;
 		}
-		const provider = detectProvider(this.settings.aiModel);
-		const apiKey = provider === "openai" ? this.settings.openaiApiKey : this.settings.aiApiKey;
-		if (!apiKey) {
-			const providerLabel = provider === "openai" ? "OpenAI" : "Anthropic";
-			new Notice(`Corrections IA : renseigne ta clé API ${providerLabel} dans Réglages → Finition.`);
+		let connection: ReturnType<typeof getAIConnection>;
+		try { connection = getAIConnection(this.settings); }
+		catch (error) {
+			new Notice(`Corrections IA : ${error instanceof Error ? error.message : String(error)}`);
 			return;
 		}
 		const request = ++this.spellingRequest;
+		this.pendingCorrectionRequest = request;
 		const document = editor.getValue();
 		this.grammalecteErrors = [];
 		this.grammalecteErrorsVersion++;
 
-		// Efface implicitement les suggestions d'un lancement précédent —
-		// pas besoin d'une commande "reset" séparée : relancer Corrections IA
-		// repart simplement à zéro.
 		this.clearAISuggestions();
 
 		this.aiSourcePath = view.file?.path ?? null;
@@ -651,13 +676,12 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				const chunk = chunks[i];
 				progress.setMessage(`Corrections IA : tronçon ${i + 1}/${chunks.length}...`);
 				if (chunk.text.trim().length === 0) continue;
-				const reviseChunk = provider === "openai" ? reviseChunkWithRetryOpenAI : reviseChunkWithRetryAnthropic;
+				const reviseChunk = connection.provider === "openai" ? reviseChunkWithRetryOpenAI : reviseChunkWithRetryAnthropic;
 				const start = selectionFrom + chunk.start;
 				const protectedText = protectLinks(document, start, start + chunk.text.length, links);
 				if (!protectedText.text.trim()) continue;
 				const { text: revisedRaw, error } = await reviseChunk(protectedText.text, this.settings.aiPrompt, {
-					apiKey,
-					model: this.settings.aiModel,
+					...connection,
 					maxTokens: this.settings.aiMaxTokens,
 				});
 				if (request !== this.spellingRequest || document !== editor.getValue() || this.app.workspace.getActiveViewOfType(MarkdownView) !== view) return;
@@ -686,6 +710,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		} catch (e) {
 			errors.push(`Erreur inattendue : ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
+			if (this.pendingCorrectionRequest === request) this.pendingCorrectionRequest = null;
 			progress.hide();
 		}
 
@@ -723,9 +748,11 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		fixed = fixBlankLinesProtected(fixed);
 
 		if (fixed !== original) {
-			const cursor = editor.getCursor();
+			const selections = editor.listSelections();
+			const scroll = editor.getScrollInfo();
 			editor.setValue(fixed);
-			editor.setCursor(cursor); // setValue ramène le curseur au début, on le restaure au mieux
+			editor.setSelections(selections);
+			editor.scrollTo(scroll.left, scroll.top);
 			new Notice("Ponctuation : corrections appliquées.");
 		} else {
 			new Notice("Ponctuation : rien à corriger.");
@@ -1133,6 +1160,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		}
 
 		const label = this.settings.spellingEngine === "finition-corrector" && this.settings.spellingNeural ? "Correction neurale" : "Corrections";
+		if (request !== this.spellingRequest) return;
+		this.pendingCorrectionRequest = request;
 		const notice = new Notice(loadingMessage(label), 0);
 		const publish = (rawErrors: GrammalecteError[]): boolean => {
 			if (request !== this.spellingRequest || document !== editor.getValue() || this.app.workspace.getActiveViewOfType(MarkdownView) !== view) return false;
@@ -1162,6 +1191,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			notice.hide();
 			new Notice(`${label} : erreur — ${e instanceof Error ? e.message : String(e)}`, 10000);
 			console.error(`Finition — ${label} :`, e);
+		} finally {
+			if (this.pendingCorrectionRequest === request) this.pendingCorrectionRequest = null;
 		}
 	}
 

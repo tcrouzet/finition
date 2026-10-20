@@ -1,4 +1,4 @@
-import { EditorState, Extension } from "@codemirror/state";
+import { Compartment, EditorState, Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { App, MarkdownView, type Command } from "obsidian";
 import FinitionPlugin from "../main";
@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS, FinitionMode, Highlight } from "../plugin/types";
 import { resourceFixture } from "./check-linguistic-resources";
 import { countDocument, formatDocumentCount } from "../plugin/ui/document-count";
 
-export async function checkAnalysisNavigation(menuOpened: () => number, getMenu: () => Array<{ title: string }>): Promise<void> {
+export async function checkAnalysisNavigation(menuOpened: () => number, getMenu: () => Array<{ title: string; click: () => unknown }>): Promise<void> {
 	const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
 	for (const [number, expected] of [[999, "999 mots"], [1000, "1000 mots"], [1001, "1K mots"], [1050, "1,1K mots"], [10000, "10K mots"], [10500, "10,5K mots"]] as const) check(formatDocumentCount(number, "mot") === expected, `Compteur compact incorrect : ${number}`);
 	check(formatDocumentCount(0, "mot") === "0 mots" && formatDocumentCount(1, "mot") === "1 mot" && formatDocumentCount(1, "signe") === "1 signe", "Unité du compteur incorrecte");
@@ -65,7 +65,8 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	check(!document.body.classList.contains("finition-hide-backlinks-count"), "Masquage des backlinks encore actif après désactivation");
 	const parent = document.body.createDiv();
 	const text = "Introduction.\n\nIl semblerait que tout change. Il semblerait que rien ne bouge.";
-	const view = new EditorView({ parent, state: EditorState.create({ doc: text, extensions: host.extensions }) });
+	const layout = new Compartment();
+	const view = new EditorView({ parent, state: EditorState.create({ doc: text, extensions: [...host.extensions, layout.of([])] }) });
 	active = Object.assign(Object.create(MarkdownView.prototype) as MarkdownView, { editor: { cm: view, getValue: () => view.state.doc.toString() } });
 	const documentCount = document.querySelector<HTMLElement>(".finition-document-count");
 	check(!documentCount!.parentElement!.hasAttribute("aria-label"), "L’infobulle Finition recouvre celle du compteur");
@@ -109,11 +110,72 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	check(counter && next, "Compteur et flèche absents");
 	const activate = async (mode: FinitionMode, expected: number, first: number) => {
 		document.querySelector<HTMLElement>("#result")!.dataset.stage = mode;
-		view.dispatch({ selection: { anchor: view.state.doc.length } });
+		view.dispatch({ selection: { anchor: view.state.doc.length, head: view.state.doc.length - 1 } });
+		const selection = view.state.selection.main;
+		const scrollTop = view.scrollDOM.scrollTop;
 		await plugin.setMode(mode);
 		document.querySelector<HTMLElement>("#result")!.dataset.stage = `${mode}: mode activé`;
-		await waitFor(() => counter!.textContent === String(expected) && view.state.selection.main.head === first && view.hasFocus, `Activation ${mode} : compteur ou première occurrence incorrects`);
+		await waitFor(() => counter!.textContent === String(expected), `Activation ${mode} : compteur incorrect`);
+		await turn();
+		check(view.state.selection.main.eq(selection) && view.scrollDOM.scrollTop === scrollTop, `Activation ${mode} : sélection ou défilement déplacé`);
+		next!.click();
+		check(view.state.selection.main.head === first && view.hasFocus, `Navigation ${mode} : première occurrence inaccessible`);
 	};
+	const initialLimit = plugin.settings.maxDocumentLength;
+	const prefix = "😀 Le chat et le chat, mais pas la souris.";
+	const longText = prefix + " Le chat et le chat.";
+	for (const [mode, expandedCount, first, selector] of [
+		["hinges", 3, prefix.indexOf("et"), ".finition-hinge"],
+		["repetition", 4, prefix.indexOf("chat"), ".finition-repeat"],
+	] as const) {
+		plugin.settings.maxDocumentLength = prefix.length;
+		await plugin.saveSettings();
+		view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: longText } });
+		await activate(mode, 2, first);
+		const marks = Array.from(view.dom.querySelectorAll<HTMLElement>(selector));
+		check(marks.length === 2 && marks.every(mark => view.posAtDOM(mark) + mark.textContent.length <= prefix.length), `${mode} : surlignage absent du début ou présent au-delà de la limite`);
+		next!.click();
+		next!.click();
+		check(view.state.selection.main.head === first, `${mode} : navigation au-delà du début analysé`);
+		plugin.settings.maxDocumentLength = longText.length;
+		await plugin.saveSettings();
+		plugin.refreshAllEditors();
+		await waitFor(() => counter!.textContent === String(expandedCount), `${mode} : agrandir la limite ne restaure pas les surlignages`);
+		plugin.settings.maxDocumentLength = prefix.length;
+		await plugin.saveSettings();
+		const inserted = "Un mot. ";
+		view.dispatch({ changes: { from: 0, insert: inserted } });
+		await waitFor(() => counter!.textContent === "2", `${mode} : compteur périmé après modification du début`);
+		check(view.posAtDOM(view.dom.querySelector<HTMLElement>(selector)!) === first + inserted.length, `${mode} : positions UTF-16 décalées après modification`);
+		check(view.state.doc.toString() === inserted + longText, `${mode} : le texte hors limite a été modifié`);
+	}
+	const boundaryText = "Le chat et la niche, mais loin.";
+	plugin.settings.maxDocumentLength = boundaryText.indexOf("niche") + 2;
+	await plugin.saveSettings();
+	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: boundaryText } });
+	await activate("hinges", 1, boundaryText.indexOf("et"));
+	check(view.dom.querySelector(".finition-hinge")!.textContent === "et", "Un mot tronqué à la limite devient une fausse charnière");
+	plugin.settings.maxDocumentLength = initialLimit;
+	await plugin.saveSettings();
+	const filler = "\nUne phrase sans lien.";
+	const oversized = (prefix + filler.repeat(Math.ceil(initialLimit / filler.length))).slice(0, initialLimit) + " et";
+	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: oversized } });
+	await waitFor(() => counter!.textContent === "2", "Le début d’un document dépassant la limite par défaut n’est pas analysé");
+	check(view.dom.querySelector(".finition-hinge")?.textContent === "et" && view.state.doc.toString() === oversized, "Le surlignage d’un grand document altère ou masque son début");
+	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+	console.error("finition-test-step", "longs documents : début surligné, navigation bornée, limite réglable et positions UTF-16 vérifiés");
+	const scrollText = text + "\nUn paragraphe de plus.".repeat(100);
+	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: scrollText }, selection: { anchor: scrollText.length },
+		effects: layout.reconfigure(EditorView.theme({ ".cm-scroller": { height: "180px", overflow: "auto" } })),
+	});
+	await new Promise(requestAnimationFrame);
+	view.scrollDOM.scrollTop = view.scrollDOM.scrollHeight;
+	await new Promise(requestAnimationFrame);
+	check(view.scrollDOM.scrollTop > 0, "Le scénario de lecture ne défile pas réellement");
+	await activate("hedging", 2, text.indexOf("Il semblerait"));
+	await plugin.setMode("hedging");
+	view.dispatch({ effects: layout.reconfigure([]) });
+	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
 	await activate("hedging", 2, text.indexOf("Il semblerait"));
 	const highlight = view.dom.querySelector<HTMLElement>(".finition-hedging")!;
 	const normalBackground = getComputedStyle(highlight).backgroundColor;
@@ -146,20 +208,20 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	await plugin.setMode("hedging");
 	await waitFor(() => counter!.textContent === "0", "Le mode vide ne revient pas à zéro");
 	const internal = plugin as unknown as {
-		analysisNavigation: { requestFirst: () => void };
 		updateAnalysisHighlights: (view: EditorView, highlights: Highlight[], pending: boolean) => void;
 	};
 	const ranges = [{ from: 2, to: 4, lemma: "fixture", colorIndex: 0 }];
 	view.dispatch({ selection: { anchor: view.state.doc.length } });
 	internal.updateAnalysisHighlights(view, ranges, true);
-	internal.analysisNavigation.requestFirst();
 	await turn();
 	check(counter!.textContent === "…" && next!.disabled && view.state.selection.main.head === view.state.doc.length, "Un résultat provisoire déclenche la navigation");
 	internal.updateAnalysisHighlights(view, ranges, false);
-	await waitFor(() => view.state.selection.main.head === 2, "La résolution asynchrone ne rejoint pas la première occurrence");
+	await turn();
+	check(counter!.textContent === "1" && view.state.selection.main.head === view.state.doc.length, "La résolution asynchrone déplace le curseur");
+	next!.click();
+	check(view.state.selection.main.head === 2, "La flèche ne rejoint pas le résultat asynchrone");
 	const other = new EditorView({ parent: document.body.createDiv(), state: EditorState.create({ doc: "Autre note." }) });
 	view.dispatch({ selection: { anchor: view.state.doc.length } });
-	internal.analysisNavigation.requestFirst();
 	active = Object.assign(Object.create(MarkdownView.prototype) as MarkdownView, { editor: { cm: other } });
 	internal.updateAnalysisHighlights(view, ranges, false);
 	plugin.updateStatusBarIcon();
@@ -168,14 +230,34 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	check(counter!.textContent !== "1", "Une note inactive écrase le compteur actif");
 	active = Object.assign(Object.create(MarkdownView.prototype) as MarkdownView, { editor: { cm: view } });
 	await plugin.setMode("hedging");
+	const showMenu = () => {
+		(plugin as unknown as { showModeMenu: (event: MouseEvent) => void }).showModeMenu(new MouseEvent("click"));
+		return getMenu();
+	};
+	check(!showMenu().some(item => item.title === "Reset"), "Reset visible sans fonction active");
+	await plugin.setMode("hinges");
+	const resetPosition = view.state.selection.main.head;
+	const resetText = view.state.doc.toString();
+	const resetMenu = showMenu();
+	check(resetMenu.at(-1)?.title === "Reset", "Reset absent du bas du menu actif");
+	const resetCommand = host.commands.find(command => command.name === "Reset");
+	check(resetCommand?.checkCallback?.(true), "Reset absent de la palette pour une fonction active");
+	await resetMenu.at(-1)!.click();
+	await waitFor(() => plugin.settings.mode === "none" && counter!.hidden && next!.hidden, "Reset laisse les surlignages actifs");
+	check(view.state.selection.main.head === resetPosition && view.state.doc.toString() === resetText, "Reset déplace le curseur ou modifie le texte");
+	check(!showMenu().some(item => item.title === "Reset") && resetCommand!.checkCallback!(true) === false, "Reset reste disponible après annulation");
 	const misspelled = "Une fote. Une autre fote.";
 	replace(misspelled);
 	const firstError = misspelled.indexOf("fote"), lastError = misspelled.lastIndexOf("fote");
 	plugin.grammalecteErrors = [firstError, lastError].map(nStart => ({ nStart, nEnd: nStart + 4, sType: "orthographe", sMessage: "Orthographe", sRuleId: "test", aSuggestions: ["faute"], sValue: "fote" }));
 	plugin.grammalecteErrorsVersion++;
+	const spellingPosition = view.state.selection.main.head;
 	plugin.refreshAllEditors();
 	await waitFor(() => counter!.textContent === "2" && !next!.hidden && !next!.disabled, "Grammalecte : compteur et flèche absents");
+	check(view.state.selection.main.head === spellingPosition, "L’affichage des corrections déplace le curseur");
+	check(showMenu().at(-1)?.title === "Reset", "Reset absent pour les corrections seules");
 	check(next!.getAttribute("aria-label") === "Faute suivante", "Grammalecte : flèche sans libellé adapté");
+	const menuBeforeSpellingNavigation = menuOpened();
 	view.dispatch({ selection: { anchor: 0 } });
 	next!.click();
 	check(view.state.selection.main.head === firstError && view.hasFocus, "Grammalecte : première faute inaccessible");
@@ -183,7 +265,7 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	check(view.state.selection.main.head === lastError, "Grammalecte : faute suivante inaccessible");
 	next!.click();
 	check(view.state.selection.main.head === firstError, "Grammalecte : retour à la première faute absent");
-	check(menuOpened() === 0 && view.state.doc.toString() === misspelled, "Grammalecte : navigation modifie le texte ou ouvre le menu");
+	check(menuOpened() === menuBeforeSpellingNavigation && view.state.doc.toString() === misspelled, "Grammalecte : navigation modifie le texte ou ouvre le menu");
 	active = Object.assign(Object.create(MarkdownView.prototype) as MarkdownView, { editor: { cm: other } });
 	plugin.updateStatusBarIcon();
 	check(next!.hidden, "Grammalecte : navigation proposée dans une note non analysée");

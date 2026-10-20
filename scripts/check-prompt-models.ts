@@ -12,6 +12,16 @@ export async function checkPromptModels(Plugin: typeof FinitionPlugin): Promise<
 	tab.containerEl = container;
 	tab.update();
 	const row = (name: string) => Array.from(container.querySelectorAll(".setting-item")).find(row => row.querySelector(".setting-item-name")?.textContent === name)!;
+	check(row("Serveur local") && row("Modèle local"), "Champs de connexion au serveur local absents");
+	const names = Array.from(container.querySelectorAll(".setting-item-name"), element => element.textContent);
+	check(names.indexOf("Serveur local") === names.indexOf("Clé API OpenAI") + 1 && names.indexOf("Modèle local") === names.indexOf("Serveur local") + 1, "Connexion locale placée hors des zones de clés API");
+	for (const [name, value] of [["Serveur local", "http://localhost:11434"], ["Modèle local", "modele-local:test"]]) {
+		const input = row(name).querySelector<HTMLInputElement>("input")!;
+		check(input.value === "", "Une connexion locale est activée par défaut");
+		input.value = value;
+		input.dispatchEvent(new Event("input"));
+		await new Promise(resolve => window.setTimeout(resolve, 0));
+	}
 	const select = (name: string) => row(name).querySelector<HTMLSelectElement>("select")!;
 	const change = async (name: string, value: string) => {
 		const field = select(name);
@@ -37,6 +47,7 @@ export async function checkPromptModels(Plugin: typeof FinitionPlugin): Promise<
 	tab = new FinitionSettingTab(plugin.app, plugin);
 	tab.containerEl = container;
 	tab.update();
+	check(row("Serveur local").querySelector<HTMLInputElement>("input")!.value === "http://localhost:11434" && row("Modèle local").querySelector<HTMLInputElement>("input")!.value === "modele-local:test", "Connexion locale perdue après réouverture des réglages");
 	check(plugin.settings.savedPrompts.find(prompt => prompt.name === second.name)?.model === "modele-personnel" && row("Identifiant du modèle pour ce prompt").querySelector<HTMLInputElement>("input")!.value === "modele-personnel", "Le modèle personnalisé n’est pas persisté après réouverture des réglages");
 	await change("Prompt enregistré", first.name);
 	await change("Modèle pour ce prompt", "__model_default__");

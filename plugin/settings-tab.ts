@@ -413,7 +413,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 		const apiKeyDesc = createFragment();
 		apiKeyDesc.appendChild(
 			document.createTextNode(
-				"Nécessaire pour utiliser « Corrections IA » (menu ♫). Stockée en clair dans data.json, comme la plupart des plugins IA d'Obsidian. "
+				"Pour utiliser Claude avec Corrections IA et Synonymes IA. Stockée en clair dans data.json. Inutile avec un serveur local. "
 			)
 		);
 		const apiKeyLink = createEl("a");
@@ -462,10 +462,25 @@ export class FinitionSettingTab extends PluginSettingTab {
 					});
 			});
 
+		new Setting(containerEl)
+			.setName("Serveur local")
+			.setDesc("Ollama ou serveur compatible OpenAI, par exemple http://localhost:11434. Active les corrections et synonymes IA locaux, sans clé API ni repli vers le cloud. Vider pour utiliser Claude/GPT.")
+			.addText(text => text.setPlaceholder("Adresse du serveur").setValue(this.plugin.settings.localAIServer).onChange(async value => {
+				this.plugin.settings.localAIServer = value.trim();
+				await this.plugin.saveSettings();
+			}));
+		new Setting(containerEl)
+			.setName("Modèle local")
+			.setDesc("Identifiant exact du modèle servi localement. Obligatoire quand le serveur local est renseigné. Aucun modèle n’est téléchargé par Finition.")
+			.addText(text => text.setPlaceholder("Identifiant du modèle local").setValue(this.plugin.settings.localAIModel).onChange(async value => {
+				this.plugin.settings.localAIModel = value.trim();
+				await this.plugin.saveSettings();
+			}));
+
 		const modelDesc = createFragment();
 		modelDesc.appendChild(
 			document.createTextNode(
-				"Modèle à utiliser — Claude (Anthropic) ou GPT (OpenAI) : le nom choisi détermine automatiquement quelle clé API est utilisée. "
+				"Modèle Claude ou GPT utilisé lorsque Serveur local est vide. Le nom choisi détermine quelle clé API est utilisée. "
 			)
 		);
 		const modelLink = createEl("a");
@@ -802,13 +817,14 @@ export class FinitionSettingTab extends PluginSettingTab {
 			},
 			{
 				name: "Taille maximale de document analysé",
-				desc: "Garde-fou de performance : au-delà de cette taille (caractères), le surlignage est désactivé.",
+				desc: "Nombre maximal de caractères analysés depuis le début. Le reste de la note reste sans surlignage.",
 				render: setting => {
 					setting.addText(text => text.setValue(String(this.plugin.settings.maxDocumentLength)).onChange(async value => {
 						const parsed = Number(value);
 						if (!Number.isNaN(parsed) && parsed > 0) {
 							this.plugin.settings.maxDocumentLength = parsed;
 							await this.plugin.saveSettings();
+							this.plugin.refreshAllEditors();
 						}
 					}));
 				},
@@ -1041,7 +1057,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 		return [
 			...this.generalDefinitions(),
 			this.sectionDefinition("Corrections", ["Lexique", "Charger un lexique", ...(this.plugin.lexiconDictionaries?.options.map(option => option.name) ?? []), "Dictionnaire Finition", "Moteur d’analyse", "Neuronal", "Structure", "Tricolons", "Grammalecte", "Correcteur neuronal par défaut", "CamemBERT", "Charger un modèle neuronal", "Dictionnaire personnel", ...this.plugin.neuralModelOptions.map(option => option.name)], container => this.displayCorrections(container)),
-			this.sectionDefinition("Corrections IA", ["Clé API Anthropic", "Clé API OpenAI", "Modèle par défaut", "Identifiant du modèle personnalisé", "Taille des tronçons (caractères)", "Prompt enregistré", "Prompt de révision", "Modèle pour ce prompt", "Identifiant du modèle pour ce prompt", "Enregistrer sous ce nom"], container => this.displayAICorrections(container)),
+			this.sectionDefinition("Corrections IA", ["Clé API Anthropic", "Clé API OpenAI", "Serveur local", "Modèle local", "Modèle par défaut", "Identifiant du modèle personnalisé", "Taille des tronçons (caractères)", "Prompt enregistré", "Prompt de révision", "Modèle pour ce prompt", "Identifiant du modèle pour ce prompt", "Enregistrer sous ce nom"], container => this.displayAICorrections(container)),
 			this.sectionDefinition("Synonymes", ["Dictionnaire", "Finition", "Charger un dictionnaire", ...this.plugin.synonymDictionaryOptions.map(option => option.name)], container => this.displaySynonyms(container)),
 			this.sectionDefinition("Définitions", ["Dictionnaire", "Charger un dictionnaire", ...(this.plugin.wordDictionaries?.options.filter(option => option.kind === "definitions").map(option => option.name) ?? [])], container => this.displayWordDictionary(container, "definitions")),
 			this.sectionDefinition("Antonymes", ["Dictionnaire", "Charger un dictionnaire", ...(this.plugin.wordDictionaries?.options.filter(option => option.kind === "antonymes").map(option => option.name) ?? [])], container => this.displayWordDictionary(container, "antonymes")),

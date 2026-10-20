@@ -12,7 +12,6 @@ interface AnalysisSnapshot {
 export class AnalysisNavigation {
 	private snapshots = new WeakMap<EditorView, AnalysisSnapshot>();
 	private grammalecteSnapshots = new WeakMap<EditorView, AnalysisSnapshot>();
-	private first: { view: EditorView; mode: FinitionMode } | null = null;
 	private disposed = false;
 	private count: HTMLSpanElement;
 	private next: HTMLButtonElement;
@@ -48,12 +47,6 @@ export class AnalysisNavigation {
 		this.refresh();
 	}
 
-	requestFirst(): void {
-		const view = this.activeView();
-		this.first = view ? { view, mode: this.plugin.settings.mode } : null;
-		this.refresh();
-	}
-
 	refresh(): void {
 		if (this.disposed) return;
 		const view = this.activeView();
@@ -68,19 +61,10 @@ export class AnalysisNavigation {
 		this.count.hidden = this.next.hidden = !enabled;
 		this.count.setText(enabled ? ready ? String(snapshot.highlights.length) : "…" : "");
 		this.next.disabled = !enabled || !ready || snapshot.highlights.length === 0;
-		if (this.first && this.first.mode !== mode) this.first = null;
-		if (enabled && ready && this.first?.view === view) {
-			this.first = null;
-			const from = snapshot.highlights[0]?.from;
-			if (from !== undefined) queueMicrotask(() => {
-				if (!this.disposed && this.activeView() === view && this.current(view) === snapshot) this.goTo(view, from);
-			});
-		}
 	}
 
 	destroy(): void {
 		this.disposed = true;
-		this.first = null;
 	}
 
 	private activeView(): EditorView | undefined {

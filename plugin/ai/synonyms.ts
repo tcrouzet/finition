@@ -5,7 +5,7 @@ import { createRemarkInsertion } from "../ui/insert-remark";
 import { callAnthropic } from "./anthropic";
 import { callOpenAI } from "./openai";
 import { splitIntoChunks } from "./chunk";
-import { detectProvider } from "./provider";
+import { getAIConnection } from "./provider";
 import { selectionTouchesLink } from "../markdown-links";
 import systemPrompt from "./system-prompt-synonymes.md";
 
@@ -39,10 +39,10 @@ export async function runSynonyms(app: App, settings: FinitionSettings): Promise
 		new Notice("Synonymes IA : sélectionne un texte continu.");
 		return;
 	}
-	const provider = detectProvider(settings.aiModel);
-	const apiKey = provider === "openai" ? settings.openaiApiKey : settings.aiApiKey;
-	if (!apiKey) {
-		new Notice(`Synonymes IA : renseigne ta clé API ${provider === "openai" ? "OpenAI" : "Anthropic"} dans Réglages → Finition.`);
+	let connection: ReturnType<typeof getAIConnection>;
+	try { connection = getAIConnection(settings); }
+	catch (error) {
+		new Notice(`Synonymes IA : ${error instanceof Error ? error.message : String(error)}`);
 		return;
 	}
 	const document = editor.getValue();
@@ -53,8 +53,8 @@ export async function runSynonyms(app: App, settings: FinitionSettings): Promise
 	const insertRemark = createRemarkInsertion(app, view);
 	const progress = new Notice("Synonymes IA : recherche en cours…", 0);
 	try {
-		const request = provider === "openai" ? callOpenAI : callAnthropic;
-		const result = await request({ apiKey, model: settings.aiModel, maxTokens: settings.aiMaxTokens, system: systemPrompt, userText: synonymContext(document, from, to) });
+		const request = connection.provider === "openai" ? callOpenAI : callAnthropic;
+		const result = await request({ ...connection, maxTokens: settings.aiMaxTokens, system: systemPrompt, userText: synonymContext(document, from, to) });
 		if (result.error || typeof result.text !== "string") throw new Error(result.error ?? "Réponse vide.");
 		const synonyms = parseSynonyms(result.text);
 		if (!synonyms.length) throw new Error("Aucun synonyme dans la réponse.");

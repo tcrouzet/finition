@@ -11,6 +11,7 @@ import { hasResponseText } from "./clean";
 
 interface OpenAICallOptions {
 	apiKey: string;
+	baseUrl?: string;
 	model: string;
 	maxTokens: number;
 	system: string;
@@ -24,17 +25,18 @@ interface OpenAICallResult {
 }
 
 export async function callOpenAI(opts: OpenAICallOptions): Promise<OpenAICallResult> {
+	let timeout: number | undefined;
 	try {
-		const response = await requestUrl({
-			url: "https://api.openai.com/v1/chat/completions",
+		const request = requestUrl({
+			url: `${opts.baseUrl ?? "https://api.openai.com/v1"}/chat/completions`,
 			method: "POST",
 			headers: {
-				Authorization: `Bearer ${opts.apiKey}`,
+				...(opts.baseUrl ? {} : { Authorization: `Bearer ${opts.apiKey}` }),
 				"content-type": "application/json",
 			},
 			body: JSON.stringify({
 				model: opts.model,
-				max_completion_tokens: opts.maxTokens,
+				...(opts.baseUrl ? { max_tokens: opts.maxTokens, stream: false } : { max_completion_tokens: opts.maxTokens }),
 				messages: [
 					{ role: "system", content: opts.system },
 					{ role: "user", content: opts.userText },
@@ -42,23 +44,28 @@ export async function callOpenAI(opts: OpenAICallOptions): Promise<OpenAICallRes
 			}),
 			throw: false,
 		});
+		const response = await (opts.baseUrl ? Promise.race([
+			request,
+			new Promise<never>((_, reject) => { timeout = window.setTimeout(() => reject(new Error("Le serveur local n’a pas répondu dans les deux minutes.")), 120_000); }),
+		]) : request);
 		if (response.status < 200 || response.status >= 300) {
 			// OpenAI renvoie un JSON { error: { message, type, code } } en cas
 			// d'échec (clé invalide, modèle inconnu, quota dépassé...) — on le
 			// remonte tel quel plutôt que de le passer sous silence.
 			let detail = response.text;
 			try {
-				const errJson = response.json as { error?: { message?: string } };
-				if (errJson?.error?.message) detail = errJson.error.message;
+				const errJson = response.json as { error?: string | { message?: string } };
+				if (typeof errJson?.error === "string") detail = errJson.error;
+				else if (errJson?.error?.message) detail = errJson.error.message;
 			} catch {
 				// response.text déjà utilisé en repli
 			}
-			const message = `Erreur API OpenAI (${response.status}) : ${detail}`;
+			const message = `Erreur API ${opts.baseUrl ? "serveur local" : "OpenAI"} (${response.status}) : ${detail}`;
 			console.error("Corrections IA :", message);
 			return { text: null, error: message };
 		}
 		const data = response.json as { choices?: Array<{ message?: { content?: string } }> };
-		const text = data.choices?.[0]?.message?.content;
+		const text = data?.choices?.[0]?.message?.content;
 		if (!hasResponseText(text)) {
 			const message = "Réponse API inattendue (aucun contenu).";
 			console.error("Corrections IA :", message, data);
@@ -69,6 +76,8 @@ export async function callOpenAI(opts: OpenAICallOptions): Promise<OpenAICallRes
 		const message = `Erreur réseau : ${e instanceof Error ? e.message : String(e)}`;
 		console.error("Corrections IA :", message);
 		return { text: null, error: message };
+	} finally {
+		if (timeout !== undefined) window.clearTimeout(timeout);
 	}
 }
 
@@ -86,14 +95,12 @@ export interface ReviseResult {
 export async function reviseChunkWithRetryOpenAI(
 	chunk: string,
 	system: string,
-	opts: { apiKey: string; model: string; maxTokens: number }
+	opts: Omit<OpenAICallOptions, "system" | "userText">
 ): Promise<ReviseResult> {
 	let lastError: string | null = null;
-	for (let attempt = 1; attempt <= 3; attempt++) {
+	for (let attempt = 1; attempt <= (opts.baseUrl ? 1 : 3); attempt++) {
 		const result = await callOpenAI({
-			apiKey: opts.apiKey,
-			model: opts.model,
-			maxTokens: opts.maxTokens,
+			...opts,
 			system,
 			userText: chunk,
 		});

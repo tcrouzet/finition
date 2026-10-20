@@ -26,10 +26,15 @@ import { analyzeTicIA } from "./modes/tic-ia";
 const FOCUS_CLASS = "finition-focused";
 
 function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLemma: string | null): DecorationSet {
-	const text = view.state.doc.toString();
-	if (text.length > runtime.settings.maxDocumentLength || ((runtime.settings.mode === "repetition" || runtime.settings.mode === "stereotype") && !runtime.lexicon.size)) {
+	let text = view.state.doc.sliceString(0, Math.min(view.state.doc.length, runtime.settings.maxDocumentLength));
+	if (text.length < view.state.doc.length) {
+		text = text.replace(/[\uD800-\uDBFF]$/u, "");
+		if (/^[\p{L}\p{M}\p{N}_’'-]/u.test(view.state.doc.sliceString(text.length, Math.min(view.state.doc.length, text.length + 2)))) {
+			text = text.replace(/[\p{L}\p{M}\p{N}_’'-]+$/u, "");
+		}
+	}
+	if ((runtime.settings.mode === "repetition" || runtime.settings.mode === "stereotype") && !runtime.lexicon.size) {
 		runtime.updateAnalysisHighlights(view, [], false);
-		if (runtime.settings.mode === "tic-ia") runtime.updateTicIAStats(view, 0, 0, true);
 		return Decoration.none;
 	}
 
