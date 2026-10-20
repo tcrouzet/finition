@@ -13,24 +13,34 @@ export interface SharedDictionary {
 	lemmaOverrides?: Array<[string, string]>;
 }
 
-async function inflate(payload: string): Promise<unknown> {
+async function inflate(payload: string, limit: number): Promise<unknown> {
 	const binary = atob(payload);
 	const bytes = new Uint8Array(binary.length);
 	for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
 	const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
-	return JSON.parse(await new Response(stream).text()) as unknown;
+	if (!Number.isFinite(limit)) return JSON.parse(await new Response(stream).text()) as unknown;
+	let size = 0;
+	const limited = stream.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({ transform(chunk, controller) {
+		size += chunk.byteLength;
+		if (size > limit) throw new Error("Bloc lexical décompressé trop volumineux.");
+		controller.enqueue(chunk);
+	} }));
+	return JSON.parse(await new Response(limited).text()) as unknown;
 }
 
-export async function decodeDictionary(value: unknown, mode: "all" | "grammalecte" | "neural" = "all"): Promise<SharedDictionary> {
-	if (!value || typeof value !== "object" || !("name" in value) || value.name !== "finition-dictionnaire"
+export const isSharedDictionary = (value: unknown): boolean => Boolean(value && typeof value === "object"
+	&& ("format" in value ? value.format === "finition-dictionnaire" : "name" in value && value.name === "finition-dictionnaire"));
+
+export async function decodeDictionary(value: unknown, mode: "all" | "grammalecte" | "neural" = "all", blockLimit = Infinity): Promise<SharedDictionary> {
+	if (!value || typeof value !== "object" || !isSharedDictionary(value)
 		|| !("version" in value) || (value.version !== 1 && value.version !== 2)
 		|| !("encoding" in value) || value.encoding !== "gzip-base64" || !("payload" in value) || typeof value.payload !== "string") throw new Error("Format du dictionnaire invalide.");
 	let decoded: unknown;
-	if (value.version === 1) decoded = await inflate(value.payload);
+	if (value.version === 1) decoded = await inflate(value.payload, blockLimit);
 	else {
 		if (!("grammalectePayload" in value) || typeof value.grammalectePayload !== "string") throw new Error("Index commun absent.");
-		const lexical: unknown = mode === "grammalecte" ? { entries: [] } : await inflate(value.payload);
-		const grammar: unknown = mode === "neural" ? {} : await inflate(value.grammalectePayload);
+		const lexical: unknown = mode === "grammalecte" ? { entries: [] } : await inflate(value.payload, blockLimit);
+		const grammar: unknown = mode === "neural" ? {} : await inflate(value.grammalectePayload, blockLimit);
 		if (!lexical || typeof lexical !== "object" || !grammar || typeof grammar !== "object") throw new Error("Contenu du dictionnaire invalide.");
 		decoded = { ...lexical, ...grammar };
 	}

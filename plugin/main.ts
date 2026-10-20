@@ -44,7 +44,7 @@ import { analyzeCorrections } from "./modes/corrections";
 import { finitionGrammalecteExtension } from "./grammalecte-extension";
 import { buildStructureReport } from "./modes/structure-report";
 import { buildStatisticsReport, statisticsWords } from "./modes/statistics";
-import { personalDictionaryFile, personalDictionaryPath } from "./lexicon/shared";
+import { dictionaryFile, personalDictionaryFile, personalDictionaryPath } from "./lexicon/shared";
 import { structureCategoryWords } from "./modes/structure-signature";
 import { loadingMessage } from "./ui/loading-message";
 import { AnalysisNavigation } from "./ui/analysis-navigation";
@@ -56,6 +56,7 @@ import { finitionSynonymMetadata, isSynonymDocumentation, parseSynonymDictionary
 import { runLocalSynonyms, runLocalWordLookup } from "./ui/local-synonyms";
 import { NeuralModels, neuralFileLimit } from "./neural-models";
 import { dictionaryKinds, dictionaryLabels, WordDictionaries, type DictionaryKind } from "./dictionaries";
+import { LexiconDictionaries } from "./lexicon/dictionaries";
 
 // Les petites ressources stylistiques restent intégrées au plugin.
 // Dictionnaires et modèles de correction se téléchargent séparément.
@@ -112,6 +113,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	private linguisticResources: LinguisticResources | null = null;
 	private neuralModels: NeuralModels | null = null;
 	wordDictionaries: WordDictionaries | null = null;
+	lexiconDictionaries: LexiconDictionaries | null = null;
 	private synonymsDictionary: SynonymsDictionary | null = null;
 	private personalSynonymsAvailable = false;
 	private availableSynonymDictionaries: Array<SynonymMetadata & { id: string }> = [];
@@ -365,7 +367,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			let loading = this.lexiconLoad;
 			try {
 				if (!loading) {
-					const engine = this.lexiconEngine = new FinitionCorrectorEngine(file => this.linguisticResources!.read("lexique", file));
+					const engine = this.lexiconEngine = new FinitionCorrectorEngine(file => this.readLinguisticAsset("lexique", file));
 					loading = this.lexiconLoad = engine.getLemmas().finally(() => { engine.destroy(); if (this.lexiconEngine === engine) this.lexiconEngine = null; });
 				}
 				const lemmas = await loading;
@@ -373,7 +375,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			} catch (error) {
 				if (this.lexiconLoad === loading) {
 					this.lexiconLoad = undefined;
-					new Notice(`Dictionnaire Finition : ${error instanceof Error ? error.message : String(error)}`, 10000);
+					new Notice(`Lexique : ${error instanceof Error ? error.message : String(error)}`, 10000);
 				}
 			}
 		}
@@ -958,7 +960,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			: this.readLinguisticAsset("synonymes", "synonymes.json"));
 		await runLocalSynonyms(this.app, this.synonymsDictionary);
 	}
-	isLinguisticEngineInstalled(engine: ResourcePack): boolean { return this.linguisticResources?.available(engine) ?? false; }
+	isLinguisticEngineInstalled(engine: ResourcePack): boolean { return engine === "lexique" ? (this.lexiconDictionaries?.available ?? false) : (this.linguisticResources?.available(engine) ?? false); }
 	async runWordDictionary(kind: DictionaryKind): Promise<void> {
 		await runLocalWordLookup(this.app, dictionaryLabels[kind], async word => {
 			if (!this.wordDictionaries) throw new Error("Charge un dictionnaire dans les réglages de Finition.");
@@ -978,10 +980,58 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		if (!this.wordDictionaries) throw new Error("Dossier du plugin introuvable.");
 		await this.wordDictionaries.importPath(kind, path);
 	}
+	private async lexiconChanged(): Promise<void> {
+		this.lexiconEngine?.destroy();
+		this.lexiconEngine = null;
+		this.lexiconLoad = undefined;
+		this.lexicon = new Map();
+		this.finitionCorrectorEngine?.destroy();
+		this.finitionCorrectorEngine = null;
+		this.grammalecteEngine?.destroy();
+		this.grammalecteEngine = null;
+		this.spellingRequest++;
+		this.grammalecteErrors = [];
+		this.grammalecteErrorsVersion++;
+		this.resetWordCategories();
+		this.settingsVersion++;
+		await this.loadLexiconData(this.settings.mode === "repetition" || this.settings.mode === "stereotype");
+		this.refreshAllEditors();
+	}
+	async setLexicon(path: string): Promise<void> {
+		if (!this.lexiconDictionaries) await this.loadLinguisticResources();
+		if (!this.lexiconDictionaries) throw new Error("Dossier du plugin introuvable.");
+		await this.lexiconDictionaries.select(path);
+		await this.lexiconChanged();
+	}
+	async importLexicon(raw: ArrayBuffer): Promise<void> {
+		if (!this.lexiconDictionaries) await this.loadLinguisticResources();
+		if (!this.lexiconDictionaries) throw new Error("Dossier du plugin introuvable.");
+		await this.lexiconDictionaries.import(raw);
+		await this.lexiconChanged();
+	}
+	async setLexiconPath(path: string): Promise<void> {
+		path = path.trim();
+		let raw: ArrayBuffer;
+		if (path.startsWith("/")) raw = await FileSystemAdapter.readLocalFile(path);
+		else {
+			path = personalSynonymPath(path);
+			const stat = await this.app.vault.adapter.stat(path);
+			if (stat?.type !== "file" || stat.size < 1 || stat.size > synonymFileLimit) throw new Error("Choisis un lexique JSON existant de 128 Mio maximum.");
+			raw = await this.app.vault.adapter.readBinary(path);
+		}
+		await this.importLexicon(raw);
+	}
+	async removeLexicon(path: string): Promise<void> {
+		if (!this.lexiconDictionaries) throw new Error("Dossier du plugin introuvable.");
+		await this.lexiconDictionaries.remove(path);
+		await this.lexiconChanged();
+	}
 	async loadLinguisticResources(): Promise<void> {
 		if (!this.manifest.dir) return;
 		this.linguisticResources ??= new LinguisticResources(this.app.vault.adapter, this.manifest.dir, this.manifest.version);
 		await this.linguisticResources.refresh(this.settings.resourcePacks);
+		this.lexiconDictionaries ??= new LexiconDictionaries(this.app.vault.adapter, this.manifest.dir, () => this.settings, () => this.saveSettings(), this.linguisticResources);
+		await this.lexiconDictionaries.refresh();
 		this.neuralModels ??= new NeuralModels(this.app.vault.adapter, this.manifest.dir);
 		await this.neuralModels.refresh();
 		const renamedModel = this.settings.neuralModel.replace(/^helper\/neural\/models\//u, "scripts/neural/models/");
@@ -1006,6 +1056,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			return await this.app.vault.adapter.exists(path) ? this.app.vault.adapter.readBinary(path)
 				: new TextEncoder().encode(JSON.stringify({ format: "finition-personal-forms", version: 1, forms: [] })).buffer;
 		}
+		if (file === dictionaryFile && this.lexiconDictionaries) return this.lexiconDictionaries.read();
 		if (!this.linguisticResources?.available(engine)) await this.loadLinguisticResources();
 		if (!this.linguisticResources) throw new Error("Dossier du plugin introuvable.");
 		return this.linguisticResources.read(engine, file);
@@ -1028,7 +1079,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		await this.loadLexiconData(this.settings.mode === "repetition" || this.settings.mode === "stereotype");
 		this.settingsVersion++;
 		this.refreshAllEditors();
-		if (engine === "lexique") return;
+		if (engine === "lexique") { await this.setLexicon(""); return; }
 		if (engine === "synonymes") { this.synonymsDictionary = null; return; }
 		if (engine !== "grammalecte" && engine !== "finition-corrector") {
 			if (!this.wordDictionaries) throw new Error("Dossier du plugin introuvable.");
@@ -1144,7 +1195,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		const notice = new Notice(loadingMessage("Statistiques"), 0);
 		try {
 			await this.loadLexiconData(true);
-			if (!this.lexicon.size) throw new Error("Dictionnaire Finition indisponible.");
+			if (!this.lexicon.size) throw new Error("Lexique indisponible.");
 			const engine = await this.ensureGrammalecteEngine();
 			const words = [...new Set([...structureCategoryWords(text), ...statisticsWords(text)])];
 			const categories = await engine.getCategories(words);

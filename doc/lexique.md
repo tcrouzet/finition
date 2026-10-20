@@ -1,8 +1,8 @@
 # Lexique commun
 
-Répétitions, Stéréotypes, Statistiques, Grammalecte et le correcteur neuronal utilisent le même fichier téléchargeable : `resources/lexique/finition-dictionnaire.json`. Les poids neuronaux et leurs vocabulaires de jetons restent indépendants du lexique linguistique. Les réglages continuent de choisir un moteur et, pour Grammalecte, l’orthographe Classique ou Réforme 1990.
+Répétitions, Stéréotypes, Statistiques, Grammalecte et le correcteur neuronal utilisent le même lexique sélectionné dans les réglages. Le lexique public Finition se télécharge depuis `resources/lexique/finition-dictionnaire.json`. Les poids neuronaux et leurs vocabulaires de jetons restent indépendants du lexique linguistique. Les réglages continuent de choisir un moteur et, pour Grammalecte, l’orthographe Classique ou Réforme 1990.
 
-Le fichier est un objet JSON avec `name: "finition-dictionnaire"`, `version: 2`, `language: "fr"`, `encoding: "gzip-base64"`, `license`, `sources`, `inputs`, `counts`, `payload` et `grammalectePayload`. `sources` conserve auteurs, licences et provenance des collections ; `inputs` contient les SHA-256 des trois dictionnaires sources. Les deux blocs sont des objets JSON compressés en gzip sans date, puis encodés en base64. `payload` contient `entries`, `forms`, `variants` et les préférences de lemmes `lemmaOverrides` ; `grammalectePayload` contient `forms`, `variants`, les index `grammalecte` et les compléments `extras`. Chaque moteur décompresse seulement son bloc. Leur contenu logique complet est :
+Le format d’import est un objet JSON avec `format: "finition-dictionnaire"`, `name` (nom affiché), `version: 2`, `language: "fr"`, `encoding: "gzip-base64"`, `payload` et `grammalectePayload`. Les champs facultatifs `description` (remarque), `documentation` (lien HTTP ou HTTPS), `license`, `sources`, `inputs` et `counts` décrivent le contenu. Les fichiers historiques avec `name: "finition-dictionnaire"` sans champ `format` restent reconnus et affichent **Finition**. `sources` conserve auteurs, licences et provenance des collections ; `inputs` contient les SHA-256 des trois dictionnaires sources. Les deux blocs sont des objets JSON compressés en gzip sans date, puis encodés en base64. `payload` contient `entries`, `forms`, `variants` et les préférences de lemmes `lemmaOverrides` ; `grammalectePayload` contient `forms`, `variants`, les index `grammalecte` et les compléments `extras`. Chaque moteur décompresse seulement son bloc. Leur contenu logique complet est :
 
 ```ts
 type LexiconPayload = {
@@ -33,7 +33,29 @@ Les flexions verbales emploient les conventions du neuronal existant : `inf`, `p
 - `plugin/lexicon/neural-adapter.ts` construit le `Lexicon` du correcteur neuronal à partir des analyses fusionnées. Il peut filtrer une variante orthographique ; sans filtre, il conserve les variantes comme le neuronal précédent.
 - `plugin/lexicon/grammalecte-adapter.ts` conserve la morphologie et les suggestions natives pour les mots déjà connus de Grammalecte. Pour les mots supplémentaires, il ajoute la reconnaissance orthographique et les catégories dont la traduction est certaine. Il n’invente pas les groupes verbaux ou les sous-types absents des sources. Une graphie de l’autre variante ne devient pas valide au seul motif qu’elle existe dans Morphalou.
 
-**Réglages → Finition → Corrections → Dictionnaire Finition** propose **Charger/Recharger** sans installer de correcteur. Répétitions et Stéréotypes restent grisés avant installation ; installer un correcteur contenant le lexique commun les rend aussi disponibles. Les listes d’atténuations, les charnières et les calculs de monotonie restent embarqués.
+**Réglages → Finition → Corrections → Lexique** choisit le lexique commun. La liste reste vide avant le premier téléchargement ou import. **Dictionnaire Finition → Charger/Recharger** télécharge le lexique public sans installer de correcteur et le sélectionne. **Charger un lexique** propose un champ de chemin, **Charger** et **Parcourir…**, puis le lien de ce format sur toute la largeur. Un chemin relatif désigne un fichier du coffre ; un chemin absolu peut désigner un fichier extérieur, lu avec l’API Obsidian uniquement lors de l’import. Le sélecteur attend un fichier JSON complet version 2, contenant les deux index Grammalecte.
+
+Chaque lexique importé affiche son `name`, sa remarque `description` et **Effacer**. Lorsque `documentation` est renseigné, la remarque devient un lien ; sans remarque, le lien affiche **Documentation**. Finition copie les données dans `data/lexique/imports/SHA256.json`, conserve les métadonnées et la sélection dans les réglages et laisse la source intacte. Réimporter le même fichier ne crée pas de doublon. Un fichier invalide ou une sauvegarde échouée conserve le choix précédent. Effacer retire seulement la copie importée ; si elle était active, Finition revient au lexique public installé, sinon à un autre lexique disponible. Le lexique public est rechargeable et ne possède pas de bouton d’effacement.
+
+Changer de lexique arrête les anciens Workers, efface les lemmes et catégories mis en cache et retire les suggestions de correction devenues périmées. Les lemmes sont rechargés dans un Worker si un surlignage lexical est actif, sinon à leur prochaine utilisation. Répétitions et Stéréotypes restent grisés avant installation d’un lexique ; les correcteurs conservent leurs propres ressources de moteur. Les listes d’atténuations, les charnières et les calculs de monotonie restent embarqués.
+
+Exemple des métadonnées d’un lexique importable ; les deux champs de données contiennent du JSON compressé en gzip puis encodé en base64 :
+
+```json
+{
+  "format": "finition-dictionnaire",
+  "name": "Mon lexique",
+  "description": "Remarque affichée dans les réglages",
+  "documentation": "https://example.org/mon-lexique",
+  "version": 2,
+  "language": "fr",
+  "encoding": "gzip-base64",
+  "payload": "…",
+  "grammalectePayload": "…"
+}
+```
+
+L’import accepte au maximum 128 Mio de JSON et 256 Mio décompressés par bloc. Le nom est limité à 100 caractères, la remarque à 1000 caractères ; les caractères de contrôle et les liens autres que HTTP/HTTPS sont refusés.
 
 Le catalogue indépendant `lexique-resources.json` et les catalogues de téléchargement des deux moteurs référencent le même fichier `lexique-finition-dictionnaire.json` avec la même empreinte. Une seule copie est téléchargée et conservée dans `data/lexique/SHA256.json`. Les autres données restent propres à chaque moteur. Les anciens catalogues et les anciennes installations restent lisibles ; recharger les données installe le format commun. Le code des adaptateurs est livré dans le plugin, sans téléchargement de code ni runtime.
 
@@ -50,3 +72,16 @@ npm run resources -- /chemin/de/destination
 ```
 
 La fusion conserve les préférences de lemmes de `scripts/lexicon/repetition-v1.json` et utilise les dictionnaires locaux `scripts/lexicon/neural-v1.json` et `scripts/grammalecte/_dictionaries/fr-classic.json` / `fr-reform.json`. Elle fonctionne sans réseau ni réentraînement. Les fichiers d’entrée restent disponibles pour régénérer le format commun ; les catalogues courants distribuent uniquement sa version fusionnée. Les contrôles vérifient la conservation des analyses, des fréquences, des graphies et des index natifs, les variantes, la casse, les compléments privés et les entrées invalides. Ils ne constituent pas une mesure générale de qualité sur corpus.
+
+## Conversion du lexique privé existant
+
+`scripts/prepare-private-lexicon.py` convertit les exports JSON locaux `Antidote/dictionnaires/dictionnaire.json`, `morphologie.json` et `morphologie-codes.json`, sans lancer l’application ni modifier ces sources. Le dernier fichier contient les catégories par identifiant de mot et les libellés des types de flexion décodés statiquement. Le convertisseur ajoute les analyses natives au lexique public, conserve les analyses publiques complètes et leurs index Grammalecte, puis écrit `Antidote/dictionnaires/finition-lexique.json`. Ce fichier porte `name: "Antidote"`, une `description` précisant l’enrichissement et `documentation: ""` lorsqu’aucun lien n’est fourni. Les sources et leurs empreintes sont conservées ; le fichier reste privé et ignoré par Git. Toute version précédente reconnue est sauvegardée avec son empreinte avant remplacement.
+
+Les types natifs `17` à `20` décrivent les flexions masculine singulière, masculine plurielle, féminine singulière et féminine plurielle. Les types `21` à `71` décrivent les conjugaisons, l’infinitif, les participes et l’impératif. Le convertisseur les traduit dans les conventions communes ci-dessus, en conservant les analyses multiples d’une même forme. La catégorie provient d’une table de mots supplémentaire de `Grimoire.03.psi`, distincte du type de flexion ; les anciens champs `flags` ne sont pas utilisés comme catégorie grammaticale.
+
+Les catégories spécialisées sans équivalent vérifié, notamment les gentilés et les segments de phrase, gardent une catégorie vide. Les formes euphoniques d’inversion (`72` à `74`) conservent leur libellé natif dans l’export, sans temps attribué dans le lexique commun : leur validité dépend d’un contexte que ce format ne décrit pas. Les marques d’usage, codes de fréquence, valences et groupes verbaux restent non traduits. Grammalecte reçoit les morphologies supplémentaires dont la traduction est certaine et conserve ses analyses natives prioritaires ; les catégories simplifiées ne suffisent toujours pas à reconstruire toute sa morphologie verbale.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/prepare-private-lexicon.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/check-private-lexicon.py
+```

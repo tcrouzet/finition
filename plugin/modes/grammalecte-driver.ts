@@ -1,5 +1,5 @@
 import type { GrammalecteError } from "./grammalecte";
-import { decodeDictionary, readPersonalForms, type Orthography, type SharedDictionary } from "../lexicon/shared";
+import { decodeDictionary, isSharedDictionary, readPersonalForms, type Orthography, type SharedDictionary } from "../lexicon/shared";
 import { adaptGrammalecte, type GraphspellDictionary } from "../lexicon/grammalecte-adapter";
 
 interface NativeSpellChecker {
@@ -83,7 +83,7 @@ async function doInit(oParam: InitParameters) {
 		return;
 	}
 	const { oDictionary, sConjData, sPhonetData, sMfspData, sThes1Data, sThes2Data } = oParam;
-	const common = oDictionary && typeof oDictionary === "object" && "name" in oDictionary && oDictionary.name === "finition-dictionnaire" ? await decodeDictionary(oDictionary, "grammalecte") : undefined;
+	const common = isSharedDictionary(oDictionary) ? await decodeDictionary(oDictionary, "grammalecte") : undefined;
 	const variant = oParam.oOrthography ?? "fr-classic";
 	if (common && !common.grammalecte) throw new Error("Le dictionnaire commun ne contient pas les index Grammalecte.");
 	Object.assign(gc_rules_graph, oParam.oGraphData);

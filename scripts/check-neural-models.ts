@@ -90,25 +90,33 @@ export async function checkNeuralModels(Plugin: typeof FinitionPlugin): Promise<
 	check(row("Antidote")?.textContent?.includes("Correction grammaticale française, modèle local.") && !row("Antidote")?.querySelector("a") && row("Antidote")?.querySelector("button")?.textContent === "Effacer", "Le modèle privé n’affiche pas son nom, sa description et Effacer sans lien");
 	check(Array.from(select().options).some(option => option.value === "Antidote/model" && option.text === "Antidote"), "Le nom du modèle privé est absent du sélecteur");
 	check(pathInput().getAttribute("aria-label") === "Chemin du modèle neuronal" && row("Charger un modèle neuronal")?.querySelector<HTMLAnchorElement>("a")?.href === "https://github.com/tcrouzet/finition/blob/main/doc/neural-model.md", "Le champ d’import ou le lien du format neuronal est absent");
-	const browse = Array.from(row("Charger un modèle neuronal")!.querySelectorAll("button")).find(button => button.textContent === "Parcourir…");
-	if (!browse) throw new Error("Le bouton Parcourir est absent");
 	check(row("Charger un modèle neuronal")!.textContent?.includes("⌘⇧."), "Le raccourci des dossiers cachés est absent");
-	let pickerOpened = false;
-	const opened = () => { pickerOpened = true; };
-	window.addEventListener("finition-file-picker-opened", opened);
-	browse.dataset.finitionTestPicker = "true";
-	try {
-		pathInput().value = "chemin saisi";
-		pathInput().dispatchEvent(new Event("input"));
-		console.error("finition-file-picker-click");
-		await settled(() => pickerOpened);
-		const picker = container.querySelector<HTMLInputElement>('input[type="file"]');
-		check(picker?.isConnected && picker.webkitdirectory && picker.multiple, "Le sélecteur de dossier n’est pas rattaché aux réglages");
-		picker!.dispatchEvent(new Event("cancel"));
-		check(!picker!.isConnected && plugin.settings.neuralModel === "", "Annuler le sélecteur laisse un champ ou change le modèle");
-	} finally {
-		window.removeEventListener("finition-file-picker-opened", opened);
-		delete browse.dataset.finitionTestPicker;
+	for (const section of ["Corrections", "Lexique", "Synonymes", "Définitions", "Antonymes", "Phonétique", "Rimes"]) {
+		const directory = section === "Corrections";
+		const name = directory ? "Charger un modèle neuronal" : section === "Lexique" ? "Charger un lexique" : "Charger un dictionnaire";
+		const parentSection = section === "Lexique" ? "Corrections" : section;
+		const loader = Array.from(container.querySelectorAll(`details[data-section="${parentSection}"] .setting-item`)).find(item => item.querySelector(".setting-item-name")?.textContent === name);
+		const browse = Array.from(loader?.querySelectorAll("button") ?? []).find(button => button.textContent === "Parcourir…");
+		if (!loader || !browse) throw new Error(`Le bouton Parcourir est absent de ${section}`);
+		check(loader.classList.contains("finition-import-setting") && loader.lastElementChild === loader.querySelector("a")?.parentElement, `L’import de ${section} ne partage pas la présentation en 3 lignes`);
+		let pickerOpened = false;
+		const opened = () => { pickerOpened = true; };
+		window.addEventListener("finition-file-picker-opened", opened);
+		browse.dataset.finitionTestPicker = "true";
+		try {
+			const field = loader.querySelector<HTMLInputElement>('input[type="text"]')!;
+			field.value = "chemin saisi";
+			field.dispatchEvent(new Event("input"));
+			console.error("finition-file-picker-click");
+			await settled(() => pickerOpened);
+			const picker = container.querySelector<HTMLInputElement>('input[type="file"]');
+			check(picker?.isConnected && picker.webkitdirectory === directory && picker.multiple === directory && (directory || picker.accept === ".json,application/json"), `Le sélecteur de ${section} ne propose pas le bon type de fichier`);
+			picker!.dispatchEvent(new Event("cancel"));
+			check(!picker!.isConnected && plugin.settings.neuralModel === "", "Annuler le sélecteur laisse un champ ou change le modèle");
+		} finally {
+			window.removeEventListener("finition-file-picker-opened", opened);
+			delete browse.dataset.finitionTestPicker;
+		}
 	}
 
 	const personal = { ...manifest, name: "Personnel", description: "Modèle <b>français</b>", documentation: "https://example.org/modele" };

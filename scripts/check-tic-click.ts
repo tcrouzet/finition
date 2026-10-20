@@ -52,6 +52,7 @@ async function main() {
 	import { checkFinitionNeural } from "./scripts/check-finition-neural";
 	import { checkLinguisticInstallation } from "./scripts/check-linguistic-resources";
 	import { checkNeuralModels } from "./scripts/check-neural-models";
+	import { checkLexiconDictionaries } from "./scripts/check-lexicon-dictionaries";
 	import { checkPromptModels } from "./scripts/check-prompt-models";
 	import ReleasedPlugin from "release-plugin";
 	const text = "Il est important de noter que tout change.\\n\\nLe chat dort.";
@@ -86,6 +87,7 @@ async function main() {
 	    await checkAnalysisNavigation(() => menuOpenCount, () => lastMenu.items);
 	    const grammarChecks = checkGrammalecteRelease(ReleasedPlugin).then(() => console.error("finition-test-step", "grammalecte", Math.round(performance.now())));
 	    const neuralChecks = checkFinitionNeural(ReleasedPlugin).then(() => console.error("finition-test-step", "neural", Math.round(performance.now())));
+	    const lexiconChecks = checkLexiconDictionaries(ReleasedPlugin);
 	    checkAICorrections();
 	    await checkPromptModels(ReleasedPlugin);
 	    await checkSynonyms(setRequestHandler, requests, notices, modals);
@@ -95,6 +97,7 @@ async function main() {
 	    checkDictionaryCore();
 	    await Promise.all([
 	      grammarChecks,
+	      lexiconChecks,
 	      checkFinitionCorrector(ReleasedPlugin, (engine = "finition-corrector") => lastMenu.items.find(item => item.title === (engine === "grammalecte" ? "Grammalecte" : engine === "ia" ? "Corrections IA" : "Neuronal"))).then(() => console.error("finition-test-step", "corrections-menu", Math.round(performance.now()))),
 	      neuralChecks,
 	      checkNeuralModels(ReleasedPlugin).then(() => console.error("finition-test-step", "neural-models", Math.round(performance.now())))

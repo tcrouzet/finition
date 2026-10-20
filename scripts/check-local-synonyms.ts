@@ -72,7 +72,7 @@ export async function checkLocalSynonyms(Plugin: typeof FinitionPlugin, getMenu:
 	const formatLink = row("Charger un dictionnaire")!.querySelector<HTMLAnchorElement>("a")!;
 	check(formatLink.textContent === "JSON au format Finition" && formatLink.href === "https://github.com/tcrouzet/finition/blob/main/doc/synonymes.md" && formatLink.parentElement?.textContent === formatLink.textContent, "Le lien vers la documentation du format est absent ou accompagné de commentaires");
 	check(Array.from(container.querySelectorAll(".setting-item-name")).map(row => row.textContent).join("|") === "Synonymes|Dictionnaire|Finition|Charger un dictionnaire", "L’ordre des réglages de synonymes est incorrect");
-	check(buttons().map(button => button.textContent).join("|") === "Charger|Charger", "Des commandes de suppression sont présentes sans dictionnaire personnel");
+	check(buttons().map(button => button.textContent).join("|") === "Charger|Charger|Parcourir…", "Des commandes de suppression sont présentes sans dictionnaire personnel");
 	const menu = () => { (plugin as unknown as { showModeMenu: (event: MouseEvent) => void }).showModeMenu(new MouseEvent("click")); return getMenu(); };
 	check(menu().find(item => item.title === "Synonyme")?.disabled, "Synonyme actif sans données");
 	const beforeDownload = requests.length;

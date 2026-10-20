@@ -10,7 +10,7 @@ import { engineScripts } from "./grammalecte-resources";
 import { grammarFiles } from "../linguistic-files";
 import graphData from "../vendor/grammalecte/gc_rules_graph.js?gzip";
 import { unpackData } from "../ui/compressed-data";
-import { dictionaryFile } from "../lexicon/shared";
+import { dictionaryFile, isSharedDictionary } from "../lexicon/shared";
 
 export interface GrammalecteError {
 	nStart: number;
@@ -111,7 +111,7 @@ export class GrammalecteEngine {
 			sThes1Data: grammarData.thesaurus1,
 			sThes2Data: grammarData.thesaurus2,
 		});
-		this.sharedReady = Boolean(dictionaryData && typeof dictionaryData === "object" && "name" in dictionaryData && dictionaryData.name === "finition-dictionnaire");
+		this.sharedReady = isSharedDictionary(dictionaryData);
 	}
 
 	async parse(text: string): Promise<GrammalecteError[]> {

@@ -176,6 +176,8 @@ export interface FinitionSettings {
 	spellingNeural: boolean;
 	neuralModel: string;
 	resourcePacks: Partial<Record<ResourcePack, string>>;
+	lexiconDictionaryPath: string;
+	lexiconDictionaries: Array<SynonymMetadata & { path: string }>;
 	synonymDictionaryPath: string;
 	synonymDictionaries: Array<SynonymMetadata & { path: string }>;
 	wordDictionaries: StoredDictionary[];
@@ -258,6 +260,8 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	spellingNeural: false,
 	neuralModel: "auto",
 	resourcePacks: {},
+	lexiconDictionaryPath: "",
+	lexiconDictionaries: [],
 	synonymDictionaryPath: "",
 	synonymDictionaries: [],
 	wordDictionaries: [],

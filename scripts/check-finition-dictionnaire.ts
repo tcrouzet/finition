@@ -18,10 +18,12 @@ export function checkDictionaryCore(): void {
 	const dictionary = new Lexicon([
 		["marche", "marche", "nom", "f", "s", "", 1],
 		["marche", "marcher", "verbe", "", "s", "ind:pre:3s", 2],
+		["Zorglonville", "Zorglonville", "", "", "", "", 0],
 	], ["Thierry", "São Paulo"]);
 	check(dictionary.lookup("marche").length === 2 && dictionary.forms("marcher")[0].category === "verbe", "Analyses ambiguës ou familles perdues");
 	dictionary.lookup("marche")[0].lemma = "altéré";
 	check(dictionary.lookup("marche")[0].lemma === "marche", "Analyse partagée mutable");
+	check(dictionary.has("Zorglonville") && dictionary.has("ZORGLONVILLE") && !dictionary.has("zorglonville") && dictionary.lookup("zorglonville").length === 0, "Une forme privée sans catégorie perd sa casse");
 	check(dictionary.has("Thierry") && dictionary.has("THIERRY") && !dictionary.has("thierry") && dictionary.lookup("Thierry").length === 0, "Casse ou métadonnées inventées");
 	check(dictionary.has("Sa\u0303o Paulo") && dictionary.phraseLengths("São").includes(2), "Nom composé ou normalisation perdus");
 	let rejected = false;

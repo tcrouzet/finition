@@ -341,22 +341,22 @@ body.is-mobile .finition-synonyms-insert {
 	display: block;
 }
 
-.finition-model-import-setting.setting-item {
+.finition-import-setting.setting-item {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
 	gap: var(--size-4-2);
 }
 
-.finition-model-import-setting .setting-item-info {
+.finition-import-setting .setting-item-info {
 	margin: 0;
 }
 
-.finition-model-import-setting .setting-item-control {
+.finition-import-setting .setting-item-control {
 	justify-content: flex-start;
 	flex-wrap: wrap;
 }
 
-.finition-model-import-setting input[type="text"] {
+.finition-import-setting input[type="text"] {
 	flex: 1;
 	min-width: 0;
 }

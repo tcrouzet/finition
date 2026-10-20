@@ -8,6 +8,7 @@ import type FinitionPlugin from "./main";
 import { neuralDocumentation, neuralFileLimit } from "./neural-models";
 import { DEFAULT_PALETTE, DEFAULT_SETTINGS, parseGrammalecteDictionary, parseStopWords } from "./types";
 import { dictionaryDocumentation, dictionaryLabels, publicDictionaryMetadata, type DictionaryKind } from "./dictionaries";
+import { lexiconDocumentation, publicLexiconMetadata } from "./lexicon/dictionaries";
 
 type ColorFunctionKey = "hedgingColorIndex" | "stereotypeColorIndex" | "hingeColorIndex" | "grammalecteColorIndex";
 
@@ -37,6 +38,8 @@ export class FinitionSettingTab extends PluginSettingTab {
 	private changingModels = false;
 	private modelError = "";
 	private pendingModelPath = "";
+	private pendingLexiconPath = "";
+	private lexiconError = "";
 	private openSections = new Set<string>();
 	private changingDictionary = false;
 	private dictionaryErrors: Partial<Record<DictionaryKind, string>> = {};
@@ -101,7 +104,16 @@ export class FinitionSettingTab extends PluginSettingTab {
 					}));
 			this.describeResource(setting, option);
 		}
+		const browseDictionary = () => this.openFilePicker(false, files => {
+			const file = files[0];
+			if (!file) return;
+			void update(async () => {
+				if (file.size > synonymFileLimit) throw new Error("Choisis un dictionnaire JSON de 128 Mio maximum.");
+				await this.plugin.importSynonymDictionary(await file.arrayBuffer());
+			});
+		});
 		const loader = new Setting(containerEl).setName("Charger un dictionnaire")
+			.setClass("finition-import-setting")
 			.addText(text => {
 				text.setValue(this.pendingSynonymPath).setPlaceholder("Chemin du fichier JSON").setDisabled(busy)
 					.onChange(value => { this.pendingSynonymPath = value; });
@@ -112,16 +124,11 @@ export class FinitionSettingTab extends PluginSettingTab {
 					await this.plugin.setSynonymDictionaryPath(this.pendingSynonymPath);
 					this.pendingSynonymPath = "";
 				});
-				this.openFilePicker(false, files => {
-					const file = files[0];
-					if (!file) return;
-					void update(async () => {
-						if (file.size > synonymFileLimit) throw new Error("Choisis un dictionnaire JSON de 128 Mio maximum.");
-						await this.plugin.importSynonymDictionary(await file.arrayBuffer());
-					});
-				});
-			}));
+				browseDictionary();
+			}))
+			.addButton(button => button.setButtonText("Parcourir…").setDisabled(busy).onClick(browseDictionary));
 		loader.descEl.createEl("a", { text: "JSON au format Finition", href: synonymDocumentation, attr: { target: "_blank", rel: "noopener noreferrer" } });
+		loader.settingEl.appendChild(loader.descEl);
 	}
 	private openFilePicker(directory: boolean, onChange: (files: File[]) => void): void {
 		const input = this.containerEl.createEl("input", {
@@ -175,7 +182,16 @@ export class FinitionSettingTab extends PluginSettingTab {
 				}));
 			this.describeResource(row, option);
 		}
+		const browseDictionary = () => this.openFilePicker(false, files => {
+			const file = files[0];
+			if (!file) return;
+			void update(async () => {
+				if (file.size > synonymFileLimit) throw new Error("Choisis un dictionnaire JSON de 128 Mio maximum.");
+				await store!.import(kind, await file.arrayBuffer());
+			});
+		});
 		const loader = new Setting(container).setName("Charger un dictionnaire")
+			.setClass("finition-import-setting")
 			.addText(text => {
 				text.setValue(this.pendingDictionaryPaths[kind] ?? "").setPlaceholder("Chemin du fichier JSON").setDisabled(busy)
 					.onChange(value => { this.pendingDictionaryPaths[kind] = value; });
@@ -187,18 +203,69 @@ export class FinitionSettingTab extends PluginSettingTab {
 					await this.plugin.setWordDictionaryPath(kind, path);
 					this.pendingDictionaryPaths[kind] = "";
 				});
-				this.openFilePicker(false, files => {
-					const file = files[0];
-					if (!file) return;
-					void update(async () => {
-						if (file.size > synonymFileLimit) throw new Error("Choisis un dictionnaire JSON de 128 Mio maximum.");
-						await store!.import(kind, await file.arrayBuffer());
-					});
-				});
-			}));
+				browseDictionary();
+			}))
+			.addButton(button => button.setButtonText("Parcourir…").setDisabled(busy || !store).onClick(browseDictionary));
 		loader.descEl.createEl("a", { text: "JSON au format Finition", href: dictionaryDocumentation, attr: { target: "_blank", rel: "noopener noreferrer" } });
+		loader.settingEl.appendChild(loader.descEl);
 	}
 
+	private displayLexicons(container: HTMLElement, busy: boolean): void {
+		const store = this.plugin.lexiconDictionaries;
+		const options = store?.options ?? [];
+		const update = async (action: () => Promise<void>) => {
+			if (this.changingModels || this.changingSynonyms || this.changingDictionary || this.downloadingEngine !== null) return;
+			this.changingModels = true;
+			this.lexiconError = "";
+			this.update();
+			try { await action(); }
+			catch (error) { this.lexiconError = error instanceof Error ? error.message : String(error); }
+			finally { this.changingModels = false; this.update(); }
+		};
+		new Setting(container).setName("Lexique")
+			.setDesc(this.lexiconError || (!options.length ? "Aucun lexique installé." : !store?.available ? "Lexique sélectionné absent." : ""))
+			.addDropdown(dropdown => {
+				for (const option of options) dropdown.addOption(option.path, option.name);
+				dropdown.setValue(this.plugin.settings.lexiconDictionaryPath).setDisabled(busy || !options.length)
+					.onChange(path => update(() => this.plugin.setLexicon(path)));
+			});
+		const installed = options.some(option => option.path === "");
+		const finition = new Setting(container).setName("Dictionnaire Finition")
+			.addButton(button => button.setButtonText(installed ? "Recharger" : "Charger").setDisabled(busy).onClick(() => update(async () => {
+				const notice = new Notice(loadingMessage("Téléchargement du lexique…"), 0);
+				try { await this.plugin.downloadLinguisticResources("lexique", text => notice.setMessage(loadingMessage(text))); }
+				finally { notice.hide(); }
+			})));
+		this.describeResource(finition, publicLexiconMetadata);
+		for (const option of options.filter(option => option.path)) {
+			const row = new Setting(container).setName(option.name)
+				.addButton(button => button.setButtonText("Effacer").setDestructive().setDisabled(busy).onClick(() => {
+					if (container.ownerDocument.defaultView?.confirm(`Effacer le lexique « ${option.name} » du plugin ?`)) return update(() => this.plugin.removeLexicon(option.path));
+				}));
+			this.describeResource(row, option);
+		}
+		const browse = () => this.openFilePicker(false, files => {
+			const file = files[0];
+			if (!file) return;
+			void update(async () => {
+				if (file.size > synonymFileLimit) throw new Error("Choisis un lexique JSON de 128 Mio maximum.");
+				await this.plugin.importLexicon(await file.arrayBuffer());
+			});
+		});
+		const loader = new Setting(container).setName("Charger un lexique").setClass("finition-import-setting")
+			.addText(text => {
+				text.setValue(this.pendingLexiconPath).setPlaceholder("Chemin du fichier JSON").setDisabled(busy)
+					.onChange(value => { this.pendingLexiconPath = value; });
+				text.inputEl.setAttribute("aria-label", "Chemin du lexique JSON");
+			})
+			.addButton(button => button.setButtonText("Charger").setDisabled(busy).onClick(() => {
+				if (!this.pendingLexiconPath.trim()) return browse();
+				return update(async () => { await this.plugin.setLexiconPath(this.pendingLexiconPath); this.pendingLexiconPath = ""; });
+			}))
+			.addButton(button => button.setButtonText("Parcourir…").setDisabled(busy).onClick(browse));
+		loader.descEl.createEl("a", { text: "Lexique au format Finition", href: lexiconDocumentation, attr: { target: "_blank", rel: "noopener noreferrer" } });
+		loader.settingEl.appendChild(loader.descEl);
+	}
 	private displayCorrections(containerEl: HTMLElement): void {
 		containerEl = this.section(containerEl, "Corrections");
 		const installed = resourceEngines.filter(engine => this.plugin.isLinguisticEngineInstalled(engine));
@@ -213,7 +280,8 @@ export class FinitionSettingTab extends PluginSettingTab {
 			catch (error) { this.modelError = error instanceof Error ? error.message : String(error); }
 			finally { this.changingModels = false; this.update(); }
 		};
-		for (const engine of ["lexique", ...resourceEngines] as const) {
+		this.displayLexicons(containerEl, busy);
+		for (const engine of resourceEngines) {
 			const installed = this.plugin.isLinguisticEngineInstalled(engine);
 			const setting = new Setting(containerEl).setName(engine === "finition-corrector" ? "CamemBERT" : resourceLabels[engine]);
 			if (engine === "grammalecte") setting.addDropdown(dropdown => {
@@ -225,9 +293,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 						await this.plugin.setSpellingEngine("grammalecte");
 					}));
 			});
-			this.describeResource(setting, engine === "lexique"
-				? { name: engine, description: "Commun aux répétitions, stéréotypes et correcteurs.", documentation: "https://github.com/tcrouzet/finition/blob/main/doc/lexique.md" }
-				: { name: engine, documentation: engine === "grammalecte" ? "https://grammalecte.net/" : "https://huggingface.co/almanach/camembertv2-base" });
+			this.describeResource(setting, { name: engine, documentation: engine === "grammalecte" ? "https://grammalecte.net/" : "https://huggingface.co/almanach/camembertv2-base" });
 			setting.addButton(button => button.setButtonText(this.downloadingEngine === engine ? "Téléchargement…" : installed ? "Recharger" : "Charger")
 					.setDisabled(busy).onClick(async () => {
 						this.downloadingEngine = engine;
@@ -262,7 +328,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 			}));
 		});
 		const loader = new Setting(containerEl).setName("Charger un modèle neuronal")
-			.setClass("finition-model-import-setting")
+			.setClass("finition-import-setting")
 			.addText(text => {
 				text.setValue(this.pendingModelPath).setPlaceholder("Chemin du dossier ou de pack.json").setDisabled(busy)
 					.onChange(value => { this.pendingModelPath = value; });
@@ -974,7 +1040,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 	getSettingDefinitions(): SettingDefinitionRender[] {
 		return [
 			...this.generalDefinitions(),
-			this.sectionDefinition("Corrections", ["Dictionnaire Finition", "Moteur d’analyse", "Neuronal", "Structure", "Tricolons", "Grammalecte", "Correcteur neuronal par défaut", "CamemBERT", "Charger un modèle neuronal", "Dictionnaire personnel", ...this.plugin.neuralModelOptions.map(option => option.name)], container => this.displayCorrections(container)),
+			this.sectionDefinition("Corrections", ["Lexique", "Charger un lexique", ...(this.plugin.lexiconDictionaries?.options.map(option => option.name) ?? []), "Dictionnaire Finition", "Moteur d’analyse", "Neuronal", "Structure", "Tricolons", "Grammalecte", "Correcteur neuronal par défaut", "CamemBERT", "Charger un modèle neuronal", "Dictionnaire personnel", ...this.plugin.neuralModelOptions.map(option => option.name)], container => this.displayCorrections(container)),
 			this.sectionDefinition("Corrections IA", ["Clé API Anthropic", "Clé API OpenAI", "Modèle par défaut", "Identifiant du modèle personnalisé", "Taille des tronçons (caractères)", "Prompt enregistré", "Prompt de révision", "Modèle pour ce prompt", "Identifiant du modèle pour ce prompt", "Enregistrer sous ce nom"], container => this.displayAICorrections(container)),
 			this.sectionDefinition("Synonymes", ["Dictionnaire", "Finition", "Charger un dictionnaire", ...this.plugin.synonymDictionaryOptions.map(option => option.name)], container => this.displaySynonyms(container)),
 			this.sectionDefinition("Définitions", ["Dictionnaire", "Charger un dictionnaire", ...(this.plugin.wordDictionaries?.options.filter(option => option.kind === "definitions").map(option => option.name) ?? [])], container => this.displayWordDictionary(container, "definitions")),

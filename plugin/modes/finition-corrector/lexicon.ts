@@ -14,7 +14,10 @@ export type LexemeRow = readonly [string, string, string, string, string, string
 export const isLexemeRow = (row: unknown): row is LexemeRow => Array.isArray(row) && row.length === 7 && row.slice(0, 6).every(item => typeof item === "string") && Boolean(row[0]) && Boolean(row[1]) && typeof row[6] === "number" && Number.isFinite(row[6]) && row[6] >= 0;
 const expand = (row: LexemeRow): Lexeme => ({ form: row[0], lemma: row[1], category: row[2], gender: row[3], number: row[4], inflection: row[5], frequency: row[6] });
 const spellingForm = (word: string): string => word.normalize("NFC").replace(/’/g, "'").replace(/\u00ad/g, "");
-const matchesCase = (row: LexemeRow, word: string): boolean => row[2] !== "nom propre" || spellingForm(row[0]) === spellingForm(word) || word === word.toLocaleUpperCase("fr");
+const matchesCase = (row: LexemeRow, word: string): boolean => {
+  const capitalizedUnknown = !row[2] && spellingForm(row[0]) !== wordKey(row[0]);
+  return (row[2] !== "nom propre" && !capitalizedUnknown) || spellingForm(row[0]) === spellingForm(word) || word === word.toLocaleUpperCase("fr");
+};
 
 function distance(left: string, right: string, rows: number[][]): number {
   let [previous, beforePrevious, row] = rows;
