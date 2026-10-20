@@ -1,7 +1,7 @@
 {
   "name": "finition",
   "version": "0.4.8",
-  "description": "Finition — plugin Obsidian d'aide à l'écriture",
+  "description": "Finition — plugin Obsidian d'aide à l'écriture en français",
   "main": "main.js",
   "scripts": {
     "resources": "jiti scripts/package-resources.ts",

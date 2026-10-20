@@ -1,4 +1,4 @@
-import type { App } from "obsidian";
+import { FileSystemAdapter, type App } from "obsidian";
 import { checkGrammarRelations } from "./check-finition-corrector";
 import type FinitionPlugin from "../main";
 import type { FinitionCorrectorEngine } from "../plugin/modes/finition-corrector";
@@ -90,6 +90,27 @@ export async function checkNeuralModels(Plugin: typeof FinitionPlugin): Promise<
 	check(row("Antidote")?.textContent?.includes("Correction grammaticale française, modèle local.") && !row("Antidote")?.querySelector("a") && row("Antidote")?.querySelector("button")?.textContent === "Effacer", "Le modèle privé n’affiche pas son nom, sa description et Effacer sans lien");
 	check(Array.from(select().options).some(option => option.value === "Antidote/model" && option.text === "Antidote"), "Le nom du modèle privé est absent du sélecteur");
 	check(pathInput().getAttribute("aria-label") === "Chemin du modèle neuronal" && row("Charger un modèle neuronal")?.querySelector<HTMLAnchorElement>("a")?.href === "https://github.com/tcrouzet/finition/blob/main/doc/neural-model.md", "Le champ d’import ou le lien du format neuronal est absent");
+	const browse = Array.from(row("Charger un modèle neuronal")!.querySelectorAll("button")).find(button => button.textContent === "Parcourir…");
+	if (!browse) throw new Error("Le bouton Parcourir est absent");
+	check(row("Charger un modèle neuronal")!.textContent?.includes("⌘⇧."), "Le raccourci des dossiers cachés est absent");
+	let pickerOpened = false;
+	const opened = () => { pickerOpened = true; };
+	window.addEventListener("finition-file-picker-opened", opened);
+	browse.dataset.finitionTestPicker = "true";
+	try {
+		pathInput().value = "chemin saisi";
+		pathInput().dispatchEvent(new Event("input"));
+		console.error("finition-file-picker-click");
+		await settled(() => pickerOpened);
+		const picker = container.querySelector<HTMLInputElement>('input[type="file"]');
+		check(picker?.isConnected && picker.webkitdirectory && picker.multiple, "Le sélecteur de dossier n’est pas rattaché aux réglages");
+		picker!.dispatchEvent(new Event("cancel"));
+		check(!picker!.isConnected && plugin.settings.neuralModel === "", "Annuler le sélecteur laisse un champ ou change le modèle");
+	} finally {
+		window.removeEventListener("finition-file-picker-opened", opened);
+		delete browse.dataset.finitionTestPicker;
+	}
+
 	const personal = { ...manifest, name: "Personnel", description: "Modèle <b>français</b>", documentation: "https://example.org/modele" };
 	const source = "imports/personnel";
 	for (const file of manifest.files) fixture.writes.set(`${source}/${file.path}`, await read(file.path));
@@ -108,6 +129,26 @@ export async function checkNeuralModels(Plugin: typeof FinitionPlugin): Promise<
 	const previousCount = plugin.neuralModelOptions.length;
 	await plugin.setNeuralModelPath(`${source}/pack.json`);
 	check(plugin.neuralModelOptions.length === previousCount && plugin.settings.neuralModel === imported, "Réimporter le même modèle crée un doublon");
+	const readLocalFile = Object.getOwnPropertyDescriptor(FileSystemAdapter, "readLocalFile");
+	const external = "/Users/test/Autre coffre/modèle";
+	const externalReads: string[] = [];
+	FileSystemAdapter.readLocalFile = async path => {
+		check(path.startsWith(external + "/"), "L’import lit hors du dossier choisi");
+		const file = path.slice(external.length + 1);
+		check(["pack.json", ...manifest.files.map(file => file.path)].includes(file), "L’import lit un fichier absent du catalogue");
+		externalReads.push(file);
+		return fixture.adapter.readBinary(`${source}/${file}`);
+	};
+	try {
+		for (const path of [external, external + "/pack.json"]) {
+			await plugin.setNeuralModelPath(path);
+			check(plugin.settings.neuralModel === imported && plugin.neuralModelOptions.length === previousCount, "L’import par chemin absolu perd la sélection ou crée un doublon");
+		}
+		check(externalReads.length === 10 && externalReads.filter(file => file === "pack.json").length === 2, "Le chemin absolu ne charge pas uniquement le catalogue et ses quatre fichiers");
+	} finally {
+		if (readLocalFile) Object.defineProperty(FileSystemAdapter, "readLocalFile", readLocalFile);
+		else Reflect.deleteProperty(FileSystemAdapter, "readLocalFile");
+	}
 	const corruptedWeights = new Uint8Array(await fixture.adapter.readBinary(`${source}/electra/weights.bin`));
 	corruptedWeights[0] ^= 1;
 	fixture.writes.set(`${source}/electra/weights.bin`, corruptedWeights.buffer);

@@ -110,7 +110,7 @@ Le réglage **Mode debug**, placé avant **Corrections**, affiche **Structure** 
 
 Les analyses, les moteurs de correction locaux, Synonyme et Ponctuations restent sur l’appareil. Une connexion sert uniquement au téléchargement initial des ressources linguistiques, déclenché dans les réglages ; aucune note n’est envoyée à GitHub. Les fonctions IA envoient du texte au fournisseur choisi, uniquement sur demande : la sélection pour Corrections IA, et le paragraphe de la sélection avec celui d’avant et celui d’après pour Synonymes IA, s’ils existent. Les clés API sont conservées dans les réglages du plugin. L’installation et les mises à jour passent par GitHub sans envoyer les notes.
 
-Le bouton **Insérer la liste en remarque** ajoute les résultats des dictionnaires et des synonymes IA après le dernier paragraphe sélectionné, dans un commentaire Obsidian `%% … %%`. Finition n’accède pas au presse-papiers. Les fichiers du coffre et les copies de dictionnaires sont gérés par l’API Obsidian ; un fichier extérieur n’est lu que lorsqu’il est choisi dans le sélecteur d’import.
+Le bouton **Insérer la liste en remarque** ajoute les résultats des dictionnaires et des synonymes IA après le dernier paragraphe sélectionné, dans un commentaire Obsidian `%% … %%`. Finition n’accède pas au presse-papiers. Les fichiers du coffre et les copies de dictionnaires sont gérés par l’API Obsidian ; un fichier extérieur n’est lu que lorsqu’il est choisi dans le sélecteur d’import ou que son modèle est chargé depuis un chemin absolu saisi dans les réglages.
 
 ## Développement
 

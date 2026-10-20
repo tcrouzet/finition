@@ -844,9 +844,14 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	async setNeuralModelPath(path: string): Promise<void> {
 		path = path.trim().replace(/\/$/u, "");
 		const adapter = this.app.vault.adapter;
-		if (path.startsWith("/") && adapter instanceof FileSystemAdapter) {
-			const prefix = adapter.getBasePath().replace(/\/$/u, "") + "/";
-			if (path.startsWith(prefix)) path = path.slice(prefix.length);
+		if (path.startsWith("/")) {
+			const directory = path.endsWith("/pack.json") ? path.slice(0, -"pack.json".length) : `${path}/`;
+			await this.importNeuralModel(async file => {
+				const bytes = await FileSystemAdapter.readLocalFile(directory + file);
+				if (!bytes.byteLength || bytes.byteLength > (file === "pack.json" ? 16384 : neuralFileLimit)) throw new Error("Fichier du modèle absent ou trop volumineux.");
+				return bytes;
+			});
+			return;
 		}
 		path = personalSynonymPath(path.endsWith("pack.json") ? path : `${path}/pack.json`);
 		if (path.split("/").at(-1) !== "pack.json") throw new Error("Choisis le dossier contenant pack.json.");

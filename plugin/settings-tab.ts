@@ -26,16 +26,10 @@ const COLOR_FUNCTIONS: Array<{ key: ColorFunctionKey; label: string }> = [
 export class FinitionSettingTab extends PluginSettingTab {
 	plugin: FinitionPlugin;
 
-	// État transitoire de l'UI "Enregistrer sous ce nom" (nom + modèle en
-	// cours de saisie, pas encore sauvegardés). Stocké sur l'instance (qui
-	// survit, elle, aux appels répétés de update()) plutôt qu'en variable
-	// locale de update() : sinon chaque this.update() — déclenché par le
-	// changement de modèle ou de prompt — recréait ces variables à partir
-	// des réglages déjà persistés, annulant silencieusement la sélection
-	// qu'on venait de faire. null = pas de saisie en cours, se recale sur
-	// les réglages actuels.
+	// Les brouillons survivent aux reconstructions de l’interface ; null recharge le prompt actif.
 	private pendingPromptName: string | null = null;
 	private pendingPromptModel: string | null = null;
+	private promptModelCustom = false;
 	private downloadingEngine: ResourcePack | null = null;
 	private changingSynonyms = false;
 	private synonymError = "";
@@ -118,18 +112,32 @@ export class FinitionSettingTab extends PluginSettingTab {
 					await this.plugin.setSynonymDictionaryPath(this.pendingSynonymPath);
 					this.pendingSynonymPath = "";
 				});
-				const input = createEl("input", { attr: { type: "file", accept: ".json,application/json" } });
-				input.addEventListener("change", () => {
-					const file = input.files?.[0];
+				this.openFilePicker(false, files => {
+					const file = files[0];
 					if (!file) return;
 					void update(async () => {
 						if (file.size > synonymFileLimit) throw new Error("Choisis un dictionnaire JSON de 128 Mio maximum.");
 						await this.plugin.importSynonymDictionary(await file.arrayBuffer());
 					});
-				}, { once: true });
-				input.click();
+				});
 			}));
 		loader.descEl.createEl("a", { text: "JSON au format Finition", href: synonymDocumentation, attr: { target: "_blank", rel: "noopener noreferrer" } });
+	}
+	private openFilePicker(directory: boolean, onChange: (files: File[]) => void): void {
+		const input = this.containerEl.createEl("input", {
+			attr: { type: "file", hidden: "", ...(directory ? { webkitdirectory: "", multiple: "" } : { accept: ".json,application/json" }) }
+		});
+		input.addEventListener("cancel", () => input.remove(), { once: true });
+		input.addEventListener("change", () => {
+			const files = Array.from(input.files ?? []);
+			input.remove();
+			if (files.length) onChange(files);
+		}, { once: true });
+		try { input.showPicker(); }
+		catch (error) {
+			input.remove();
+			new Notice(`Impossible d’ouvrir le sélecteur : ${error instanceof Error ? error.message : String(error)}`);
+		}
 	}
 	private displayWordDictionary(parent: HTMLElement, kind: DictionaryKind): void {
 		const container = this.section(parent, dictionaryLabels[kind]);
@@ -179,16 +187,14 @@ export class FinitionSettingTab extends PluginSettingTab {
 					await this.plugin.setWordDictionaryPath(kind, path);
 					this.pendingDictionaryPaths[kind] = "";
 				});
-				const input = createEl("input", { attr: { type: "file", accept: ".json,application/json" } });
-				input.addEventListener("change", () => {
-					const file = input.files?.[0];
+				this.openFilePicker(false, files => {
+					const file = files[0];
 					if (!file) return;
 					void update(async () => {
 						if (file.size > synonymFileLimit) throw new Error("Choisis un dictionnaire JSON de 128 Mio maximum.");
 						await store!.import(kind, await file.arrayBuffer());
 					});
-				}, { once: true });
-				input.click();
+				});
 			}));
 		loader.descEl.createEl("a", { text: "JSON au format Finition", href: dictionaryDocumentation, attr: { target: "_blank", rel: "noopener noreferrer" } });
 	}
@@ -247,7 +253,16 @@ export class FinitionSettingTab extends PluginSettingTab {
 				}));
 			this.describeResource(row, model);
 		}
+		const browseModel = () => this.openFilePicker(true, selected => {
+			const files = new Map(selected.map(file => [file.webkitRelativePath.split("/").slice(1).join("/"), file]));
+			void update(() => this.plugin.importNeuralModel(async path => {
+				const file = files.get(path);
+				if (!file || file.size > (path === "pack.json" ? 16384 : neuralFileLimit)) throw new Error("Fichier du modèle absent ou trop volumineux.");
+				return file.arrayBuffer();
+			}));
+		});
 		const loader = new Setting(containerEl).setName("Charger un modèle neuronal")
+			.setClass("finition-model-import-setting")
 			.addText(text => {
 				text.setValue(this.pendingModelPath).setPlaceholder("Chemin du dossier ou de pack.json").setDisabled(busy)
 					.onChange(value => { this.pendingModelPath = value; });
@@ -258,19 +273,12 @@ export class FinitionSettingTab extends PluginSettingTab {
 					await this.plugin.setNeuralModelPath(this.pendingModelPath);
 					this.pendingModelPath = "";
 				});
-				const input = createEl("input", { attr: { type: "file", webkitdirectory: "", multiple: "" } });
-				input.addEventListener("change", () => {
-					const files = new Map(Array.from(input.files ?? []).map(file => [file.webkitRelativePath.split("/").slice(1).join("/"), file]));
-					if (!files.size) return;
-					void update(() => this.plugin.importNeuralModel(async path => {
-						const file = files.get(path);
-						if (!file || file.size > (path === "pack.json" ? 16384 : neuralFileLimit)) throw new Error("Fichier du modèle absent ou trop volumineux.");
-						return file.arrayBuffer();
-					}));
-				}, { once: true });
-				input.click();
-			}));
+				browseModel();
+			}))
+			.addButton(button => button.setButtonText("Parcourir…").setDisabled(busy).onClick(browseModel));
 		loader.descEl.createEl("a", { text: "Modèle au format Finition", href: neuralDocumentation, attr: { target: "_blank", rel: "noopener noreferrer" } });
+		loader.descEl.createSpan({ text: " · Dossiers cachés sur macOS : ⌘⇧." });
+		loader.settingEl.appendChild(loader.descEl);
 
 		new Setting(containerEl).setName("Correcteur neuronal par défaut")
 			.setDesc(this.modelError || (installed.includes("finition-corrector") ? "" : "Aucun correcteur neuronal installé."))
@@ -510,6 +518,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 							// saisie relative au prompt précédent.
 							this.pendingPromptName = null;
 							this.pendingPromptModel = null;
+							this.promptModelCustom = false;
 						}
 						await this.plugin.saveSettings();
 						this.update();
@@ -553,6 +562,14 @@ export class FinitionSettingTab extends PluginSettingTab {
 		if (this.pendingPromptModel === null) {
 			this.pendingPromptModel = activeSavedEntry?.model ?? "";
 		}
+		const setPromptModel = async (value: string) => {
+			this.pendingPromptModel = value;
+			const settings = this.plugin.settings;
+			const saved = settings.savedPrompts.find(prompt => prompt.name === settings.activePromptName && prompt.prompt === settings.aiPrompt && prompt.name === this.pendingPromptName?.trim());
+			if (saved) saved.model = value;
+			if (value) settings.aiModel = value;
+			await this.plugin.saveSettings();
+		};
 		const PROMPT_MODEL_DEFAULT_VALUE = "__model_default__";
 		const PROMPT_MODEL_CUSTOM_VALUE = "__model_custom__";
 		const promptModelIsPreset =
@@ -571,26 +588,27 @@ export class FinitionSettingTab extends PluginSettingTab {
 				dropdown.addOption(PROMPT_MODEL_CUSTOM_VALUE, "Autre (saisir un identifiant)…");
 				dropdown
 					.setValue(
-						this.pendingPromptModel === ""
+						this.promptModelCustom
+							? PROMPT_MODEL_CUSTOM_VALUE
+							: this.pendingPromptModel === ""
 							? PROMPT_MODEL_DEFAULT_VALUE
 							: promptModelIsPreset
 							? (this.pendingPromptModel as string)
 							: PROMPT_MODEL_CUSTOM_VALUE
 					)
-					.onChange((value) => {
-						if (value === PROMPT_MODEL_DEFAULT_VALUE) {
-							this.pendingPromptModel = "";
-						} else if (value === PROMPT_MODEL_CUSTOM_VALUE) {
+					.onChange(async (value) => {
+						this.promptModelCustom = value === PROMPT_MODEL_CUSTOM_VALUE;
+						if (this.promptModelCustom) {
 							this.pendingPromptModel = promptModelIsPreset ? "" : this.pendingPromptModel;
 						} else {
-							this.pendingPromptModel = value;
+							await setPromptModel(value === PROMPT_MODEL_DEFAULT_VALUE ? "" : value);
 						}
 						this.update(); // affiche/masque le champ de saisie libre, comme pour le modèle global
 					});
 			});
 
 		const promptModelShowCustomField =
-			this.pendingPromptModel !== "" && !AI_MODEL_PRESETS.some((p) => p.value === this.pendingPromptModel);
+			this.promptModelCustom || (this.pendingPromptModel !== "" && !AI_MODEL_PRESETS.some((p) => p.value === this.pendingPromptModel));
 
 		if (promptModelShowCustomField) {
 			new Setting(containerEl)
@@ -599,9 +617,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 					text
 						.setPlaceholder("Identifiant du modèle")
 						.setValue(this.pendingPromptModel as string)
-						.onChange((value) => {
-							this.pendingPromptModel = value.trim();
-						})
+						.onChange(value => setPromptModel(value.trim()))
 				);
 		}
 
@@ -640,6 +656,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 						this.plugin.settings.activePromptName = name;
 						this.pendingPromptName = null;
 						this.pendingPromptModel = null;
+						this.promptModelCustom = false;
 						await this.plugin.saveSettings();
 						this.update();
 					})
@@ -655,6 +672,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 			this.plugin.settings.activePromptName = factory ? factory.name : null;
 			this.pendingPromptName = null;
 			this.pendingPromptModel = null;
+			this.promptModelCustom = false;
 		};
 
 		// Un prompt système (builtin) n'est jamais supprimable depuis les
