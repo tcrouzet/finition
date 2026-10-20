@@ -60,9 +60,9 @@ Le modèle public **CamemBERT** se charge dans les réglages. Des modèles perso
 
 Cette commande modifie directement toute la note, sans étape de validation.
 
-## Trouver le mot juste
+## Dictionnaires
 
-Sélectionner un mot, puis ouvrir **♫ → Dictionnaires** :
+Sélectionner un mot, ouvrir **♫ → Dictionnaires** et choisir le dictionnaire :
 
 - **Synonyme** propose des variantes, regroupées par sens et catégorie lorsque le dictionnaire le permet.
 - **Définitions** aide à vérifier le sens d’un mot.

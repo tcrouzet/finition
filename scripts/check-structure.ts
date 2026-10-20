@@ -239,6 +239,7 @@ async function main() {
 		assert.equal(api.fixPunctuationSpacing(expected), expected, "La normalisation typographique n’est pas idempotente");
 	}
 	process.stdout.write("Typographie IA : insécables, apostrophes, guillemets, tirets, paragraphes et liens vérifiés\n");
+	execFileSync(process.execPath, ["plugin/esbuild.config.mjs", "production"], { stdio: "inherit" });
 	const productionModule = { exports: {} as { default: typeof api.FinitionPlugin } };
 	const localRequire = createRequire(import.meta.url);
 	vm.runInNewContext(readFileSync("main.js", "utf8"), { ...sandbox, module: productionModule, exports: productionModule.exports,
