@@ -199,6 +199,14 @@ export async function checkSynonyms(setHandler: (handler: (request: Request) => 
 	await runSynonyms(app, settings);
 	check(notices.at(-1)?.includes("Aucun synonyme"), "Une réponse sans puces est acceptée");
 	const calls = requests.length;
+	for (const text of ["[rapide](https://example.org)", "https://example.org/rapide", "![rapide](image.png)", "[[Note|rapide]]", "<a href='https://example.org'>rapide</a>", "Un [mot](https://example.org) rapide."]) {
+		const from = text.startsWith("Un ") ? 0 : text.indexOf("rapide");
+		const to = text.startsWith("Un ") ? text.length : from + 6;
+		view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: from, head: to } });
+		await runSynonyms(app, settings);
+		check(requests.length === calls && notices.at(-1)?.includes("hors des liens") && editor.getValue() === text, "Une recherche IA soumet une URL ou un libellé de lien");
+	}
+	reset();
 	settings.openaiApiKey = "";
 	await runSynonyms(app, settings);
 	check(requests.length === calls, "Appel sans clé API");

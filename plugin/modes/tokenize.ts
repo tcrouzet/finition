@@ -1,14 +1,17 @@
 /**
  * Tokenisation partagée entre les modes "répétitions" et "stéréotypes" :
  * découpage en mots français + résolution de lemme via le dictionnaire
- * Morphalou (data/lexicon.json), avec gestion correcte des élisions.
+ * commun Finition, avec gestion correcte des élisions.
  */
+
+import { linkRanges } from "../markdown-links";
 
 export interface Token {
 	start: number;
 	end: number;
 	form: string; // forme écrite, normalisée en minuscules
 	lemma: string; // lemme résolu (ou la forme elle-même si inconnue du dictionnaire)
+	segment: number;
 }
 
 // L'apostrophe (droite ' ou typographique ’) n'est volontairement PAS incluse
@@ -47,13 +50,20 @@ const ELISION_LEMMAS: Record<string, string> = {
 /** Découpe `text` en mots et résout le lemme de chacun (élisions comprises). */
 export function tokenize(text: string, lexicon: Map<string, string>): Token[] {
 	const tokens: Token[] = [];
+	const links = linkRanges(text);
+	let segment = 0;
 	WORD_RE.lastIndex = 0;
 	let match: RegExpExecArray | null;
 	while ((match = WORD_RE.exec(text)) !== null) {
+		while (segment < links.length && links[segment][1] <= match.index) segment++;
+		if (segment < links.length && match.index + match[0].length > links[segment][0]) {
+			WORD_RE.lastIndex = links[segment][1];
+			continue;
+		}
 		const raw = match[0];
 		const form = raw.toLowerCase();
 		const lemma = ELISION_LEMMAS[form] ?? lexicon.get(form) ?? form;
-		tokens.push({ start: match.index, end: match.index + raw.length, form, lemma });
+		tokens.push({ start: match.index, end: match.index + raw.length, form, lemma, segment });
 	}
 	return tokens;
 }

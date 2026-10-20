@@ -1,16 +1,11 @@
-import { Lexicon } from "./lexicon";
-import type { LexemeRow } from "./lexicon";
+import type { Lexicon } from "./lexicon";
 import type { ReadNeuralAsset } from "./neural-assets";
+import { decodeDictionary, readPersonalForms } from "../../lexicon/shared";
+import { adaptNeural } from "../../lexicon/neural-adapter";
 
-export async function loadDictionnaire(readAsset: ReadNeuralAsset): Promise<Lexicon> {
+export async function loadDictionnaire(readAsset: ReadNeuralAsset, readPersonal?: () => Promise<ArrayBuffer>): Promise<Lexicon> {
 	const dictionaryText = new TextDecoder().decode(await readAsset("finition-dictionnaire.json"));
-	const dictionary = JSON.parse(dictionaryText) as { name: string; version: number; encoding: string; payload: string };
-	if (dictionary.name !== "finition-dictionnaire" || dictionary.version !== 1 || dictionary.encoding !== "gzip-base64") throw new Error("Format du dictionnaire invalide.");
-	const binary = atob(dictionary.payload);
-	const bytes = new Uint8Array(binary.length);
-	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-	const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
-	const [entries, forms] = JSON.parse(await new Response(stream).text()) as [LexemeRow[], string[]];
-	if (!Array.isArray(entries) || !Array.isArray(forms)) throw new Error("Contenu du dictionnaire invalide.");
-	return new Lexicon(entries, forms);
+	const dictionary: unknown = JSON.parse(dictionaryText);
+	const [data, personal] = await Promise.all([decodeDictionary(dictionary, "neural"), readPersonal ? readPersonalForms(readPersonal) : []]);
+	return adaptNeural(data, personal);
 }

@@ -4,6 +4,7 @@ import type { FinitionCorrectorEngine } from "../plugin/modes/finition-corrector
 import { analyzeCorrections } from "../plugin/modes/corrections";
 import { resourceFixture } from "./check-linguistic-resources";
 import { checkGrammarRelations } from "./check-finition-corrector";
+import { dictionaryFile, personalDictionaryFile } from "../plugin/lexicon/shared";
 
 export async function checkFinitionNeural(Plugin: typeof FinitionPlugin): Promise<void> {
   const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
@@ -13,7 +14,7 @@ export async function checkFinitionNeural(Plugin: typeof FinitionPlugin): Promis
   const plugin = new Plugin({
     workspace: { iterateAllLeaves() {} },
     vault: { adapter: { ...fixture.adapter, async readBinary(path: string) {
-      if (!path.endsWith("/resources.json") && !path.endsWith("/finition-dictionnaire.json")) {
+      if (!path.endsWith("/resources.json") && !path.endsWith("/" + dictionaryFile) && !path.endsWith("/" + personalDictionaryFile) && !/\/data\/lexique\/[a-f0-9]{64}\.json$/.test(path)) {
         reads++;
         if (!available) throw new Error("Modèle local absent.");
       }

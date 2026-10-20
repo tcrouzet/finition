@@ -44,7 +44,7 @@ export function computeStereotypeHighlights(
 	let index = 0;
 	while (index < tokens.length) {
 		const match = sortedPatterns.find((pattern) =>
-			pattern.every((lemma, offset) => tokens[index + offset]?.lemma === lemma)
+			tokens[index + pattern.length - 1]?.segment === tokens[index].segment && pattern.every((lemma, offset) => tokens[index + offset]?.lemma === lemma)
 		);
 		if (match) {
 			const first = tokens[index];

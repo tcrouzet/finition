@@ -20,17 +20,40 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 		throw new Error(message);
 	};
 	const fixture = await resourceFixture();
+	let dictionaryReads = 0;
+	const adapter = { ...fixture.adapter, async readBinary(path: string) {
+		if (/\/(?:finition-dictionnaire|[a-f0-9]{64})\.json$/.test(path)) dictionaryReads++;
+		return fixture.adapter.readBinary(path);
+	} };
 	const plugin = new FinitionPlugin({} as App, { id: "finition", name: "Finition", version: "0.0.0", minAppVersion: "1.0.0", description: "", author: "", dir: "navigation-test" });
 	const host = plugin as unknown as { saved: unknown; commands: Command[]; extensions: Extension[]; cleanup: Array<() => void> };
 	host.saved = { ...DEFAULT_SETTINGS, mode: "none", debounceMs: 0, resourcePacks: fixture.revisions };
 	let active: MarkdownView | null = null;
 	const events = new Map<string, () => void>();
-	plugin.app = { vault: { adapter: fixture.adapter }, workspace: {
+	plugin.app = { vault: { adapter }, workspace: {
 		getActiveViewOfType: () => active,
 		iterateAllLeaves: (visit: (leaf: { view: MarkdownView }) => void) => { if (active) visit({ view: active }); },
 		on: (event: string, callback: () => void) => { events.set(event, callback); return {}; },
 	} } as unknown as App;
 	await plugin.onload();
+	const started = performance.now();
+	let frames = 0, lastFrame = started, maxFrameGap = 0, loading = true;
+	const tick = (now: number) => {
+		frames++;
+		maxFrameGap = Math.max(maxFrameGap, now - lastFrame);
+		lastFrame = now;
+		if (loading) requestAnimationFrame(tick);
+	};
+	requestAnimationFrame(tick);
+	await Promise.all([plugin.loadLexiconData(true), plugin.loadLexiconData(true)]);
+	await new Promise(requestAnimationFrame);
+	loading = false;
+	check(dictionaryReads === 1 && plugin.lexicon.get("serrait") === "serrer" && plugin.lexicon.get("abaissant") === "abaisser", "Chargement partagé du lexique ou préférences de lemmes perdus");
+	check(frames > 0, "Le chargement du lexique bloque l’affichage");
+	const loadedLexicon = plugin.lexicon;
+	await plugin.loadLexiconData(true);
+	check(plugin.lexicon === loadedLexicon && dictionaryReads === 1, "Le changement de mode recharge le lexique");
+	console.error("finition-test-step", `lexique : ${Math.round(performance.now() - started)} ms, ${frames} images, pause maximale ${Math.round(maxFrameGap)} ms, une seule lecture`);
 	check(getComputedStyle(document.querySelector(".finition-status-bar-item")!).opacity === "1", "Barre d’état Finition atténuée sans mode actif");
 	check(!plugin.settings.hideBacklinksCount && !document.body.classList.contains("finition-hide-backlinks-count"), "Compteur de backlinks masqué par défaut");
 	plugin.settings.hideBacklinksCount = true;

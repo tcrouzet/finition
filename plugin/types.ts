@@ -182,7 +182,7 @@ export interface FinitionSettings {
 	wordDictionaryPaths: Partial<Record<DictionaryKind, string>>;
 	// Dictionnaire utilisé par le moteur orthographique : "fr-classic"
 	// (orthographe traditionnelle) ou "fr-reform" (rectifications de 1990).
-	// Fichiers correspondants dans resources/grammalecte/_dictionaries/.
+	// Variantes du lexique commun, décrit dans doc/lexique.md.
 	grammalecteDictionary: "fr-classic" | "fr-reform";
 	// Index dans settings.palette utilisé comme fond coloré derrière les
 	// erreurs Grammalecte, en plus du soulignement ondulé rouge/bleu.

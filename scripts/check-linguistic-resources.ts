@@ -1,7 +1,8 @@
 import type { App, DataAdapter } from "obsidian";
 import type FinitionPlugin from "../main";
 import { FinitionSettingTab } from "../plugin/settings-tab";
-import { resourceAssetName, resourceFiles, resourceSource, resourceEngines, resourcePacks } from "../plugin/linguistic-files";
+import { resourceAssetName, resourceFiles, resourceSource, resourceEngines, resourcePacks, grammarFiles } from "../plugin/linguistic-files";
+import { dictionaryFile, personalDictionaryPath, personalDictionaryFile } from "../plugin/lexicon/shared";
 import type { ResourcePack } from "../plugin/linguistic-files";
 import { LinguisticResources, parseResourceManifest, resourceHash } from "../plugin/linguistic-resources";
 
@@ -23,7 +24,8 @@ export async function resourceFixture(seed = true) {
 		if ([...removedRoots].some(root => path === root || path.startsWith(root + "/"))) return undefined;
 		const privateFile = /\/Antidote\/model\/(pack\.json|electra\/(?:model\.json|weights\.bin|tokenizer\.json|labels\.json))$/u.exec(path);
 		if (seed && privateFile) return files.get(`private-${privateFile[1].replace(/\//gu, "__")}`);
-		const match = /\/resources\/(grammalecte|finition-corrector|synonymes|definitions|antonymes|phonetique|rimes)\/([a-f0-9]{64})\/(.+)$/u.exec(path);
+		if (seed && path.endsWith("/" + personalDictionaryPath)) return files.get(`private-${personalDictionaryFile}`);
+		const match = /\/resources\/(lexique|grammalecte|finition-corrector|synonymes|definitions|antonymes|phonetique|rimes)\/([a-f0-9]{64})\/(.+)$/u.exec(path);
 		if (!seed || !match || revisions[match[1] as ResourcePack] !== match[2]) return undefined;
 		return files.get(match[3] === "resources.json" ? `${match[1]}-resources.json` : resourceAssetName(match[1] as ResourcePack, match[3]));
 	};
@@ -90,6 +92,12 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	check(!getMenu().some(item => item.title === "Structure"), "Structure est visible sans mode debug");
 	plugin.settings.debugMode = true;
 	check(menus().every(item => item.disabled), "Installation vide : menus actifs");
+	check(["Répétitions", "Stéréotypes"].every(title => getMenu().find(item => item.title === title)?.disabled), "Un surlignage lexical est disponible sans dictionnaire");
+	for (const mode of ["repetition", "stereotype"] as const) {
+		await plugin.setMode(mode);
+		check(plugin.settings.mode !== mode, "Un surlignage lexical s’active sans dictionnaire");
+	}
+	check(["Atténuations", "Monotonie", "Charnières"].every(title => !getMenu().find(item => item.title === title)?.disabled), "Une analyse sans lexique est grisée");
 	const container = document.body.createDiv();
 	const tab = new FinitionSettingTab(plugin.app, plugin);
 	tab.containerEl = container;
@@ -143,12 +151,21 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 		check(request.url.startsWith(prefix) && request.method === "GET" && !request.body, "Le téléchargement transmet des données ou utilise une source inattendue");
 		return { status: 200, arrayBuffer: await fixture.readSource(request.url.slice(prefix.length)) };
 	});
+	check(row("Dictionnaire Finition")?.querySelector("button")?.textContent === "Charger", "Le chargement indépendant du dictionnaire manque");
+	row("Dictionnaire Finition")!.querySelector<HTMLButtonElement>("button")!.click();
+	await settled(() => row("Dictionnaire Finition")?.querySelector<HTMLButtonElement>("button")?.textContent === "Recharger" && !row("Dictionnaire Finition")?.querySelector<HTMLButtonElement>("button")?.disabled);
+	check(requests === 3 && plugin.hasLexicon && !plugin.hasLinguisticResources, "Le dictionnaire seul installe un correcteur ou reste indisponible");
+	internal.showModeMenu(new MouseEvent("click"));
+	check(["Répétitions", "Stéréotypes"].every(title => !getMenu().find(item => item.title === title)?.disabled), "Les surlignages lexicaux restent grisés après installation");
+	check(menus().every(item => item.disabled), "Le dictionnaire seul active les analyses syntaxiques");
+	check(plugin.lexicon.size === 0, "Les analyses lexicales sont chargées avant leur utilisation");
+	requests = 0;
 	row("Grammalecte")!.querySelector<HTMLButtonElement>("button")!.click();
 	await settled(() => row("Grammalecte")?.querySelector<HTMLButtonElement>("button")?.textContent === "Recharger" && !grammar().disabled);
 	check(spinnerVisible, "La roue disparaît pendant le téléchargement des réglages");
 	check(!document.querySelector(".notice .finition-correction-spinner"), "La roue reste affichée après le téléchargement");
 	check(Array.from(analysis().options).map(option => option.text).join("|") === "Grammalecte", "Un moteur d’analyse non installé est proposé");
-	check(requests === 8 && plugin.hasLinguisticResources, "Téléchargement incomplet ou moteur inactif");
+	check(requests === 7 && plugin.hasLinguisticResources, "Téléchargement incomplet, dictionnaire téléchargé deux fois ou moteur inactif");
 	check(Array.from(grammar().options).map(option => option.text).join("|") === "Classique|Réforme 1990" && grammar().value === "fr-classic" && corrector().disabled, "Les deux variantes installées de Grammalecte sont absentes");
 	await choose("fr-reform");
 	await plugin.loadSettings();
@@ -172,6 +189,12 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	const revision = plugin.settings.resourcePacks.grammalecte;
 	const text = new TextDecoder().decode(await fixture.readSource("grammalecte-resources.json"));
 	const manifest = parseResourceManifest(text, "grammalecte");
+	const commonFile = manifest.files.find(file => file.path === dictionaryFile)!;
+	const commonPath = `test-plugin/data/lexique/${commonFile.sha256}.json`;
+	check(fixture.writes.has(commonPath), "Le lexique n’est pas stocké dans le cache partagé");
+	let incompleteRejected = false;
+	try { parseResourceManifest(JSON.stringify({ ...manifest, files: manifest.files.filter(file => file.path !== "MPL-2.0.txt") }), "grammalecte"); } catch { incompleteRejected = true; }
+	check(incompleteRejected, "Un nouveau pack sans licence est accepté comme ancien pack");
 	for (const bad of ["../escape.json", "/absolute", "phonet_data.json\u0000", "a/../../x", "\u202ex.js", ...manifest.files.flatMap(file => [`../${file.path}`, `${file.path}\u0000`, `${file.path}\\suffix`])]) {
 		const changed = { ...manifest, files: manifest.files.map((file, index) => index === 0 ? { ...file, path: bad } : file) };
 		let rejected = false;
@@ -185,13 +208,14 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	setHandler(async () => ({ status: 404, arrayBuffer: new ArrayBuffer(0) }));
 	const unavailable = await plugin.downloadLinguisticResources("grammalecte", () => {}).then(() => "", (error: unknown) => error instanceof Error ? error.message : String(error));
 	check(unavailable.includes("404") && plugin.hasLinguisticResources, "Une erreur réseau désactive le moteur installé");
-	fixture.writes.delete(`test-plugin/data/resources/grammalecte/${revision}/${manifest.files[0].path}`);
+	fixture.writes.delete(commonPath);
 	await plugin.loadLinguisticResources();
 	check(menus().every(item => item.disabled), "Un pack incomplet laisse les modes actifs");
+	check(!plugin.hasLexicon && plugin.lexicon.size === 0, "Un lexique absent reste actif ou en mémoire");
 	check(engines().every(item => item.disabled), "Un pack incomplet reste sélectionnable dans le menu musique");
 	tab.update();
 	check(corrector().options.length === 0 && corrector().disabled && grammar().options.length === 0 && grammar().disabled, "Un pack incomplet reste sélectionnable dans les réglages");
-	check([...fixture.writes.keys()].every(path => path.startsWith("test-plugin/data/resources/")), "Une installation écrit hors du dossier data/resources");
+	check([...fixture.writes.keys()].every(path => path.startsWith("test-plugin/data/resources/") || path === commonPath), "Une installation écrit hors des caches de données autorisés");
 	const previous = await resourceFixture(false);
 	for (const file of ["resources.json", ...resourceFiles.grammalecte]) await previous.adapter.writeBinary(`previous-plugin/resources/grammalecte/${previous.revisions.grammalecte}/${file}`, await previous.readSource(file === "resources.json" ? "grammalecte-resources.json" : resourceAssetName("grammalecte", file)));
 	const retained = new LinguisticResources(previous.adapter, "previous-plugin", "0.4.3");
@@ -200,8 +224,10 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	const complete = await resourceFixture();
 	const choice = new Plugin({ vault: { adapter: complete.adapter }, workspace: { iterateAllLeaves() {}, getActiveViewOfType: () => null } } as unknown as App, { id: "finition", name: "Finition", version: "0.4.3", minAppVersion: "1.0.0", description: "", author: "", dir: "test-plugin" });
 	await choice.loadSettings();
-	choice.settings.resourcePacks = complete.revisions;
+	choice.settings.resourcePacks = { ...complete.revisions };
+	delete choice.settings.resourcePacks.lexique;
 	await choice.loadLinguisticResources();
+	check(choice.hasLexicon, "Un lexique déjà installé avec un correcteur n’est pas reconnu");
 	tab.plugin = choice;
 	tab.update();
 	check(Array.from(corrector().options).map(option => option.value).join("|") === "finition-corrector|Antidote/model" && Array.from(corrector().options).map(option => option.text).join("|") === "CamemBERT|Antidote" && row("CamemBERT") && row("Antidote"), "La liste neuronale mélange Grammalecte ou perd le nom des modèles");
@@ -238,6 +264,21 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	await legacy.refresh({});
 	check(legacy.available("grammalecte") && !legacy.available("finition-corrector"), "Les ressources locales existantes ne sont pas reconnues");
 	check((await legacy.read("grammalecte", "phonet_data.json")).byteLength > 0, "Les ressources locales ne sont pas lisibles");
+	const oldCatalogue = { ...manifest, version: 1, files: Object.values(grammarFiles).map(path => ({ path, bytes: 1, sha256: "a".repeat(64) })) };
+	check(parseResourceManifest(JSON.stringify(oldCatalogue), "grammalecte").version === 1, "L’ancien format Grammalecte n’est plus lisible");
+	const sharedFixture = await resourceFixture(false);
+	const shared = new LinguisticResources(sharedFixture.adapter, "shared-plugin", "0.4.3");
+	let dictionaryRequests = 0;
+	setHandler(async request => {
+		if (request.url.endsWith(resourceAssetName("grammalecte", dictionaryFile))) dictionaryRequests++;
+		return { status: 200, arrayBuffer: await sharedFixture.readSource(request.url.slice(prefix.length)) };
+	});
+	const [grammarRevision, neuralRevision] = await Promise.all([shared.install("grammalecte", () => {}), shared.install("finition-corrector", () => {})]);
+	await shared.refresh({ grammalecte: grammarRevision, "finition-corrector": neuralRevision });
+	check(dictionaryRequests === 1, "Le dictionnaire commun est téléchargé deux fois");
+	check([...sharedFixture.writes.keys()].filter(path => path.includes("/data/lexique/")).length === 1, "Le dictionnaire commun est copié pour chaque moteur");
+	check(shared.available("grammalecte") && shared.available("finition-corrector"), "La déduplication désactive un moteur");
+	check(await resourceHash(await shared.read("grammalecte", dictionaryFile)) === await resourceHash(await shared.read("finition-corrector", dictionaryFile)), "Les moteurs ne lisent pas le même dictionnaire");
 	container.remove();
 	console.error("Ressources : sélecteur de correcteur, variantes, absence, téléchargement, activation, rechargement, intégrité, chemins et échec réseau vérifiés");
 }

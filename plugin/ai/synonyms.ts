@@ -6,6 +6,7 @@ import { callAnthropic } from "./anthropic";
 import { callOpenAI } from "./openai";
 import { splitIntoChunks } from "./chunk";
 import { detectProvider } from "./provider";
+import { selectionTouchesLink } from "../markdown-links";
 import systemPrompt from "./system-prompt-synonymes.md";
 
 export function synonymContext(text: string, from: number, to: number): string {
@@ -48,6 +49,7 @@ export async function runSynonyms(app: App, settings: FinitionSettings): Promise
 	const file = view.file;
 	const from = editor.posToOffset(editor.getCursor("from"));
 	const to = editor.posToOffset(editor.getCursor("to"));
+	if (selectionTouchesLink(document, from, to)) { new Notice("Synonymes IA : sélectionne un texte hors des liens et des adresses web."); return; }
 	const insertRemark = createRemarkInsertion(app, view);
 	const progress = new Notice("Synonymes IA : recherche en cours…", 0);
 	try {

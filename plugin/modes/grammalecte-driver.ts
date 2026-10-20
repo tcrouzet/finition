@@ -1,6 +1,9 @@
 import type { GrammalecteError } from "./grammalecte";
+import { decodeDictionary, readPersonalForms, type Orthography, type SharedDictionary } from "../lexicon/shared";
+import { adaptGrammalecte, type GraphspellDictionary } from "../lexicon/grammalecte-adapter";
 
 interface NativeSpellChecker {
+	oMainDic: GraphspellDictionary;
 	activateStorage(): void;
 	getTokenizer(): unknown;
 	getMorph(word: string): string[];
@@ -9,11 +12,13 @@ interface NativeSpellChecker {
 }
 interface InitParameters {
 	oDictionary: unknown; oGraphData: object;
+	oOrthography?: Orthography; sPersonalData?: string;
 	sConjData: string; sPhonetData: string; sMfspData: string; sThes1Data: string; sThes2Data: string;
 }
 type WorkerRequest = { id: string } & (
 	{ sCommand: "init"; oParam: InitParameters } |
 	{ sCommand: "parse"; oParam: { sText: string } } |
+	{ sCommand: "dictionary"; oParam: { dictionary: Orthography } } |
 	{ sCommand: "lexicalCategories"; oParam: { words: string[] } }
 );
 
@@ -33,21 +38,33 @@ declare const gc_engine: {
 
 let bInitDone = false;
 let requestId = "";
+let shared: SharedDictionary | undefined;
+let personal: string[] = [];
+const adapted = new Map<Orthography, GraphspellDictionary>();
 
 function createResponse(sAction: string, result: unknown, bError: boolean) {
 	return { id: requestId, sAction: sAction, result: result, bError: !!bError };
 }
 
 onmessage = function (e: MessageEvent<WorkerRequest>) {
+	void dispatch(e);
+};
+
+async function dispatch(e: MessageEvent<WorkerRequest>) {
 	const { sCommand, oParam } = e.data;
 	requestId = e.data.id;
 	try {
 		switch (sCommand) {
 			case "init":
-				doInit(oParam);
+				await doInit(oParam);
 				break;
 			case "parse":
 				doParse(oParam);
+				break;
+			case "dictionary":
+				if (!bInitDone || !shared) throw new Error("Dictionnaire commun non initialisé.");
+				selectDictionary(oParam.dictionary);
+				postMessage(createResponse("dictionary", true, false));
 				break;
 			case "lexicalCategories":
 				doLexicalCategories(oParam);
@@ -58,14 +75,17 @@ onmessage = function (e: MessageEvent<WorkerRequest>) {
 	} catch (e) {
 		postMessage(createResponse(sCommand, e instanceof Error ? e.message : String(e), true));
 	}
-};
+}
 
-function doInit(oParam: InitParameters) {
+async function doInit(oParam: InitParameters) {
 	if (bInitDone) {
 		postMessage(createResponse("init", true, false));
 		return;
 	}
 	const { oDictionary, sConjData, sPhonetData, sMfspData, sThes1Data, sThes2Data } = oParam;
+	const common = oDictionary && typeof oDictionary === "object" && "name" in oDictionary && oDictionary.name === "finition-dictionnaire" ? await decodeDictionary(oDictionary, "grammalecte") : undefined;
+	const variant = oParam.oOrthography ?? "fr-classic";
+	if (common && !common.grammalecte) throw new Error("Le dictionnaire commun ne contient pas les index Grammalecte.");
 	Object.assign(gc_rules_graph, oParam.oGraphData);
 
 	// Modules de données linguistiques : init() attend le texte JSON brut
@@ -79,15 +99,34 @@ function doInit(oParam: InitParameters) {
 	// attend un NOM DE FICHIER + un chemin pour le dictionnaire principal,
 	// alors qu'on lui fournit directement l'objet JSON déjà parsé
 	// (IBDAWG accepte les deux formes, cf. graphspell-js/ibdawg.js).
-	gc_engine.oSpellChecker = new SpellChecker("fr", "", oDictionary, "", "");
-	gc_engine.oSpellChecker.activateStorage();
-	gc_engine.oTokenizer = gc_engine.oSpellChecker.getTokenizer();
-	gc_functions.load("JavaScript", gc_engine.oSpellChecker);
+	if (common) {
+		shared = common;
+		personal = oParam.sPersonalData ? await readPersonalForms(async () => new TextEncoder().encode(oParam.sPersonalData).buffer) : [];
+		selectDictionary(variant);
+	} else {
+		gc_engine.oSpellChecker = new SpellChecker("fr", "", oDictionary, "", "");
+		activateChecker();
+	}
 	gc_options.load("JavaScript");
 	gc_engine.oOptionsColors = gc_options.getOptionsColors("JavaScript", "aHSL");
 
 	bInitDone = true;
 	postMessage(createResponse("init", true, false));
+}
+
+function activateChecker() {
+	gc_engine.oSpellChecker.activateStorage();
+	gc_engine.oTokenizer = gc_engine.oSpellChecker.getTokenizer();
+	gc_functions.load("JavaScript", gc_engine.oSpellChecker);
+}
+
+function selectDictionary(variant: Orthography) {
+	if (!shared?.grammalecte || (variant !== "fr-classic" && variant !== "fr-reform")) throw new Error("Variante orthographique invalide.");
+	const checker = new SpellChecker("fr", "", shared.grammalecte[variant], "", "");
+	if (!adapted.has(variant)) adapted.set(variant, adaptGrammalecte(checker.oMainDic, shared, variant, personal));
+	checker.oMainDic = adapted.get(variant)!;
+	gc_engine.oSpellChecker = checker;
+	activateChecker();
 }
 
 // Déduit une catégorie grammaticale lisible (en français, comme dans

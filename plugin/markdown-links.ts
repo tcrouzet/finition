@@ -63,6 +63,10 @@ export function linkRanges(text: string): TextRange[] {
 	return mergeRanges(markdownLinks(text).map(({ from, to }) => [from, to]));
 }
 
+export function selectionTouchesLink(text: string, from: number, to: number): boolean {
+	return linkRanges(text).some(([start, end]) => from < end && to > start);
+}
+
 export function mergeRanges(ranges: readonly TextRange[]): Array<[number, number]> {
 	const merged: Array<[number, number]> = [];
 	for (const [from, to] of [...ranges].sort((left, right) => left[0] - right[0])) {

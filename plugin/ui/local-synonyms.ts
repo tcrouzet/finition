@@ -3,6 +3,7 @@ import { isSynonymWord, SynonymsDictionary, type SynonymGroup } from "../synonym
 import type { DictionaryRow } from "../dictionaries";
 import { SynonymsModal } from "./synonyms-modal";
 import { createRemarkInsertion } from "./insert-remark";
+import { selectionTouchesLink } from "../markdown-links";
 
 export async function runLocalSynonyms(app: App, dictionary: SynonymsDictionary): Promise<void> {
 	await runLocalWordLookup(app, "Synonyme", async word => ({ groups: await dictionary.lookupGroups(word) }));
@@ -20,6 +21,7 @@ export async function runLocalWordLookup(app: App, title: string, lookup: (word:
 	const from = editor.posToOffset(editor.getCursor("from"));
 	const to = editor.posToOffset(editor.getCursor("to"));
 	const selected = document.slice(from, to);
+	if (selectionTouchesLink(document, from, to)) { new Notice(`${title} : sélectionne un mot hors des liens et des adresses web.`); return; }
 	const insertRemark = createRemarkInsertion(app, view);
 	const notice = new Notice(`${title}…`, 0);
 	try {

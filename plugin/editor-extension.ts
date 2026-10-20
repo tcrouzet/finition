@@ -27,7 +27,7 @@ const FOCUS_CLASS = "finition-focused";
 
 function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLemma: string | null): DecorationSet {
 	const text = view.state.doc.toString();
-	if (text.length > runtime.settings.maxDocumentLength) {
+	if (text.length > runtime.settings.maxDocumentLength || ((runtime.settings.mode === "repetition" || runtime.settings.mode === "stereotype") && !runtime.lexicon.size)) {
 		runtime.updateAnalysisHighlights(view, [], false);
 		if (runtime.settings.mode === "tic-ia") runtime.updateTicIAStats(view, 0, 0, true);
 		return Decoration.none;

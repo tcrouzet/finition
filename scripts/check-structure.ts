@@ -12,13 +12,17 @@ import type { DecorationSet, EditorView, ViewUpdate } from "@codemirror/view";
 import type { AIGroupHost } from "../plugin/ai/ai-extension";
 import type { GetCategory } from "../plugin/modes/structure-signature";
 import type { TicIAResult } from "../plugin/modes/tic-ia";
+import { checkSharedLexicon } from "./check-shared-lexicon";
+import { decodeDictionary } from "../plugin/lexicon/shared";
+import { adaptRepetitions } from "../plugin/lexicon/repetition-adapter";
 import type { FinitionSettings } from "../plugin/types";
 
 async function main() {
+	await checkSharedLexicon();
 	const dataSources = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "plugin/data"], { encoding: "utf8" }).split("\0").filter(file => file && existsSync(file));
 	assert.ok(dataSources.every(file => file.endsWith(".json")), "Les sources de plugin/data doivent être uniquement des JSON d’analyse");
 	const modules = await build({
-		stdin: { contents: "export { default as gzipData } from \"./plugin/data/lexicon.json?gzip\"; export { EditorState } from \"@codemirror/state\"; export * from \"./plugin/ai/ai-extension\"; export * from \"./plugin/ai/protected-links\"; export * from \"./plugin/markdown-links\"; export * from \"./plugin/ai/clean\"; export * from \"./plugin/modes/punctuation\"; export * from \"./plugin/modes/clause-split\"; export * from \"./plugin/modes/structure-report\"; export * from \"./plugin/modes/statistics\"; export * from \"./plugin/modes/structure-signature\"; export * from \"./plugin/modes/ternary\"; export * from \"./plugin/modes/tic-ia\"; export { engineScripts } from \"./plugin/modes/grammalecte-resources\"; export { default as FinitionPlugin } from \"./main\";", resolveDir: process.cwd() },
+		stdin: { contents: "export { default as gzipData } from \"./plugin/vendor/grammalecte/gc_rules_graph.js?gzip\"; export { EditorState } from \"@codemirror/state\"; export * from \"./plugin/ai/ai-extension\"; export * from \"./plugin/ai/protected-links\"; export * from \"./plugin/markdown-links\"; export * from \"./plugin/ai/clean\"; export * from \"./plugin/modes/punctuation\"; export * from \"./plugin/modes/repetition\"; export * from \"./plugin/modes/stereotype\"; export * from \"./plugin/modes/clause-split\"; export * from \"./plugin/modes/structure-report\"; export * from \"./plugin/modes/statistics\"; export * from \"./plugin/modes/structure-signature\"; export * from \"./plugin/modes/ternary\"; export * from \"./plugin/modes/tic-ia\"; export { engineScripts } from \"./plugin/modes/grammalecte-resources\"; export { default as FinitionPlugin } from \"./main\";", resolveDir: process.cwd() },
 		bundle: true, platform: "node", format: "cjs", write: false, loader: { ".md": "text" }, external: ["obsidian"], plugins: [rawAssets],
 	});
 	const notices: string[] = [];
@@ -69,6 +73,8 @@ async function main() {
 		cleanTypography: (text: string) => string;
 		fixPunctuationSpacing: (text: string) => string;
 		fixBlankLinesProtected: (text: string) => string;
+		computeRepetitions: typeof import("../plugin/modes/repetition").computeRepetitions;
+		computeStereotypeHighlights: typeof import("../plugin/modes/stereotype").computeStereotypeHighlights;
 		linkRanges: (text: string) => Array<[number, number]>;
 		protectLinks: (text: string, from?: number, to?: number) => { text: string; diff: (revised: string) => DiffGroup[] };
 		engineScripts: string[];
@@ -214,6 +220,16 @@ async function main() {
 		assert.equal(api.fixPunctuationSpacing(expected), expected, "La normalisation des unités et incises n’est pas idempotente");
 	}
 	process.stdout.write("Typographie IA : insécables, apostrophes, guillemets, tirets, paragraphes et liens vérifiés\n");
+	for (const link of ["[signal](https://example.org/signal)", "https://example.org/signal", "![signal](signal.png)", "[[Note|signal]]", "<a href='https://example.org/signal'>signal</a>", "<signal@example.org>", "[signal][ref]\n\n[ref]: https://example.org/signal"]) {
+		const text = `😀 signal ${link}\n\nsignal`;
+		const highlights = api.computeRepetitions(text, new Map(), new Set(), 1500, 2);
+		assert.equal(highlights.length, 2, `Une répétition utilise le contenu d’un lien : ${link}`);
+		assert.deepEqual(Array.from(highlights, item => item.from), [3, text.lastIndexOf("signal")], "Les positions autour d’un lien sont décalées");
+	}
+	const stereotypeLexicon = new Map([["serrait", "serrer"], ["poings", "poing"]]);
+	assert.equal(api.computeStereotypeHighlights("Elle serrait les poings.", stereotypeLexicon, new Set(["les"]), [["serrer", "poing"]]).length, 1);
+	assert.equal(api.computeStereotypeHighlights("Elle serrait [un lien](https://example.org) les poings.", stereotypeLexicon, new Set(["les"]), [["serrer", "poing"]]).length, 0, "Un stéréotype traverse et surligne un lien");
+	process.stdout.write("Surlignages : URL, libellés, images, liens internes et références exclus ; positions et frontières conservées\n");
 	const tagged = "# Une fote.\nUne fote #bonjor une errer.";
 	const withoutTags = api.protectLinks(tagged);
 	assert.equal(withoutTags.text, "# Une fote.\nUne fote une errer.", "Un hashtag est soumis au correcteur IA ou un titre est masqué");
@@ -436,11 +452,10 @@ async function main() {
 	assert.ok([...notes.values()].includes("Modification manuelle."), "La vérification écrase une modification extérieure");
 	writeOverride = null;
 	process.stdout.write("Debug IA : réponses vides refusées, blocs de texte conservés, réponse brute, tronçons, collision, erreurs et annulation vérifiés\n");
-	const lexiconData = JSON.parse(readFileSync(new URL("../plugin/data/lexicon.json", import.meta.url), "utf8")) as Record<string, string>;
-	const lexicon = new Map(Object.entries(lexiconData));
+	const lexicon = adaptRepetitions(await decodeDictionary(JSON.parse(readFileSync(new URL("../resources/lexique/finition-dictionnaire.json", import.meta.url), "utf8")) as unknown, "neural"));
 	const analyze = (text: string, category: GetCategory) => api.analyzeTicIA(text, category, lexicon);
 	const root = new URL("../plugin/vendor/grammalecte/", import.meta.url);
-	const read = (name: string) => readFileSync(new URL(name, name.endsWith(".json") ? new URL("../resources/grammalecte/", import.meta.url) : root), "utf8");
+	const read = (name: string) => readFileSync(new URL(name, name.startsWith("_dictionaries/") ? new URL("./grammalecte/", import.meta.url) : name.endsWith(".json") ? new URL("../resources/grammalecte/", import.meta.url) : root), "utf8");
 	const files = ["helpers.js", "str_transform.js", "char_player.js", "lexgraph_fr.js", "ibdawg.js", "spellchecker.js", "text.js", "tokenizer.js", "conj.js", "mfsp.js", "phonet.js", "thesaurus.js", "cregex.js", "gc_options.js", "gc_functions.js", "gc_rules.js", "gc_rules_graph.js", "gc_engine.js"];
 	const driver = await build({ entryPoints: ["plugin/modes/grammalecte-driver.ts"], bundle: true, platform: "browser", format: "iife", target: "es2020", write: false });
 	let response: { bError: boolean; result: Record<string, string> } = { bError: false, result: {} };
@@ -506,7 +521,7 @@ async function main() {
 	statsPlugin.app = aiPlugin.app;
 	statsPlugin.settings = { ...aiPlugin.settings, debugMode: false, analysisEngine: "finition-corrector" };
 	let installed = false, engineCalls = 0;
-	Object.assign(statsPlugin, { lexicon, isLinguisticEngineInstalled: (engine: string) => installed && engine === "grammalecte", ensureGrammalecteEngine: async () => {
+	Object.assign(statsPlugin, { lexicon, isLinguisticEngineInstalled: (engine: string) => installed && (engine === "grammalecte" || engine === "lexique"), ensureGrammalecteEngine: async () => {
 		engineCalls++;
 		return { getCategories: async (words: string[]) => {
 			assert.ok(words.includes("cerises"), "Seule la sélection est analysée");

@@ -44,6 +44,7 @@ import { analyzeCorrections } from "./modes/corrections";
 import { finitionGrammalecteExtension } from "./grammalecte-extension";
 import { buildStructureReport } from "./modes/structure-report";
 import { buildStatisticsReport, statisticsWords } from "./modes/statistics";
+import { personalDictionaryFile, personalDictionaryPath } from "./lexicon/shared";
 import { structureCategoryWords } from "./modes/structure-signature";
 import { loadingMessage } from "./ui/loading-message";
 import { AnalysisNavigation } from "./ui/analysis-navigation";
@@ -58,8 +59,6 @@ import { dictionaryKinds, dictionaryLabels, WordDictionaries, type DictionaryKin
 
 // Les petites ressources stylistiques restent intégrées au plugin.
 // Dictionnaires et modèles de correction se téléchargent séparément.
-import lexiconData from "./data/lexicon.json?gzip";
-import { unpackData } from "./ui/compressed-data";
 import functionWordsData from "./data/function-words.json";
 import hedgingData from "./data/epistemic-hedging.json";
 import stereotypesData from "./data/stereotypes.json";
@@ -78,6 +77,8 @@ const analysisModes: Array<{ mode: FinitionMode; name: string; icon: string }> =
 export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	settings: FinitionSettings = DEFAULT_SETTINGS;
 	lexicon: Map<string, string> = new Map();
+	private lexiconEngine: FinitionCorrectorEngine | null = null;
+	private lexiconLoad: Promise<Map<string, string>> | undefined;
 	functionWords: Set<string> = new Set();
 	hedgingPhrases: string[] = [];
 	stereotypePatterns: string[][] = [];
@@ -128,8 +129,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	async onload(): Promise<void> {
 		await this.loadSettings();
 		await this.loadLinguisticResources();
-		if (!this.hasAnalysisResources && this.settings.mode === "ternary") this.settings.mode = "none";
-		await this.loadLexiconData();
+		if (!this.isModeAvailable(this.settings.mode)) this.settings.mode = "none";
+		await this.loadLexiconData(this.settings.mode === "repetition" || this.settings.mode === "stereotype");
 		this.applyPalette();
 		this.setupStatusBarItem();
 		this.registerEditorExtension(finitionEditorExtension(this));
@@ -143,7 +144,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		for (const { mode, name } of analysisModes) this.addCommand({
 			id: mode, name,
 			checkCallback: checking => {
-				if (mode === "ternary" && !this.hasAnalysisResources) return false;
+				if (!this.isModeAvailable(mode)) return false;
 				if (!checking) void this.setMode(mode);
 				return true;
 			},
@@ -192,13 +193,15 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			},
 		});
 		this.addCommand({ id: "statistics-report", name: "Statistiques", checkCallback: checking => {
-			if (!this.settings.debugMode) return false;
+			if (!this.settings.debugMode || !this.hasLexicon || !this.isLinguisticEngineInstalled("grammalecte")) return false;
 			if (!checking) void this.runStatisticsReport();
 			return true;
 		} });
 	}
 
 	onunload(): void {
+		this.lexiconEngine?.destroy();
+		this.lexiconLoad = undefined;
 		document.body.classList.remove("finition-hide-backlinks-count");
 		this.spellingRequest++;
 		this.finitionCorrectorEngine?.destroy();
@@ -351,13 +354,29 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		});
 	}
 
-	/**
-	 * Charge le dictionnaire mot → lemme, les mots-outils, les locutions
-	 * d'atténuation, les stéréotypes et les charnières — tous importés
-	 * statiquement (inline dans main.js), jamais lus depuis le disque.
-	 */
-	async loadLexiconData(): Promise<void> {
-		if (!this.lexicon.size) this.lexicon = new Map(Object.entries(await unpackData<Record<string, string>>(lexiconData)));
+	/** Le lexique commun reste sur disque ; seules les petites listes sont embarquées. */
+	async loadLexiconData(loadLemmas = false): Promise<void> {
+		if (!this.isLinguisticEngineInstalled("lexique")) {
+			this.lexiconEngine?.destroy();
+			this.lexiconLoad = undefined;
+			this.lexicon = new Map();
+		}
+		else if (!this.lexicon.size && loadLemmas) {
+			let loading = this.lexiconLoad;
+			try {
+				if (!loading) {
+					const engine = this.lexiconEngine = new FinitionCorrectorEngine(file => this.linguisticResources!.read("lexique", file));
+					loading = this.lexiconLoad = engine.getLemmas().finally(() => { engine.destroy(); if (this.lexiconEngine === engine) this.lexiconEngine = null; });
+				}
+				const lemmas = await loading;
+				if (this.lexiconLoad === loading) this.lexicon = lemmas;
+			} catch (error) {
+				if (this.lexiconLoad === loading) {
+					this.lexiconLoad = undefined;
+					new Notice(`Dictionnaire Finition : ${error instanceof Error ? error.message : String(error)}`, 10000);
+				}
+			}
+		}
 		this.functionWords = new Set(functionWordsData);
 		// Une liste éditée manuellement dans les réglages prend le pas sur
 		// celle bundlée par défaut.
@@ -448,9 +467,13 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 	/** Change de mode, en désactivant systématiquement les autres (exclusif). */
 	async setMode(mode: FinitionMode): Promise<void> {
-		if (mode === "ternary" && this.settings.mode !== mode && !this.hasAnalysisResources) {
-			new Notice("Téléchargez un moteur linguistique dans les paramètres de Finition.");
+		if (this.settings.mode !== mode && !this.isModeAvailable(mode)) {
+			new Notice("Chargez le dictionnaire ou le moteur requis dans les paramètres de Finition.");
 			return;
+		}
+		if (this.settings.mode !== mode && (mode === "repetition" || mode === "stereotype")) {
+			await this.loadLexiconData(true);
+			if (!this.lexicon.size) return;
 		}
 		// Recliquer sur le mode déjà actif l'éteint (retour à "none").
 		this.settings.mode = this.settings.mode === mode ? "none" : mode;
@@ -476,7 +499,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			const submenu = (item as typeof item & { setSubmenu(): Menu }).setSubmenu();
 			for (const { mode, name, icon } of analysisModes) submenu.addItem(item => item
 				.setTitle(name).setIcon(icon)
-				.setDisabled(mode === "ternary" && !this.hasAnalysisResources)
+				.setDisabled(!this.isModeAvailable(mode))
 				.setChecked(this.settings.mode === mode)
 				.onClick(() => this.setMode(mode)));
 		});
@@ -527,7 +550,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				.onClick(() => this.runStructureReport())
 		);
 		if (this.settings.debugMode) menu.addItem(item => item.setTitle("Statistiques").setIcon("chart-no-axes-column")
-			.setDisabled(!this.isLinguisticEngineInstalled("grammalecte"))
+			.setDisabled(!this.hasLexicon || !this.isLinguisticEngineInstalled("grammalecte"))
 			.onClick(() => this.runStatisticsReport()));
 
 		menu.addSeparator();
@@ -710,7 +733,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	/** Crée le Worker Grammalecte au premier besoin (Grammalecte OU Cadence "grammalecte"), une seule fois. */
 	private async ensureGrammalecteEngine(): Promise<GrammalecteEngine> {
 		if (!this.grammalecteEngine) {
-			this.grammalecteEngine = new GrammalecteEngine(file => this.readLinguisticAsset("grammalecte", file));
+			this.grammalecteEngine = new GrammalecteEngine(file => this.readLinguisticAsset("grammalecte", file), () => this.readLinguisticAsset("grammalecte", personalDictionaryFile));
 		}
 		await this.grammalecteEngine.ensureReady(this.settings.grammalecteDictionary);
 		return this.grammalecteEngine;
@@ -788,6 +811,12 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	get hasAnalysisResources(): boolean { return this.linguisticResources?.available(this.settings.analysisEngine) ?? false; }
+	get hasLexicon(): boolean { return this.isLinguisticEngineInstalled("lexique"); }
+	isModeAvailable(mode: FinitionMode): boolean {
+		if (mode === "repetition" || mode === "stereotype") return this.hasLexicon;
+		if (mode === "ternary" || (mode === "cadence" && this.settings.cadenceEngine === "grammalecte")) return this.hasAnalysisResources;
+		return true;
+	}
 	get hasLinguisticResources(): boolean { return this.linguisticResources?.available(this.settings.spellingEngine) ?? false; }
 	get neuralModelOptions(): Array<SynonymMetadata & { id: string }> { return this.neuralModels?.options ?? []; }
 	async setNeuralModel(id: string): Promise<void> {
@@ -963,8 +992,15 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		await this.refreshSynonymDictionaries();
 		this.wordDictionaries ??= new WordDictionaries(this.app.vault.adapter, this.manifest.dir, () => this.settings, () => this.saveSettings(), this.linguisticResources);
 		await this.wordDictionaries.refresh();
+		await this.loadLexiconData();
 	}
 	private async readLinguisticAsset(engine: ResourcePack, file: string): Promise<ArrayBuffer> {
+		if (file === personalDictionaryFile && (engine === "grammalecte" || engine === "finition-corrector")) {
+			if (!this.manifest.dir) throw new Error("Dossier du plugin introuvable.");
+			const path = `${this.manifest.dir}/${personalDictionaryPath}`;
+			return await this.app.vault.adapter.exists(path) ? this.app.vault.adapter.readBinary(path)
+				: new TextEncoder().encode(JSON.stringify({ format: "finition-personal-forms", version: 1, forms: [] })).buffer;
+		}
 		if (!this.linguisticResources?.available(engine)) await this.loadLinguisticResources();
 		if (!this.linguisticResources) throw new Error("Dossier du plugin introuvable.");
 		return this.linguisticResources.read(engine, file);
@@ -977,8 +1013,17 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.settings.resourcePacks = { ...previous, [engine]: revision };
 		try { await this.saveSettings(); }
 		catch (error) { this.settings.resourcePacks = previous; throw error; }
+		if (engine === "lexique" || engine === "grammalecte" || engine === "finition-corrector") {
+			this.lexiconEngine?.destroy();
+			this.lexiconLoad = undefined;
+			this.lexicon = new Map();
+		}
 		await this.loadLinguisticResources();
 		if (!this.linguisticResources.available(engine)) throw new Error("Installation incomplète. Relancez le téléchargement.");
+		await this.loadLexiconData(this.settings.mode === "repetition" || this.settings.mode === "stereotype");
+		this.settingsVersion++;
+		this.refreshAllEditors();
+		if (engine === "lexique") return;
 		if (engine === "synonymes") { this.synonymsDictionary = null; return; }
 		if (engine !== "grammalecte" && engine !== "finition-corrector") {
 			if (!this.wordDictionaries) throw new Error("Dossier du plugin introuvable.");
@@ -994,7 +1039,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		if (engine !== "finition-corrector") return this.ensureGrammalecteEngine();
 		if (!this.finitionCorrectorEngine) {
 			const specialized = this.neuralModels?.reader(this.settings.neuralModel);
-			this.finitionCorrectorEngine = new FinitionCorrectorEngine(file => file.startsWith("electra/") && specialized ? specialized(file) : this.readLinguisticAsset("finition-corrector", file));
+			this.finitionCorrectorEngine = new FinitionCorrectorEngine(file => file.startsWith("electra/") && specialized ? specialized(file) : this.readLinguisticAsset("finition-corrector", file), false, () => this.readLinguisticAsset("finition-corrector", personalDictionaryFile));
 			this.finitionCorrectorEngine.specializedEnabled = Boolean(specialized);
 		}
 		this.finitionCorrectorEngine.neuralEnabled = this.settings.spellingNeural;
@@ -1088,10 +1133,13 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) { new Notice("Statistiques : aucune note active."); return; }
 		if (!this.isLinguisticEngineInstalled("grammalecte")) { new Notice("Installez Grammalecte dans les paramètres de Finition."); return; }
+		if (!this.hasLexicon) { new Notice("Chargez le dictionnaire Finition dans les paramètres."); return; }
 		const text = view.editor.getValue();
 		const source = { file: view.file };
 		const notice = new Notice(loadingMessage("Statistiques"), 0);
 		try {
+			await this.loadLexiconData(true);
+			if (!this.lexicon.size) throw new Error("Dictionnaire Finition indisponible.");
 			const engine = await this.ensureGrammalecteEngine();
 			const words = [...new Set([...structureCategoryWords(text), ...statisticsWords(text)])];
 			const categories = await engine.getCategories(words);

@@ -11,8 +11,10 @@ export interface Lexeme {
 export const wordKey = (word: string): string => word.normalize("NFC").replace(/’/g, "'").replace(/\u00ad/g, "").toLocaleLowerCase("fr");
 
 export type LexemeRow = readonly [string, string, string, string, string, string, number];
+export const isLexemeRow = (row: unknown): row is LexemeRow => Array.isArray(row) && row.length === 7 && row.slice(0, 6).every(item => typeof item === "string") && Boolean(row[0]) && Boolean(row[1]) && typeof row[6] === "number" && Number.isFinite(row[6]) && row[6] >= 0;
 const expand = (row: LexemeRow): Lexeme => ({ form: row[0], lemma: row[1], category: row[2], gender: row[3], number: row[4], inflection: row[5], frequency: row[6] });
 const spellingForm = (word: string): string => word.normalize("NFC").replace(/’/g, "'").replace(/\u00ad/g, "");
+const matchesCase = (row: LexemeRow, word: string): boolean => row[2] !== "nom propre" || spellingForm(row[0]) === spellingForm(word) || word === word.toLocaleUpperCase("fr");
 
 function distance(left: string, right: string, rows: number[][]): number {
   let [previous, beforePrevious, row] = rows;
@@ -48,7 +50,7 @@ export class Lexicon {
 
   constructor(entries: readonly LexemeRow[], forms: readonly string[] = []) {
     for (const row of entries) {
-      if (!Array.isArray(row) || row.length !== 7 || row.slice(0, 6).some(item => typeof item !== "string") || !row[0] || !row[1] || !Number.isFinite(row[6]) || row[6] < 0) throw new TypeError("Entrée lexicale invalide.");
+      if (!isLexemeRow(row)) throw new TypeError("Entrée lexicale invalide.");
       const key = wordKey(row[0]);
       if (!this.words.has(key)) this.addCandidate(row[0], key);
       for (const [index, entryKey] of [[this.words, key], [this.lemmas, wordKey(row[1])]] as const) {
@@ -88,11 +90,11 @@ export class Lexicon {
   has(word: string): boolean {
     const form = spellingForm(word);
     const key = wordKey(word);
-    return this.words.has(key) || this.additional.has(form) || (/^\p{Lu}/u.test(form) && this.additional.has(key)) || (form === form.toLocaleUpperCase("fr") && this.capitalizedAdditional.has(key));
+    return Boolean(this.words.get(key)?.some(row => matchesCase(row, form))) || this.additional.has(form) || (/^\p{Lu}/u.test(form) && this.additional.has(key)) || (form === form.toLocaleUpperCase("fr") && this.capitalizedAdditional.has(key));
   }
 
   lookup(word: string): readonly Lexeme[] {
-    return (this.words.get(wordKey(word)) ?? []).map(expand);
+    return (this.words.get(wordKey(word)) ?? []).filter(row => matchesCase(row, word)).map(expand);
   }
 
   forms(lemma: string): readonly Lexeme[] {

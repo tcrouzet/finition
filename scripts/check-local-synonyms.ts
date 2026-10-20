@@ -125,6 +125,13 @@ export async function checkLocalSynonyms(Plugin: typeof FinitionPlugin, getMenu:
 		await item.click();
 		check(!document.querySelector(".finition-synonyms") && notices.length === before + 1 && notices.at(-1) === "Synonyme : sélectionne un seul mot." && editor.getValue() === "Un pas rapide.", "Le clic ne demande pas de sélectionner un mot ou modifie le texte");
 	}
+	for (const text of ["[rapide](https://example.org)", "https://example.org/rapide", "![rapide](image.png)", "[[Note|rapide]]", "<a href='https://example.org'>rapide</a>", "[rapide][ref]\n\n[ref]: https://example.org"]) {
+		const from = text.indexOf("rapide");
+		view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: from, head: from + 6 } });
+		const before = requests.length;
+		await plugin.runSynonymsLocal();
+		check(!document.querySelector(".finition-synonyms") && requests.length === before && notices.at(-1)?.includes("hors des liens") && editor.getValue() === text, "Une recherche locale consulte ou modifie un mot dans un lien");
+	}
 	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "Un modèle." }, selection: { anchor: 3, head: 9 } });
 	await plugin.runSynonymsLocal();
 	const categories = Array.from(document.querySelectorAll<HTMLElement>(".finition-synonyms-category"));

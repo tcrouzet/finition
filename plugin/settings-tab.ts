@@ -207,20 +207,21 @@ export class FinitionSettingTab extends PluginSettingTab {
 			catch (error) { this.modelError = error instanceof Error ? error.message : String(error); }
 			finally { this.changingModels = false; this.update(); }
 		};
-		const grammar = new Setting(containerEl).setName("Grammalecte")
-			.addDropdown(dropdown => {
-				if (installed.includes("grammalecte")) dropdown.addOption("fr-classic", "Classique").addOption("fr-reform", "Réforme 1990");
-				dropdown.setValue(this.plugin.settings.grammalecteDictionary).setDisabled(!installed.includes("grammalecte") || busy)
+		for (const engine of ["lexique", ...resourceEngines] as const) {
+			const installed = this.plugin.isLinguisticEngineInstalled(engine);
+			const setting = new Setting(containerEl).setName(engine === "finition-corrector" ? "CamemBERT" : resourceLabels[engine]);
+			if (engine === "grammalecte") setting.addDropdown(dropdown => {
+				if (installed) dropdown.addOption("fr-classic", "Classique").addOption("fr-reform", "Réforme 1990");
+				dropdown.setValue(this.plugin.settings.grammalecteDictionary).setDisabled(!installed || busy)
 					.onChange(value => update(async () => {
 						if (value !== "fr-classic" && value !== "fr-reform") return;
 						this.plugin.settings.grammalecteDictionary = value;
 						await this.plugin.setSpellingEngine("grammalecte");
 					}));
 			});
-		for (const engine of resourceEngines) {
-			const installed = this.plugin.isLinguisticEngineInstalled(engine);
-			const setting = engine === "grammalecte" ? grammar : new Setting(containerEl).setName("CamemBERT");
-			this.describeResource(setting, { name: engine, documentation: engine === "grammalecte" ? "https://grammalecte.net/" : "https://huggingface.co/almanach/camembertv2-base" });
+			this.describeResource(setting, engine === "lexique"
+				? { name: engine, description: "Commun aux répétitions, stéréotypes et correcteurs.", documentation: "https://github.com/tcrouzet/finition/blob/main/doc/lexique.md" }
+				: { name: engine, documentation: engine === "grammalecte" ? "https://grammalecte.net/" : "https://huggingface.co/almanach/camembertv2-base" });
 			setting.addButton(button => button.setButtonText(this.downloadingEngine === engine ? "Téléchargement…" : installed ? "Recharger" : "Charger")
 					.setDisabled(busy).onClick(async () => {
 						this.downloadingEngine = engine;
@@ -228,7 +229,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 						const notice = new Notice(loadingMessage("Téléchargement des ressources…"), 0);
 						try {
 							await this.plugin.downloadLinguisticResources(engine, text => notice.setMessage(loadingMessage(text)));
-							new Notice("Ressources installées. Le moteur fonctionne hors ligne.");
+							new Notice("Ressources installées. Utilisation hors ligne disponible.");
 						} catch (error) {
 							new Notice(error instanceof Error ? error.message : String(error), 10000);
 						} finally {
@@ -955,7 +956,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 	getSettingDefinitions(): SettingDefinitionRender[] {
 		return [
 			...this.generalDefinitions(),
-			this.sectionDefinition("Corrections", ["Moteur d’analyse", "Neuronal", "Structure", "Tricolons", "Grammalecte", "Correcteur neuronal par défaut", "CamemBERT", "Charger un modèle neuronal", "Dictionnaire personnel", ...this.plugin.neuralModelOptions.map(option => option.name)], container => this.displayCorrections(container)),
+			this.sectionDefinition("Corrections", ["Dictionnaire Finition", "Moteur d’analyse", "Neuronal", "Structure", "Tricolons", "Grammalecte", "Correcteur neuronal par défaut", "CamemBERT", "Charger un modèle neuronal", "Dictionnaire personnel", ...this.plugin.neuralModelOptions.map(option => option.name)], container => this.displayCorrections(container)),
 			this.sectionDefinition("Corrections IA", ["Clé API Anthropic", "Clé API OpenAI", "Modèle par défaut", "Identifiant du modèle personnalisé", "Taille des tronçons (caractères)", "Prompt enregistré", "Prompt de révision", "Modèle pour ce prompt", "Identifiant du modèle pour ce prompt", "Enregistrer sous ce nom"], container => this.displayAICorrections(container)),
 			this.sectionDefinition("Synonymes", ["Dictionnaire", "Finition", "Charger un dictionnaire", ...this.plugin.synonymDictionaryOptions.map(option => option.name)], container => this.displaySynonyms(container)),
 			this.sectionDefinition("Définitions", ["Dictionnaire", "Charger un dictionnaire", ...(this.plugin.wordDictionaries?.options.filter(option => option.kind === "definitions").map(option => option.name) ?? [])], container => this.displayWordDictionary(container, "definitions")),

@@ -4,6 +4,8 @@ import { loadDictionnaire } from "./finition-dictionnaire";
 import { maskMarkdown } from "./markdown";
 import { createNeuralCorrector } from "./neural";
 import { createElectraCorrector } from "./electra";
+import { decodeDictionary, dictionaryFile, personalDictionaryFile } from "../../lexicon/shared";
+import { adaptRepetitions } from "../../lexicon/repetition-adapter";
 
 let corrector: Promise<FinitionCorrector> | undefined;
 let neural: ReturnType<typeof createNeuralCorrector> | undefined;
@@ -16,7 +18,7 @@ const readAsset = (file: string) => new Promise<ArrayBuffer>((resolve, reject) =
 	self.postMessage({ asset: file, assetId });
 });
 let queue = Promise.resolve();
-self.onmessage = (event: MessageEvent<{ id: number; text: string; words?: string[]; phonetics?: boolean; neural?: boolean; specialized?: boolean; lexicalOnly?: boolean; assetId?: number; buffer?: ArrayBuffer; error?: string }>) => {
+self.onmessage = (event: MessageEvent<{ id: number; text: string; words?: string[]; phonetics?: boolean; lemmas?: boolean; neural?: boolean; specialized?: boolean; lexicalOnly?: boolean; assetId?: number; buffer?: ArrayBuffer; error?: string }>) => {
 	if (event.data.assetId !== undefined) {
 		const request = assets.get(event.data.assetId);
 		assets.delete(event.data.assetId);
@@ -27,11 +29,15 @@ self.onmessage = (event: MessageEvent<{ id: number; text: string; words?: string
 	}
 	const { id, text, words, phonetics, neural: enabled, lexicalOnly } = event.data;
 	queue = queue.then(async () => {
+		if (event.data.lemmas) {
+			const value: unknown = JSON.parse(new TextDecoder().decode(await readAsset(dictionaryFile)));
+			return adaptRepetitions(await decodeDictionary(value, "neural"));
+		}
 		if (lexicalOnly) {
 			neural ??= createNeuralCorrector(readAsset).catch((error: unknown) => { neural = undefined; throw error; });
 			return (await neural)(maskMarkdown(text));
 		}
-		corrector ??= loadDictionnaire(readAsset).then(dictionary => new FinitionCorrector(dictionary)).catch((error: unknown) => { corrector = undefined; throw error; });
+		corrector ??= loadDictionnaire(readAsset, () => readAsset(personalDictionaryFile)).then(dictionary => new FinitionCorrector(dictionary)).catch((error: unknown) => { corrector = undefined; throw error; });
 		if (phonetics) {
 			const data = JSON.parse(new TextDecoder().decode(await readAsset("phonet_data.json"))) as { lSet?: unknown };
 			return (await corrector).getNeuralAlternatives(data.lSet, Boolean(event.data.specialized));

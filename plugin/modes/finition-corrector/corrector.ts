@@ -44,7 +44,7 @@ export class FinitionCorrector {
   }
 
   private lookup(word: string): readonly Lexeme[] {
-    const analyses = this.lexicon.lookup(word);
+    const analyses = this.lexicon.lookup(word).map(item => item.category === "nom propre" ? { ...item, category: "nom" } : item);
     if (analyses.length || !word.includes("-")) return analyses;
     const form = wordKey(word);
     const inversion = /^(\p{L}[\p{L}\p{M}]*)(-t)?-(je|tu|il|elle|on|nous|vous|ils|elles|ce)$/u.exec(form);

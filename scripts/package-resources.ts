@@ -18,7 +18,7 @@ export async function packageResources(output: string) {
 			await copyFile(source, resolve(destination, resourceAssetName(engine, file)));
 			files.push({ path: file, bytes: bytes.length, sha256 });
 		}
-		await writeFile(resolve(destination, `${engine}-resources.json`), JSON.stringify({ version: 1, engine, files }) + "\n");
+		await writeFile(resolve(destination, `${engine}-resources.json`), JSON.stringify({ version: engine === "lexique" || engine === "grammalecte" || engine === "finition-corrector" ? 2 : 1, engine, files }) + "\n");
 		process.stdout.write(`${engine}: ${files.length} fichiers, ${files.reduce((sum, file) => sum + file.bytes, 0)} octets\n`);
 	}
 }

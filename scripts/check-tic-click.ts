@@ -1,5 +1,5 @@
 import * as assert from "node:assert/strict";
-import { mkdtempSync, copyFileSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, copyFileSync, rmSync, statSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import * as process from "node:process";
@@ -11,6 +11,7 @@ import { resourceFiles, resourceAssetName } from "../plugin/linguistic-files";
 import type { ResourcePack } from "../plugin/linguistic-files";
 import { packageResources } from "./package-resources";
 import { specializedFiles } from "../plugin/modes/finition-corrector/neural-assets";
+import { personalDictionaryPath, personalDictionaryFile } from "../plugin/lexicon/shared";
 
 async function main() {
 	const releaseSize = ["main.js", "manifest.json", "styles.css"].reduce((sum, name) => sum + statSync(name).size, 0);
@@ -23,6 +24,11 @@ async function main() {
 		copyFileSync(path.join(process.cwd(), "Antidote/model", file), destination);
 		return destination;
 	});
+	if (existsSync(personalDictionaryPath)) {
+		const destination = path.join(directory, `private-${personalDictionaryFile}`);
+		copyFileSync(personalDictionaryPath, destination);
+		privateFixtures.push(destination);
+	}
 	copyFileSync(new URL("./check-tic-click.html", import.meta.url), path.join(directory, "index.html"));
 	copyFileSync(new URL("../styles.css", import.meta.url), path.join(directory, "styles.css"));
 	copyFileSync(new URL("../main.js", import.meta.url), path.join(directory, "main.js"));
@@ -77,17 +83,18 @@ async function main() {
 	    check(notices.length === 2, "Notification hors mode Tic IA");
 	    view.destroy();
 	    await checkAnalysisNavigation(() => menuOpenCount, () => lastMenu.items);
+	    const grammarChecks = checkGrammalecteRelease(ReleasedPlugin).then(() => console.error("finition-test-step", "grammalecte", Math.round(performance.now())));
+	    const neuralChecks = checkFinitionNeural(ReleasedPlugin).then(() => console.error("finition-test-step", "neural", Math.round(performance.now())));
 	    checkAICorrections();
 	    await checkSynonyms(setRequestHandler, requests, notices, modals);
 	    await checkLinguisticInstallation(ReleasedPlugin, () => lastMenu.items, setRequestHandler);
 	    await checkLocalSynonyms(ReleasedPlugin, () => lastMenu.items, setRequestHandler, requests, notices, modals);
 	    await checkWordDictionaries(ReleasedPlugin, () => lastMenu.items, notices, modals, setRequestHandler);
-	    await checkGrammalecteRelease(ReleasedPlugin);
-	    console.error("finition-test-step", "grammalecte", Math.round(performance.now()));
 	    checkDictionaryCore();
 	    await Promise.all([
+	      grammarChecks,
 	      checkFinitionCorrector(ReleasedPlugin, (engine = "finition-corrector") => lastMenu.items.find(item => item.title === (engine === "grammalecte" ? "Grammalecte" : engine === "ia" ? "Corrections IA" : "Neuronal"))).then(() => console.error("finition-test-step", "corrections-menu", Math.round(performance.now()))),
-	      checkFinitionNeural(ReleasedPlugin).then(() => console.error("finition-test-step", "neural", Math.round(performance.now()))),
+	      neuralChecks,
 	      checkNeuralModels(ReleasedPlugin).then(() => console.error("finition-test-step", "neural-models", Math.round(performance.now())))
 	    ]);
 	    document.querySelector("#result").textContent = "PASS: clics Tic IA ; navigation des analyses ; synonymes et dictionnaires locaux ; réglages repliables ; release Grammalecte ; finition-corrector";

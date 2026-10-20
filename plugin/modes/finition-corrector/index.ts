@@ -4,11 +4,12 @@ import { resourceFiles } from "../../linguistic-files";
 import type { ReadNeuralAsset } from "./neural-assets";
 import { maskMarkdown } from "./markdown";
 import { specializedFiles } from "./neural-assets";
+import { personalDictionaryFile } from "../../lexicon/shared";
 
 export class FinitionCorrectorEngine {
 	neuralEnabled = false;
 	specializedEnabled = true;
-	constructor(private readonly readNeuralAsset?: ReadNeuralAsset, private readonly lexicalOnly = false) {}
+	constructor(private readonly readNeuralAsset?: ReadNeuralAsset, private readonly lexicalOnly = false, private readonly readPersonal?: () => Promise<ArrayBuffer>) {}
 	private worker: Worker | null = null;
 	private lexicalWorkers: FinitionCorrectorEngine[] = [];
 	private alternatives: Promise<Record<string, string[]>> | undefined;
@@ -52,7 +53,10 @@ export class FinitionCorrectorEngine {
 	getCategories(words: string[]): Promise<Record<string, string>> {
 		return this.request("", words) as Promise<Record<string, string>>;
 	}
-	private request(text: string, words?: string[], phonetics = false, onPartial?: (errors: GrammalecteError[]) => void): Promise<unknown> {
+	getLemmas(): Promise<Map<string, string>> {
+		return this.request("", undefined, false, undefined, true) as Promise<Map<string, string>>;
+	}
+	private request(text: string, words?: string[], phonetics = false, onPartial?: (errors: GrammalecteError[]) => void, lemmas = false): Promise<unknown> {
 		if (!this.worker) {
 			const offline = 'var process = undefined; globalThis.fetch = () => Promise.reject(new Error("Le correcteur fonctionne exclusivement hors ligne."));\n';
 			const url = URL.createObjectURL(new Blob([offline, workerSource], { type: "application/javascript" }));
@@ -62,7 +66,8 @@ export class FinitionCorrectorEngine {
 				if (event.data.asset !== undefined) {
 					const { asset, assetId } = event.data;
 					void Promise.resolve().then(() => {
-						if ((!resourceFiles["finition-corrector"].includes(asset) && !specializedFiles.includes(asset as typeof specializedFiles[number])) || !this.readNeuralAsset) throw new Error("Fichiers du correcteur local indisponibles.");
+						if (asset === personalDictionaryFile) return this.readPersonal?.() ?? new TextEncoder().encode(JSON.stringify({ format: "finition-personal-forms", version: 1, forms: [] })).buffer;
+						if ((!resourceFiles["finition-corrector"].includes(asset) && !specializedFiles.includes(asset as typeof specializedFiles[number]) && asset !== personalDictionaryFile) || !this.readNeuralAsset) throw new Error("Fichiers du correcteur local indisponibles.");
 						return this.readNeuralAsset(asset);
 					}).then(buffer => {
 						if (this.worker === worker) worker.postMessage({ assetId, buffer }, [buffer]);
@@ -89,7 +94,7 @@ export class FinitionCorrectorEngine {
 		const id = this.sequence++;
 		return new Promise((resolve, reject) => {
 			this.pending.set(id, { resolve, reject, onPartial });
-			try { this.worker!.postMessage({ id, text, words, phonetics, neural: this.neuralEnabled, specialized: this.specializedEnabled, lexicalOnly: this.lexicalOnly }); }
+			try { this.worker!.postMessage({ id, text, words, phonetics, lemmas, neural: this.neuralEnabled, specialized: this.specializedEnabled, lexicalOnly: this.lexicalOnly }); }
 			catch (error) { this.pending.delete(id); reject(error instanceof Error ? error : new Error(String(error))); }
 		});
 	}

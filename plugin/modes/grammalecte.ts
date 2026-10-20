@@ -10,6 +10,7 @@ import { engineScripts } from "./grammalecte-resources";
 import { grammarFiles } from "../linguistic-files";
 import graphData from "../vendor/grammalecte/gc_rules_graph.js?gzip";
 import { unpackData } from "../ui/compressed-data";
+import { dictionaryFile } from "../lexicon/shared";
 
 export interface GrammalecteError {
 	nStart: number;
@@ -27,19 +28,30 @@ export interface GrammalecteError {
 }
 
 export class GrammalecteEngine {
-	constructor(private readAsset: (file: string) => Promise<ArrayBuffer>) {}
+	constructor(private readAsset: (file: string) => Promise<ArrayBuffer>, private readPersonal?: () => Promise<ArrayBuffer>) {}
 	private worker: Worker | null = null;
 	private initPromise: Promise<void> | null = null;
 	private dictionary: "fr-classic" | "fr-reform" | null = null;
 	private pendingResolvers = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 	private requestSeq = 0;
+	private initializationSeq = 0;
+	private sharedReady = false;
 
 	/** Construit le Worker et le réinitialise si le dictionnaire change. */
 	async ensureReady(dictionary: "fr-classic" | "fr-reform"): Promise<void> {
-		if (this.dictionary !== dictionary) this.destroy();
-		if (this.initPromise) return this.initPromise;
+		if (this.dictionary === dictionary && this.initPromise) return this.initPromise;
+		const switching = this.worker && this.sharedReady;
+		if (!switching) this.destroy();
+		else {
+			for (const pending of this.pendingResolvers.values()) pending.reject(new Error("Grammalecte : initialisation remplacée."));
+			this.pendingResolvers.clear();
+		}
 		this.dictionary = dictionary;
-		const init = this.buildAndInit(dictionary).catch((error: unknown) => {
+		const generation = ++this.initializationSeq;
+		const operation = switching ? this.send("dictionary", { dictionary }).then(() => {}) : this.buildAndInit(dictionary);
+		const init = operation.then(() => {
+			if (generation !== this.initializationSeq) throw new Error("Grammalecte : initialisation remplacée.");
+		}).catch((error: unknown) => {
 			if (this.initPromise === init) this.destroy();
 			throw error;
 		});
@@ -79,13 +91,19 @@ export class GrammalecteEngine {
 		};
 
 		// 2. Chargement des données nécessaires à l'init (dictionnaire + données linguistiques)
-		const entries = await Promise.all(Object.entries(grammarFiles).map(async ([key, file]) => [key, new TextDecoder().decode(await this.readAsset(file))]));
+		const entries = await Promise.all(Object.entries(grammarFiles).filter(([, file]) => !file.startsWith("_dictionaries/")).map(async ([key, file]) => [key, new TextDecoder().decode(await this.readAsset(file))]));
 		const grammarData = Object.fromEntries(entries) as Record<keyof typeof grammarFiles, string>;
-		const dictionaryData: unknown = JSON.parse(dictionary === "fr-reform" ? grammarData.reform : grammarData.classic);
+		let dictionaryBytes: ArrayBuffer;
+		try { dictionaryBytes = await this.readAsset(dictionaryFile); }
+		catch { dictionaryBytes = await this.readAsset(dictionary === "fr-reform" ? grammarFiles.reform : grammarFiles.classic); }
+		const dictionaryData: unknown = JSON.parse(new TextDecoder().decode(dictionaryBytes));
+		const personal = this.readPersonal ? new TextDecoder().decode(await this.readPersonal()) : undefined;
 		const oGraphData = await unpackData(graphData);
 		if (this.worker !== worker) throw new Error("Grammalecte : initialisation remplacée.");
 		await this.send("init", {
 			oDictionary: dictionaryData,
+			oOrthography: dictionary,
+			sPersonalData: personal,
 			oGraphData,
 			sConjData: grammarData.conjugations,
 			sPhonetData: grammarData.phonetics,
@@ -93,6 +111,7 @@ export class GrammalecteEngine {
 			sThes1Data: grammarData.thesaurus1,
 			sThes2Data: grammarData.thesaurus2,
 		});
+		this.sharedReady = Boolean(dictionaryData && typeof dictionaryData === "object" && "name" in dictionaryData && dictionaryData.name === "finition-dictionnaire");
 	}
 
 	async parse(text: string): Promise<GrammalecteError[]> {
@@ -135,6 +154,8 @@ export class GrammalecteEngine {
 	}
 
 	destroy(): void {
+		this.initializationSeq++;
+		this.sharedReady = false;
 		this.worker?.terminate();
 		this.worker = null;
 		this.initPromise = null;
