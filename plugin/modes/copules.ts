@@ -64,6 +64,7 @@ export function computeCopuleHighlights(text: string, lexicon: CopuleLexicon): H
 		subjects.push(subject);
 		const candidate = token.form.includes("-") ? token.form.split("-").at(-1)! : token.lemma;
 		if (["je", "tu", "il", "elle", "on", "nous", "vous", "ils", "elles", "ce", "ça", "cela", "personne"].includes(candidate)) subject = candidate;
+		if (token.lemma !== token.form) continue;
 		const form = token.form.replace(/-(?:(?:t|je|tu|il|elle|on|nous|vous|ils|elles|ce|moi|toi|le|la|les|lui|leur|en|y)-?)+$/u, "");
 		// shortcut: nominal homographs share these forms; use contextual tagging if false positives become frequent.
 		const matches = (forms.get(form) ?? []).filter(lemma =>

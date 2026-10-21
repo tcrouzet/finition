@@ -11,6 +11,11 @@ export function checkCopules(dictionary: SharedDictionary): void {
 		assert.ok(forms.get(form)?.includes(lemma), `Flexion perdue ou masquée par un homographe : ${form}`);
 	}
 	const occurrences = (text: string) => computeCopuleHighlights(text, lexicon).map(mark => text.slice(mark.from, mark.to));
+	for (const apostrophe of ["'", "’"]) {
+		assert.deepEqual(occurrences(`😀 Il s${apostrophe}en va. Elle s${apostrophe}appelle Marie. Il s${apostrophe}avance.`), ["va", "appelle"], "Un pronom élidé est surligné comme une copule");
+	}
+	const elisions = buildCopuleLexicon({ forms: [], entries: ["s", "m", "t", "j", "n", "l", "c", "d", "qu"].map(form => [form, "avoir", "verbe", "", "", "ind:pre:3s", 0] as const) });
+	assert.deepEqual(computeCopuleHighlights("s’avance, m’avance, t’avance, j’avance, n’avance, l’avance, c’avance, d’avance, qu’avance", elisions), [], "Le filtre doit exclure toutes les élisions, même mal classées dans le lexique");
 	assert.deepEqual(occurrences("Nous avons connu la mer. J’ai un bateau. Je suis heureux. Nous sommes partis."), ["ai", "suis"], "Les auxiliaires avoir et être ne sont pas des copules");
 	assert.deepEqual(occurrences("Nous n’avons jamais vraiment connu cela. Avons-nous déjà connu cela ? Il a souvent été heureux. Il a été vu."), ["été"]);
 	assert.deepEqual(occurrences("J’ai un bateau connu de tous. Nous avons souvent un bateau. Je suis vraiment heureux. J’ai eu un bateau."), ["ai", "avons", "suis", "eu"]);
