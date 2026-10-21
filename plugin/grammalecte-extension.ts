@@ -136,13 +136,13 @@ function buildDecorations(view: EditorView, plugin: FinitionPlugin): DecorationS
 	const builder = new RangeSetBuilder<Decoration>();
 	const docLength = view.state.doc.length;
 	const errors = [...plugin.grammalecteErrors].sort((a, b) => a.nStart - b.nStart);
-	const highlights: { from: number }[] = [];
+	const highlights: { from: number; to: number }[] = [];
 
 	const colorClass = `finition-color-${plugin.settings.grammalecteColorIndex}`;
 
 	for (const err of errors) {
 		if (err.nStart < 0 || err.nEnd > docLength || err.nStart >= err.nEnd) continue;
-		highlights.push({ from: err.nStart });
+		highlights.push({ from: err.nStart, to: err.nEnd });
 		const underlineClass = err.sType === "orthographe" ? "finition-grammalecte-spelling" : "finition-grammalecte-grammar";
 		builder.add(
 			err.nStart,

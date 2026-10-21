@@ -187,7 +187,9 @@
  * fond noir / texte blanc, par-dessus leur couleur habituelle. Reclic pour
  * désélectionner.
  */
-.cm-content .finition-focused {
+.cm-content .finition-focused,
+.cm-content .finition-navigation-focused,
+.cm-content .finition-navigation-focused * {
 	background: #000000;
 	color: #ffffff;
 	cursor: pointer;
@@ -200,7 +202,7 @@
 	cursor: pointer;
 }
 
-.finition-next-occurrence {
+.finition-document-navigation {
 	padding: 0;
 }
 
@@ -208,7 +210,7 @@
 	display: flex;
 }
 
-.finition-next-occurrence[hidden],
+.finition-document-navigation[hidden],
 .finition-document-count[hidden],
 .finition-analysis-count[hidden] {
 	display: none;

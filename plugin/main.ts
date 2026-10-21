@@ -50,8 +50,9 @@ import { buildStatisticsReport, statisticsWords } from "./modes/statistics";
 import { dictionaryFile, personalDictionaryFile, personalDictionaryPath } from "./lexicon/shared";
 import { structureCategoryWords } from "./modes/structure-signature";
 import { loadingMessage } from "./ui/loading-message";
-import { AnalysisNavigation } from "./ui/analysis-navigation";
+import { AnalysisNavigation, navigationFocus, setNavigationFocus } from "./ui/analysis-navigation";
 import { countDocument, formatDocumentCount } from "./ui/document-count";
+import { registerSingleNote } from "./ui/single-note";
 import { LinguisticResources, resourceHash } from "./linguistic-resources";
 import type { ResourceEngine, ResourcePack } from "./linguistic-files";
 import { resourceEngines, resourceLabels, resourcePacks } from "./linguistic-files";
@@ -96,6 +97,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	private statusBarItem: HTMLElement | null = null;
 	private documentCountEl: HTMLElement | null = null;
 	private documentCountCache: { text: string; words: number; characters: number } | null = null;
+	updateSingleNote: () => void = () => {};
 	private analysisNavigation: AnalysisNavigation | null = null;
 	private ticIAPercentage: HTMLElement | null = null;
 	private ticIAStats = new WeakMap<EditorView, { doc: EditorView["state"]["doc"]; tagged: number; total: number; pending: boolean }>();
@@ -137,12 +139,14 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
+		this.updateSingleNote = registerSingleNote(this, () => this.settings.singleNoteOpen);
 		await this.loadLinguisticResources();
 		if (!this.isModeAvailable(this.settings.mode)) this.settings.mode = "none";
 		await this.loadLexiconData(["repetition", "stereotype", "copules"].includes(this.settings.mode));
 		this.applyPalette();
 		this.setupStatusBarItem();
 		this.registerEditorExtension(finitionEditorExtension(this));
+		this.registerEditorExtension(navigationFocus);
 		this.registerEditorExtension(finitionAIExtension(this));
 		this.registerEditorExtension(finitionGrammalecteExtension(this));
 		this.addSettingTab(new FinitionSettingTab(this.app, this));
@@ -234,6 +238,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.settings.localAIModel = typeof this.settings.localAIModel === "string" ? this.settings.localAIModel.trim() : "";
 		if (!["none", "words", "characters", "both"].includes(this.settings.documentCountDisplay)) this.settings.documentCountDisplay = "none";
 		this.settings.hideBacklinksCount = this.settings.hideBacklinksCount === true;
+		this.settings.singleNoteOpen = this.settings.singleNoteOpen === true;
 		document.body.classList.toggle("finition-hide-backlinks-count", this.settings.hideBacklinksCount);
 		const unknownEngine = !resourceEngines.includes(this.settings.spellingEngine);
 		if (unknownEngine) this.settings.spellingEngine = "grammalecte";
@@ -477,7 +482,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.analysisNavigation?.update(view, highlights, pending);
 	}
 
-	updateGrammalecteHighlights(view: EditorView, highlights: Pick<Highlight, "from">[]): void {
+	updateGrammalecteHighlights(view: EditorView, highlights: Pick<Highlight, "from" | "to">[]): void {
 		this.analysisNavigation?.updateGrammalecte(view, highlights);
 	}
 
@@ -1342,7 +1347,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			const view = leaf.view;
 			if (view instanceof MarkdownView) {
 				const cm = (view.editor as unknown as { cm?: EditorView }).cm;
-				cm?.dispatch({});
+				cm?.dispatch({ effects: setNavigationFocus.of(null) });
 			}
 		});
 	}

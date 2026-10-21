@@ -813,6 +813,21 @@ export class FinitionSettingTab extends PluginSettingTab {
 				},
 			},
 			{
+				name: "Une seule note ouverte",
+				desc: "Quand on travaille avec Hider et cache la tab bar, on risque d’accumuler des notes ouvertes qui restent invisibles. Une seule note est conservée par groupe d’onglets.",
+				render: setting => {
+					const description = createFragment();
+					description.appendText("Quand on travaille avec ");
+					description.createEl("a", { text: "Hider", href: "https://github.com/kepano/obsidian-hider", attr: { target: "_blank", rel: "noopener noreferrer" } });
+					description.appendText(" et cache la tab bar, on risque d’accumuler des notes ouvertes qui restent invisibles. Une seule note est conservée par groupe d’onglets.");
+					setting.setDesc(description).addToggle(toggle => toggle.setValue(this.plugin.settings.singleNoteOpen).onChange(async value => {
+						this.plugin.settings.singleNoteOpen = value;
+						await this.plugin.saveSettings();
+						this.plugin.updateSingleNote();
+					}));
+				},
+			},
+			{
 				name: "Taille maximale de document analysé",
 				desc: "Nombre maximal de caractères analysés depuis le début. Le reste de la note reste sans surlignage.",
 				render: setting => {

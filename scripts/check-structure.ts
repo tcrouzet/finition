@@ -20,13 +20,20 @@ import { adaptRepetitions } from "../plugin/lexicon/repetition-adapter";
 import type { FinitionSettings } from "../plugin/types";
 import { checkForms } from "./check-formes";
 import modelPresets from "../plugin/ai/models.json";
+import { checkSingleNote } from "./check-single-note";
+import { formatDocumentCount } from "../plugin/ui/document-count";
+import { checkDocumentNavigation } from "./check-document-navigation";
 
 async function main() {
+	for (const [value, words, characters] of [[0, "0W", "0S"], [1, "1W", "1S"], [999, "999W", "999S"], [1000, "1K", "1K"], [1001, "1K", "1K"], [1050, "1,1K", "1,1K"], [1500, "1,5K", "1,5K"], [10000, "10K", "10K"]] as const) {
+		assert.equal(formatDocumentCount(value, "mot"), words, `Compteur de mots : ${value}`);
+		assert.equal(formatDocumentCount(value, "signe"), characters, `Compteur de signes : ${value}`);
+	}
 	await checkSharedLexicon();
 	const dataSources = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "plugin/data"], { encoding: "utf8" }).split("\0").filter(file => file && existsSync(file));
 	assert.ok(dataSources.every(file => file.endsWith(".json")), "Les sources de plugin/data doivent être uniquement des JSON d’analyse");
 	const modules = await build({
-		stdin: { contents: "export * from \"./plugin/modes/formes\"; export { DEFAULT_SETTINGS, FORM_TYPES } from \"./plugin/types\"; export { default as gzipData } from \"./plugin/vendor/grammalecte/gc_rules_graph.js?gzip\"; export { EditorState } from \"@codemirror/state\"; export * from \"./plugin/ai/ai-extension\"; export * from \"./plugin/ai/protected-links\"; export * from \"./plugin/markdown-links\"; export * from \"./plugin/ai/clean\"; export * from \"./plugin/modes/punctuation\"; export * from \"./plugin/modes/repetition\"; export * from \"./plugin/modes/stereotype\"; export * from \"./plugin/modes/clause-split\"; export * from \"./plugin/modes/structure-report\"; export * from \"./plugin/modes/statistics\"; export * from \"./plugin/modes/structure-signature\"; export * from \"./plugin/modes/ternary\"; export * from \"./plugin/modes/tic-ia\"; export { engineScripts } from \"./plugin/modes/grammalecte-resources\"; export { default as FinitionPlugin } from \"./main\";", resolveDir: process.cwd() },
+		stdin: { contents: "export * from \"./plugin/ui/analysis-navigation\"; export * from \"./plugin/ui/single-note\"; export * from \"./plugin/modes/formes\"; export { DEFAULT_SETTINGS, FORM_TYPES } from \"./plugin/types\"; export { default as gzipData } from \"./plugin/vendor/grammalecte/gc_rules_graph.js?gzip\"; export { EditorState } from \"@codemirror/state\"; export * from \"./plugin/ai/ai-extension\"; export * from \"./plugin/ai/protected-links\"; export * from \"./plugin/markdown-links\"; export * from \"./plugin/ai/clean\"; export * from \"./plugin/modes/punctuation\"; export * from \"./plugin/modes/repetition\"; export * from \"./plugin/modes/stereotype\"; export * from \"./plugin/modes/clause-split\"; export * from \"./plugin/modes/structure-report\"; export * from \"./plugin/modes/statistics\"; export * from \"./plugin/modes/structure-signature\"; export * from \"./plugin/modes/ternary\"; export * from \"./plugin/modes/tic-ia\"; export { engineScripts } from \"./plugin/modes/grammalecte-resources\"; export { default as FinitionPlugin } from \"./main\";", resolveDir: process.cwd() },
 		bundle: true, platform: "node", format: "cjs", write: false, loader: { ".md": "text" }, external: ["obsidian"], plugins: [rawAssets],
 	});
 	const notices: string[] = [];
@@ -70,6 +77,9 @@ async function main() {
 	vm.runInContext(modules.outputFiles[0].text, sandbox);
 	sandbox.document = { body: { classList: { toggle() {} }, style: { setProperty() {} } } };
 	const api = module.exports as {
+		AnalysisNavigation: typeof import("../plugin/ui/analysis-navigation").AnalysisNavigation;
+		navigationFocus: typeof import("../plugin/ui/analysis-navigation").navigationFocus;
+		registerSingleNote: typeof import("../plugin/ui/single-note").registerSingleNote;
 		gzipData: Uint8Array;
 		DEFAULT_SETTINGS: typeof import("../plugin/types").DEFAULT_SETTINGS;
 		FORM_TYPES: typeof import("../plugin/types").FORM_TYPES;
@@ -109,6 +119,8 @@ async function main() {
 			createDebugNote: (view: unknown, content: string, prefix: string) => Promise<{ path: string }>;
 		};
 	};
+	await checkSingleNote(api.registerSingleNote);
+	await checkDocumentNavigation(api.AnalysisNavigation, api.EditorState, api.DEFAULT_SETTINGS, api.navigationFocus);
 	assert.equal(api.gzipData[9], 255, "Le gzip embarqué dépend du système de compilation");
 	assert.ok(modelPresets.length > 0 && modelPresets.every(model => model.value.trim() && model.label.trim()), "Les modèles IA doivent avoir un identifiant et un libellé");
 	assert.equal(new Set(modelPresets.map(model => model.value)).size, modelPresets.length, "Identifiants de modèles IA dupliqués");
@@ -131,6 +143,11 @@ async function main() {
 	assert.equal(plugin.settings.mode, "ternary");
 	assert.equal(plugin.saved.mode, "ternary");
 	assert.equal(plugin.settings.debugMode, false);
+	assert.equal(plugin.settings.singleNoteOpen, false, "Une seule note ouverte doit être désactivé par défaut");
+	plugin.settings.singleNoteOpen = true;
+	await plugin.saveData(plugin.settings);
+	await plugin.loadSettings();
+	assert.equal(plugin.settings.singleNoteOpen, true, "Une seule note ouverte doit être conservé au rechargement");
 	assert.equal(plugin.settings.copuleColorIndex, 14, "Une nouvelle installation n’attribue pas la couleur 14 aux copules");
 	const colorPlugin = new api.FinitionPlugin();
 	colorPlugin.saved = { hedgingColorIndex: 3, stereotypeColorIndex: 6, hingeColorIndex: 12, grammalecteColorIndex: 15 };

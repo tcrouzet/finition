@@ -95,6 +95,7 @@ export interface FinitionSettings {
 	mode: FinitionMode;
 	documentCountDisplay: "none" | "words" | "characters" | "both";
 	hideBacklinksCount: boolean;
+	singleNoteOpen: boolean;
 	debugMode: boolean;
 	span: number; // empan de répétition, en caractères
 	// Longueur minimale (en caractères) d'un mot pour être compté comme
@@ -243,6 +244,7 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	mode: "repetition",
 	documentCountDisplay: "none",
 	hideBacklinksCount: false,
+	singleNoteOpen: false,
 	debugMode: false,
 	span: 1500,
 	repetitionMinLength: 2,

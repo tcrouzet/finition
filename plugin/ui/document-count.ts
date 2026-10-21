@@ -6,6 +6,5 @@ export function countDocument(text: string): { words: number; characters: number
 }
 
 export function formatDocumentCount(value: number, unit: "mot" | "signe"): string {
-	const number = value > 1000 ? `${String(Math.round(value / 100) / 10).replace(".", ",")}K` : String(value);
-	return `${number} ${unit}${value === 1 ? "" : "s"}`;
+	return value >= 1000 ? `${String(Math.round(value / 100) / 10).replace(".", ",")}K` : `${value}${unit === "mot" ? "W" : "S"}`;
 }

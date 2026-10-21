@@ -32,7 +32,9 @@ export async function checkLocalSynonyms(Plugin: typeof FinitionPlugin, getMenu:
 	check(["Compteur du document", "Grammalecte", "CamemBERT", "Clé API Anthropic", "Empan de répétition (caractères)", "Palette"].every(name => searchable.includes(name)), "Les paramètres ne sont pas indexés pour la recherche Obsidian");
 	tab.update();
 	const settingNames = Array.from(container.querySelectorAll(".setting-item-name")).map(row => row.textContent);
-	check(settingNames.slice(0, 5).join("|") === "Compteur du document|Masquer le compteur de backlinks|Taille maximale de document analysé|Mode debug|Corrections" && !settingNames.includes("Mode actif"), "Mode debug doit suivre les réglages généraux et précéder Corrections, sans Mode actif");
+	check(settingNames.slice(0, 6).join("|") === "Compteur du document|Masquer le compteur de backlinks|Une seule note ouverte|Taille maximale de document analysé|Mode debug|Corrections" && !settingNames.includes("Mode actif"), "Mode debug doit suivre les réglages généraux et précéder Corrections, sans Mode actif");
+	const singleNote = Array.from(container.querySelectorAll(".setting-item")).find(row => row.querySelector(".setting-item-name")?.textContent === "Une seule note ouverte")!;
+	check(!singleNote.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked && singleNote.querySelector<HTMLAnchorElement>("a")?.href === "https://github.com/kepano/obsidian-hider", "Une seule note ouverte doit être désactivé par défaut et proposer le lien Hider");
 	const expectedSections = "Corrections|Corrections IA|Synonymes|Définitions|Antonymes|Phonétique|Rimes|Répétitions|Cadence|Monotonie|Palette";
 	check(Array.from(container.querySelectorAll(".setting-item-heading .setting-item-name")).map(heading => heading.textContent).join("|") === expectedSections, "Les sections sont mal ordonnées ou le titre Neuronal subsiste");
 	const sections = Array.from(container.querySelectorAll<HTMLDetailsElement>("details"));

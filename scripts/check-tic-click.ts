@@ -157,6 +157,7 @@ async function main() {
 				  registerDomEvent(element, name, callback) { element.addEventListener(name, callback); this.cleanup.push(() => element.removeEventListener(name, callback)); }
 				  registerEditorExtension(extension) { this.extensions.push(extension); }
 				  registerEvent() {} addCommand(command) { this.commands.push(command); } addSettingTab() {}
+				  register(callback) { this.cleanup.push(callback); }
 				}
 				export class MarkdownView {} export class PluginSettingTab {
 				  update() { this.settingItems = this.getSettingDefinitions(); this.containerEl.empty(); for (const definition of this.settingItems) { const setting = new Setting(this.containerEl).setName(definition.name).setDesc(definition.desc ?? ""); definition.render?.(setting); } }

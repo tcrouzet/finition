@@ -8,8 +8,8 @@ import { countDocument, formatDocumentCount } from "../plugin/ui/document-count"
 
 export async function checkAnalysisNavigation(menuOpened: () => number, getMenu: () => Array<{ title: string; click: () => unknown }>): Promise<void> {
 	const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
-	for (const [number, expected] of [[999, "999 mots"], [1000, "1000 mots"], [1001, "1K mots"], [1050, "1,1K mots"], [10000, "10K mots"], [10500, "10,5K mots"]] as const) check(formatDocumentCount(number, "mot") === expected, `Compteur compact incorrect : ${number}`);
-	check(formatDocumentCount(0, "mot") === "0 mots" && formatDocumentCount(1, "mot") === "1 mot" && formatDocumentCount(1, "signe") === "1 signe", "Unité du compteur incorrecte");
+	for (const [number, expected] of [[999, "999W"], [1000, "1K"], [1001, "1K"], [1050, "1,1K"], [10000, "10K"], [10500, "10,5K"]] as const) check(formatDocumentCount(number, "mot") === expected, `Compteur compact incorrect : ${number}`);
+	check(formatDocumentCount(0, "mot") === "0W" && formatDocumentCount(1, "mot") === "1W" && formatDocumentCount(1, "signe") === "1S", "Unité du compteur incorrecte");
 	check(countDocument("Bonjour l’été 2026.").words === 3 && countDocument("Un été 😀.").characters === 9 && countDocument("").words === 0, "Comptage du document incorrect");
 	const turn = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 	const waitFor = async (condition: () => boolean, message: string) => {
@@ -31,6 +31,8 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	let active: MarkdownView | null = null;
 	const events = new Map<string, () => void>();
 	plugin.app = { vault: { adapter }, workspace: {
+		onLayoutReady() {},
+		getMostRecentLeaf: () => null,
 		getActiveViewOfType: () => active,
 		iterateAllLeaves: (visit: (leaf: { view: MarkdownView }) => void) => { if (active) visit({ view: active }); },
 		on: (event: string, callback: () => void) => { events.set(event, callback); return {}; },
@@ -72,25 +74,25 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	const documentCount = document.querySelector<HTMLElement>(".finition-document-count");
 	check(!documentCount!.parentElement!.hasAttribute("aria-label"), "L’infobulle Finition recouvre celle du compteur");
 	check(documentCount?.hidden, "Compteur du document visible par défaut");
-	check(documentCount!.parentElement!.firstElementChild === documentCount, "Compteur du document placé après la note de musique");
+	check(documentCount!.parentElement!.querySelector(".finition-document-navigation") === documentCount!.parentElement!.firstElementChild && documentCount!.previousElementSibling?.classList.contains("finition-document-navigation"), "Les flèches de navigation doivent précéder le compteur du document");
 	check(documentCount!.nextElementSibling?.getAttribute("aria-label") === "Finition", "Infobulle Finition absente de l’icône");
 	plugin.settings.documentCountDisplay = "both";
 	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "Un été 😀." } });
 	events.get("editor-change")!();
-	check(!documentCount!.hidden && documentCount!.textContent === "2 mots · 9 signes", "Compteurs non actualisés à la frappe");
+	check(!documentCount!.hidden && documentCount!.textContent === "2W · 9S", "Compteurs non actualisés à la frappe");
 	check(documentCount!.title === "2 mots · 9 signes (espaces compris)", "Infobulle sans les deux décomptes exacts");
 	plugin.settings.documentCountDisplay = "characters";
 	await plugin.saveSettings();
 	await plugin.loadSettings();
 	plugin.updateDocumentCounts();
-	check(plugin.settings.documentCountDisplay === "characters" && documentCount!.textContent === "9 signes", "Option signes non persistée");
+	check(plugin.settings.documentCountDisplay === "characters" && documentCount!.textContent === "9S", "Option signes non persistée");
 	check(documentCount!.title === "2 mots · 9 signes (espaces compris)", "Infobulle incomplète avec les signes seuls");
 	plugin.settings.documentCountDisplay = "words";
 	plugin.updateDocumentCounts();
-	check(documentCount!.textContent === "2 mots", "Option mots incorrecte");
+	check(documentCount!.textContent === "2W", "Option mots incorrecte");
 	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "mot ".repeat(1051) } });
 	events.get("editor-change")!();
-	check(documentCount!.textContent === "1,1K mots" && documentCount!.title === "1\u202f051 mots · 4\u202f204 signes (espaces compris)", "Infobulle arrondie ou incomplète avec les mots seuls");
+	check(documentCount!.textContent === "1,1K" && documentCount!.title === "1\u202f051 mots · 4\u202f204 signes (espaces compris)", "Infobulle arrondie ou incomplète avec les mots seuls");
 	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "a" } });
 	events.get("editor-change")!();
 	check(documentCount!.title === "1 mot · 1 signe (espaces compris)", "Infobulle incorrecte au singulier");
@@ -101,14 +103,17 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	check(documentCount!.hidden, "Compteur visible sans document");
 	active = Object.assign(Object.create(MarkdownView.prototype) as MarkdownView, { editor: { cm: view, getValue: () => view.state.doc.toString() } });
 	events.get("active-leaf-change")!();
-	check(!documentCount!.hidden && documentCount!.textContent === "2 mots", "Compteur absent après changement de note");
+	check(!documentCount!.hidden && documentCount!.textContent === "2W", "Compteur absent après changement de note");
 	plugin.settings.documentCountDisplay = "none";
 	plugin.updateDocumentCounts();
 	check(documentCount!.hidden, "Compteur encore visible après désactivation");
 	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
 	const counter = document.querySelector<HTMLElement>(".finition-analysis-count");
+	const previous = document.querySelector<HTMLButtonElement>(".finition-previous-occurrence");
 	const next = document.querySelector<HTMLButtonElement>(".finition-next-occurrence");
-	check(counter && next, "Compteur et flèche absents");
+	check(counter && previous && next, "Compteur et flèches absents");
+	check(counter!.previousElementSibling === previous && counter!.nextElementSibling === next && next!.nextElementSibling === documentCount, "La navigation doit être groupée avant la taille : gauche, nombre, droite");
+	check(previous!.dataset.icon === "arrow-left" && next!.dataset.icon === "arrow-right" && document.querySelectorAll(".finition-document-navigation").length === 2, "Les flèches horizontales doivent remplacer l’ancien mécanisme, sans doublon");
 	const activate = async (mode: FinitionMode, expected: number, first: number) => {
 		document.querySelector<HTMLElement>("#result")!.dataset.stage = mode;
 		view.dispatch({ selection: { anchor: view.state.doc.length, head: view.state.doc.length - 1 } });
@@ -121,6 +126,8 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 		check(view.state.selection.main.eq(selection) && view.scrollDOM.scrollTop === scrollTop, `Activation ${mode} : sélection ou défilement déplacé`);
 		next!.click();
 		check(view.state.selection.main.head === first && view.hasFocus, `Navigation ${mode} : première occurrence inaccessible`);
+		const current = view.dom.querySelector<HTMLElement>(".finition-navigation-focused");
+		check(current && getComputedStyle(current).backgroundColor === "rgb(0, 0, 0)" && getComputedStyle(current).color === "rgb(255, 255, 255)", `Navigation ${mode} : occurrence sans fond noir et texte blanc`);
 	};
 	const initialLimit = plugin.settings.maxDocumentLength;
 	const formsText = "😀 Je ne viens pas. Viens-tu ? Quelle joie ! Attends… Ne viens-tu pas ?!";
@@ -136,6 +143,10 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	check(view.state.selection.main.head === formsText.indexOf("Ne viens-tu"), "Formes : la flèche ne saute pas les autres catégories");
 	next!.click();
 	check(view.state.selection.main.head === formsText.indexOf("Viens-tu"), "Formes : la catégorie ne boucle pas");
+	previous!.click();
+	check(view.state.selection.main.head === formsText.indexOf("Ne viens-tu"), "Formes : la flèche gauche ne parcourt pas la catégorie en sens inverse");
+	check(view.dom.querySelector(".finition-navigation-focused")?.textContent === "Ne viens-tu pas ?!", "Formes : le repère noir ne suit pas la flèche gauche");
+	next!.click();
 	view.dom.querySelector<HTMLElement>(".finition-focused")!.click();
 	check(counter!.textContent === "5", "Formes : désélection sans retour au compteur total");
 	next!.click();
@@ -288,6 +299,7 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	check(view.state.selection.main.head === spellingPosition, "L’affichage des corrections déplace le curseur");
 	check(showMenu().at(-1)?.title === "Reset", "Reset absent pour les corrections seules");
 	check(next!.getAttribute("aria-label") === "Faute suivante", "Grammalecte : flèche sans libellé adapté");
+	check(previous!.getAttribute("aria-label") === "Faute précédente", "Grammalecte : flèche précédente sans libellé adapté");
 	const menuBeforeSpellingNavigation = menuOpened();
 	view.dispatch({ selection: { anchor: 0 } });
 	next!.click();
