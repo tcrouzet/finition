@@ -1,7 +1,7 @@
 {
   "id": "finition",
   "name": "Finition",
-  "version": "0.4.15",
+  "version": "0.4.16",
   "minAppVersion": "1.14.0",
   "description": "Fignoler vos textes en français : traque répétitions, stéréotypes, fautes d'orthographe et de grammaire avec un correcteur neutonal ou IA.",
   "author": "Thierry Crouzet",
