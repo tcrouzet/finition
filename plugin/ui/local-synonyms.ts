@@ -6,7 +6,7 @@ import { createRemarkInsertion } from "./insert-remark";
 import { selectionTouchesLink } from "../markdown-links";
 
 export async function runLocalSynonyms(app: App, dictionary: SynonymsDictionary): Promise<void> {
-	await runLocalWordLookup(app, "Synonyme", async word => ({ groups: await dictionary.lookupGroups(word) }));
+	await runLocalWordLookup(app, "Synonymes", async word => ({ groups: await dictionary.lookupGroups(word) }));
 }
 
 export async function runLocalWordLookup(app: App, title: string, lookup: (word: string) => Promise<{ groups?: SynonymGroup[]; rows?: DictionaryRow[]; description?: string }>): Promise<void> {

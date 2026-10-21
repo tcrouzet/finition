@@ -19,6 +19,7 @@ import {
 	BUILTIN_PROMPTS,
 	DEFAULT_PALETTE,
 	DEFAULT_SETTINGS,
+	FORM_TYPES,
 	FinitionMode,
 	FinitionRuntime,
 	FinitionSettings,
@@ -40,6 +41,8 @@ import { runSynonyms } from "./ai/synonyms";
 import { fixPunctuationSpacing, fixBlankLinesProtected } from "./modes/punctuation";
 import { GrammalecteEngine, GrammalecteError } from "./modes/grammalecte";
 import { FinitionCorrectorEngine } from "./modes/finition-corrector";
+import type { LexicalData } from "./modes/finition-corrector";
+import { emptyCopuleLexicon } from "./modes/copules";
 import { analyzeCorrections } from "./modes/corrections";
 import { finitionGrammalecteExtension } from "./grammalecte-extension";
 import { buildStructureReport } from "./modes/structure-report";
@@ -69,17 +72,20 @@ const analysisModes: Array<{ mode: FinitionMode; name: string; icon: string }> =
 	{ mode: "repetition", name: "Répétitions", icon: "repeat" },
 	{ mode: "hedging", name: "Atténuations", icon: "shield-question" },
 	{ mode: "stereotype", name: "Stéréotypes", icon: "sparkles" },
-	{ mode: "burstiness", name: "Monotonie", icon: "activity" },
+	{ mode: "burstiness", name: "Monotonies", icon: "activity" },
 	{ mode: "ternary", name: "Tricolons", icon: "git-branch" },
-	{ mode: "cadence", name: "Cadence", icon: "waves" },
+	{ mode: "cadence", name: "Cadences", icon: "waves" },
 	{ mode: "hinges", name: "Charnières", icon: "link" },
+	{ mode: "formes", name: "Formes", icon: "message-circle-question" },
+	{ mode: "copules", name: "Copules", icon: "highlighter" },
 ];
 
 export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	settings: FinitionSettings = DEFAULT_SETTINGS;
 	lexicon: Map<string, string> = new Map();
+	copuleLexicon = emptyCopuleLexicon();
 	private lexiconEngine: FinitionCorrectorEngine | null = null;
-	private lexiconLoad: Promise<Map<string, string>> | undefined;
+	private lexiconLoad: Promise<LexicalData> | undefined;
 	functionWords: Set<string> = new Set();
 	hedgingPhrases: string[] = [];
 	stereotypePatterns: string[][] = [];
@@ -133,7 +139,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		await this.loadSettings();
 		await this.loadLinguisticResources();
 		if (!this.isModeAvailable(this.settings.mode)) this.settings.mode = "none";
-		await this.loadLexiconData(this.settings.mode === "repetition" || this.settings.mode === "stereotype");
+		await this.loadLexiconData(["repetition", "stereotype", "copules"].includes(this.settings.mode));
 		this.applyPalette();
 		this.setupStatusBarItem();
 		this.registerEditorExtension(finitionEditorExtension(this));
@@ -173,7 +179,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			name: "Synonymes IA",
 			callback: () => runSynonyms(this.app, this.settings),
 		});
-		this.addCommand({ id: "synonyme", name: "Synonyme", callback: () => this.runSynonymsLocal() });
+		this.addCommand({ id: "synonyme", name: "Synonymes", callback: () => this.runSynonymsLocal() });
 		for (const kind of dictionaryKinds) this.addCommand({ id: kind, name: dictionaryLabels[kind], callback: () => this.runWordDictionary(kind) });
 
 		this.addCommand({
@@ -261,6 +267,18 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			needsPersist = true;
 		}
 		if (this.migrateLegacyPaletteOrder()) {
+			needsPersist = true;
+		}
+		const validColor = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 0 && value < this.settings.palette.length;
+		const newColorFunctions = [...FORM_TYPES, { key: "copuleColorIndex" }] as const;
+		const assignedColors = new Set([this.settings.hedgingColorIndex, this.settings.stereotypeColorIndex, this.settings.hingeColorIndex, this.settings.grammalecteColorIndex,
+			...newColorFunctions.map(({ key }) => saved?.[key]).filter(validColor)]);
+		for (const { key } of newColorFunctions) {
+			if (validColor(saved?.[key])) continue;
+			const preferred = DEFAULT_SETTINGS[key];
+			const color = assignedColors.has(preferred) ? this.settings.palette.findIndex((_, index) => !assignedColors.has(index)) : preferred;
+			this.settings[key] = color;
+			assignedColors.add(color);
 			needsPersist = true;
 		}
 		if (needsPersist) {
@@ -370,16 +388,17 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			this.lexiconEngine?.destroy();
 			this.lexiconLoad = undefined;
 			this.lexicon = new Map();
+			this.copuleLexicon = emptyCopuleLexicon();
 		}
 		else if (!this.lexicon.size && loadLemmas) {
 			let loading = this.lexiconLoad;
 			try {
 				if (!loading) {
 					const engine = this.lexiconEngine = new FinitionCorrectorEngine(file => this.readLinguisticAsset("lexique", file));
-					loading = this.lexiconLoad = engine.getLemmas().finally(() => { engine.destroy(); if (this.lexiconEngine === engine) this.lexiconEngine = null; });
+					loading = this.lexiconLoad = engine.getLexicalData().finally(() => { engine.destroy(); if (this.lexiconEngine === engine) this.lexiconEngine = null; });
 				}
-				const lemmas = await loading;
-				if (this.lexiconLoad === loading) this.lexicon = lemmas;
+				const data = await loading;
+				if (this.lexiconLoad === loading) { this.lexicon = data.lemmas; this.copuleLexicon = data.copules; }
 			} catch (error) {
 				if (this.lexiconLoad === loading) {
 					this.lexiconLoad = undefined;
@@ -481,7 +500,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			new Notice("Chargez le dictionnaire ou le moteur requis dans les paramètres de Finition.");
 			return;
 		}
-		if (this.settings.mode !== mode && (mode === "repetition" || mode === "stereotype")) {
+		if (this.settings.mode !== mode && ["repetition", "stereotype", "copules"].includes(mode)) {
 			await this.loadLexiconData(true);
 			if (!this.lexicon.size) return;
 		}
@@ -532,7 +551,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		menu.addItem(item => {
 			item.setTitle("Dictionnaires").setIcon("book-open");
 			const submenu = (item as typeof item & { setSubmenu(): Menu }).setSubmenu();
-			submenu.addItem(item => item.setTitle("Synonyme").setIcon("book-open")
+			submenu.addItem(item => item.setTitle("Synonymes").setIcon("book-open")
 				.setDisabled(!this.hasSynonyms)
 				.onClick(() => this.runSynonymsLocal()));
 			submenu.addItem(item => item.setTitle("Synonymes IA").setIcon("book-open")
@@ -842,7 +861,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	get hasAnalysisResources(): boolean { return this.linguisticResources?.available(this.settings.analysisEngine) ?? false; }
 	get hasLexicon(): boolean { return this.isLinguisticEngineInstalled("lexique"); }
 	isModeAvailable(mode: FinitionMode): boolean {
-		if (mode === "repetition" || mode === "stereotype") return this.hasLexicon;
+		if (["repetition", "stereotype", "copules"].includes(mode)) return this.hasLexicon;
 		if (mode === "ternary" || (mode === "cadence" && this.settings.cadenceEngine === "grammalecte")) return this.hasAnalysisResources;
 		return true;
 	}
@@ -1012,6 +1031,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.lexiconEngine = null;
 		this.lexiconLoad = undefined;
 		this.lexicon = new Map();
+		this.copuleLexicon = emptyCopuleLexicon();
 		this.finitionCorrectorEngine?.destroy();
 		this.finitionCorrectorEngine = null;
 		this.grammalecteEngine?.destroy();
@@ -1021,7 +1041,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.grammalecteErrorsVersion++;
 		this.resetWordCategories();
 		this.settingsVersion++;
-		await this.loadLexiconData(this.settings.mode === "repetition" || this.settings.mode === "stereotype");
+		await this.loadLexiconData(["repetition", "stereotype", "copules"].includes(this.settings.mode));
 		this.refreshAllEditors();
 	}
 	async setLexicon(path: string): Promise<void> {
@@ -1100,10 +1120,11 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			this.lexiconEngine?.destroy();
 			this.lexiconLoad = undefined;
 			this.lexicon = new Map();
+			this.copuleLexicon = emptyCopuleLexicon();
 		}
 		await this.loadLinguisticResources();
 		if (!this.linguisticResources.available(engine)) throw new Error("Installation incomplète. Relancez le téléchargement.");
-		await this.loadLexiconData(this.settings.mode === "repetition" || this.settings.mode === "stereotype");
+		await this.loadLexiconData(["repetition", "stereotype", "copules"].includes(this.settings.mode));
 		this.settingsVersion++;
 		this.refreshAllEditors();
 		if (engine === "lexique") { await this.setLexicon(""); return; }

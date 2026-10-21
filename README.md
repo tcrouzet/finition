@@ -25,12 +25,14 @@ Ouvrir **♫ → Surlignages** et choisir ce que l’on veut observer :
 - **Répétitions** retrouve les mots qui reviennent à proximité, y compris sous leurs formes conjuguées ou accordées. Chaque groupe reçoit sa couleur.
 - **Atténuations** fait ressortir les précautions de langage : « il semblerait que », « dans une certaine mesure »…
 - **Stéréotypes** repère les clichés et lieux communs, comme « serrer les poings ».
-- **Monotonie** révèle les suites de phrases de longueur proche.
+- **Monotonies** révèle les suites de phrases de longueur proche.
 - **Tricolons** repère les séries de trois groupes de même construction. Les listes plus longues sont exclues.
-- **Cadence** rapproche des phrases voisines de construction comparable.
+- **Cadences** rapproche des phrases voisines de construction comparable.
 - **Charnières** montre les articulations du texte : « mais », « et », « que », « comme »…
+- **Formes** surligne les phrases négatives, interrogatives, exclamatives et celles contenant des points de suspension (`...` ou `…`). Les 4 couleurs se choisissent dans **Réglages → Finition → Palette**. Une phrase cumulant plusieurs formes compte une seule fois ; le survol les indique toutes et la ponctuation détermine sa couleur principale (interrogation, exclamation, puis suspension).
+- **Copules** surligne les flexions des verbes de la liste dédiée (« être », « avoir », « sembler », « devenir »…), avec leurs formes pronominales (« se montrer », « se révéler », « s’appeler »). Les auxiliaires des temps composés sont exclus : « avons connu » n’est pas surligné, « ai un bateau » l’est. Ce mode utilise le dictionnaire Finition ; sa couleur par défaut est 14, réglable dans **Palette**. Les emplois adjectivaux des participes restent ambigus.
 
-L’analyse conserve la position du curseur. Le compteur et la flèche descendante permettent de parcourir les passages repérés. Cliquer sur un passage surligné fait ressortir son groupe en noir. Quand une analyse est active, **Reset**, en bas du menu musique, efface ses surlignages et suggestions sans modifier le texte.
+L’analyse conserve la position du curseur. Le compteur et la flèche descendante permettent de parcourir les passages repérés. Cliquer sur un passage surligné fait ressortir son groupe en noir : le compteur et la flèche se limitent alors à ce groupe. Recliquer sur le groupe ou cliquer hors surlignage rétablit la navigation complète. Quand une analyse est active, **Reset**, en bas du menu musique, efface ses surlignages et suggestions sans modifier le texte.
 
 Une seule analyse stylistique est active à la fois ; recliquer sur son nom la désactive. Les couleurs, les distances de recherche et les sensibilités se règlent dans **Réglages → Finition**. Sur les longues notes, l’analyse porte sur le début jusqu’à la limite configurée : le texte reste entier.
 
@@ -39,6 +41,7 @@ Une seule analyse stylistique est active à la fois ; recliquer sur son nom la d
 Pour regarder le texte de plus près, activer **Mode debug** dans les réglages :
 
 - **Structure** crée une note d’analyse phrase par phrase : cadratifs, sujets, verbes, compléments et groupes de trois.
+- Les verbes négatifs y sont représentés par **NE PAS VERBE**, y compris avec « plus », « jamais » ou « rien ».
 - **Statistiques** exporte les mesures disponibles dans une note séparée : décomptes, lemmes, répétitions et tricolons.
 
 L’original reste intact. Structure et Tricolons demandent un moteur linguistique installé ; Statistiques demande aussi Grammalecte et le lexique commun. Ces analyses restent indicatives : elles peuvent manquer des passages ou en signaler à tort.
@@ -52,11 +55,11 @@ Choisir **Grammalecte** ou **Neuronal** dans le menu **♫** :
 
 Les deux analysent la sélection, ou toute la note si rien n’est sélectionné. Cliquer sur une faute pour choisir une correction ou ignorer le signalement. Les mots inconnus peuvent être ajoutés au dictionnaire personnel. La flèche de la barre d’état mène à la faute suivante. Recliquer sur le correcteur coché efface ses suggestions.
 
-Le modèle public **CamemBERT** se charge dans les réglages. Des modèles personnels peuvent aussi être importés ; le choix du moteur d’analyse de Structure, Tricolons et Cadence reste indépendant du correcteur utilisé.
+Le modèle public **CamemBERT** se charge dans les réglages. Des modèles personnels peuvent aussi être importés ; le choix du moteur d’analyse de Structure, Tricolons et Cadences reste indépendant du correcteur utilisé.
 
 ### Soigner la ponctuation
 
-**Ponctuations** harmonise les espaces insécables, les apostrophes, les tirets et les lignes vides, y compris les espaces entre un nombre et son unité. Le code, les liens et les horaires sont préservés.
+**Ponctuations** harmonise les espaces insécables, les apostrophes, les tirets et les lignes vides, y compris les espaces entre un nombre et son unité. Elle remplace `...` par `…`. Le code, les liens et les horaires sont préservés.
 
 Cette commande modifie directement toute la note, sans étape de validation.
 
@@ -64,7 +67,7 @@ Cette commande modifie directement toute la note, sans étape de validation.
 
 Sélectionner un mot, ouvrir **♫ → Dictionnaires** et choisir le dictionnaire :
 
-- **Synonyme** propose des variantes, regroupées par sens et catégorie lorsque le dictionnaire le permet.
+- **Synonymes** propose des variantes, regroupées par sens et catégorie lorsque le dictionnaire le permet.
 - **Définitions** aide à vérifier le sens d’un mot.
 - **Antonymes** propose ses contraires.
 - **Phonétique** donne sa prononciation.
@@ -77,6 +80,8 @@ Chaque dictionnaire se charge dans sa section des réglages. Vous pouvez aussi i
 ## Une IA, si vous la souhaitez
 
 Les fonctions locales n’exigent aucune clé API. Pour utiliser une IA, renseigner une clé **Anthropic** ou **OpenAI** et choisir le modèle dans **Réglages → Finition → Corrections IA**. Ces appels peuvent être payants auprès du fournisseur choisi.
+
+Les modèles proposés sont définis dans [`plugin/ai/models.json`](plugin/ai/models.json) : `value` contient l’identifiant du modèle, `label` son nom affiché. Le premier est le défaut des nouvelles installations. Après modification du JSON, reconstruire le plugin avec `npm run build` ; les choix déjà enregistrés sont conservés.
 
 Avec Ollama ou un autre serveur compatible OpenAI, renseigner **Serveur local** (par exemple `http://localhost:11434`, avec ou sans `/v1`) et **Modèle local**, sous les clés API. Le serveur doit déjà fonctionner et disposer du modèle indiqué. Ces champs remplacent le fournisseur et le modèle cloud pour les deux fonctions ci-dessous, sans transmettre les clés API. Vider **Serveur local** pour revenir à Claude/GPT. Finition ne télécharge aucun modèle et ne bascule jamais vers le cloud en cas d’erreur locale.
 

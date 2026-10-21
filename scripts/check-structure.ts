@@ -18,13 +18,15 @@ import { checkSharedLexicon } from "./check-shared-lexicon";
 import { decodeDictionary } from "../plugin/lexicon/shared";
 import { adaptRepetitions } from "../plugin/lexicon/repetition-adapter";
 import type { FinitionSettings } from "../plugin/types";
+import { checkForms } from "./check-formes";
+import modelPresets from "../plugin/ai/models.json";
 
 async function main() {
 	await checkSharedLexicon();
 	const dataSources = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "plugin/data"], { encoding: "utf8" }).split("\0").filter(file => file && existsSync(file));
 	assert.ok(dataSources.every(file => file.endsWith(".json")), "Les sources de plugin/data doivent être uniquement des JSON d’analyse");
 	const modules = await build({
-		stdin: { contents: "export { default as gzipData } from \"./plugin/vendor/grammalecte/gc_rules_graph.js?gzip\"; export { EditorState } from \"@codemirror/state\"; export * from \"./plugin/ai/ai-extension\"; export * from \"./plugin/ai/protected-links\"; export * from \"./plugin/markdown-links\"; export * from \"./plugin/ai/clean\"; export * from \"./plugin/modes/punctuation\"; export * from \"./plugin/modes/repetition\"; export * from \"./plugin/modes/stereotype\"; export * from \"./plugin/modes/clause-split\"; export * from \"./plugin/modes/structure-report\"; export * from \"./plugin/modes/statistics\"; export * from \"./plugin/modes/structure-signature\"; export * from \"./plugin/modes/ternary\"; export * from \"./plugin/modes/tic-ia\"; export { engineScripts } from \"./plugin/modes/grammalecte-resources\"; export { default as FinitionPlugin } from \"./main\";", resolveDir: process.cwd() },
+		stdin: { contents: "export * from \"./plugin/modes/formes\"; export { DEFAULT_SETTINGS, FORM_TYPES } from \"./plugin/types\"; export { default as gzipData } from \"./plugin/vendor/grammalecte/gc_rules_graph.js?gzip\"; export { EditorState } from \"@codemirror/state\"; export * from \"./plugin/ai/ai-extension\"; export * from \"./plugin/ai/protected-links\"; export * from \"./plugin/markdown-links\"; export * from \"./plugin/ai/clean\"; export * from \"./plugin/modes/punctuation\"; export * from \"./plugin/modes/repetition\"; export * from \"./plugin/modes/stereotype\"; export * from \"./plugin/modes/clause-split\"; export * from \"./plugin/modes/structure-report\"; export * from \"./plugin/modes/statistics\"; export * from \"./plugin/modes/structure-signature\"; export * from \"./plugin/modes/ternary\"; export * from \"./plugin/modes/tic-ia\"; export { engineScripts } from \"./plugin/modes/grammalecte-resources\"; export { default as FinitionPlugin } from \"./main\";", resolveDir: process.cwd() },
 		bundle: true, platform: "node", format: "cjs", write: false, loader: { ".md": "text" }, external: ["obsidian"], plugins: [rawAssets],
 	});
 	const notices: string[] = [];
@@ -69,6 +71,10 @@ async function main() {
 	sandbox.document = { body: { classList: { toggle() {} }, style: { setProperty() {} } } };
 	const api = module.exports as {
 		gzipData: Uint8Array;
+		DEFAULT_SETTINGS: typeof import("../plugin/types").DEFAULT_SETTINGS;
+		FORM_TYPES: typeof import("../plugin/types").FORM_TYPES;
+		hasNegation: typeof import("../plugin/modes/formes").hasNegation;
+		computeFormHighlights: typeof import("../plugin/modes/formes").computeFormHighlights;
 		buildStatisticsReport: typeof import("../plugin/modes/statistics").buildStatisticsReport;
 		rawStatisticNames: typeof import("../plugin/modes/statistics").rawStatisticNames;
 		statisticsWords: typeof import("../plugin/modes/statistics").statisticsWords;
@@ -104,6 +110,20 @@ async function main() {
 		};
 	};
 	assert.equal(api.gzipData[9], 255, "Le gzip embarqué dépend du système de compilation");
+	assert.ok(modelPresets.length > 0 && modelPresets.every(model => model.value.trim() && model.label.trim()), "Les modèles IA doivent avoir un identifiant et un libellé");
+	assert.equal(new Set(modelPresets.map(model => model.value)).size, modelPresets.length, "Identifiants de modèles IA dupliqués");
+	assert.equal(api.DEFAULT_SETTINGS.aiModel, modelPresets[0].value, "Le modèle par défaut ne suit pas le JSON");
+	assert.equal(api.DEFAULT_SETTINGS.copuleColorIndex, 14, "Copules doit utiliser la couleur 14 par défaut");
+	checkForms(api);
+	assert.equal(api.fixPunctuationSpacing("Attends... Encore…"), "Attends… Encore…", "Ponctuations doit unifier les points de suspension");
+	const negativeCategories: Record<string, string> = { je: "pronom", veux: "verbe", partir: "verbe" };
+	const negativeCategory = (word: string) => negativeCategories[word] ?? "";
+	assert.equal(api.buildStructureReport("Je ne veux pas partir.", negativeCategory).trim().split("\n").at(-1), "SUJET NE PAS VERBE.");
+	const ellipses = "Attends... Déjà… `x...` [lien...](https://example.org/a...)\n\n```js\nconst a = '...';\n```";
+	const normalizedEllipses = ellipses.replace("Attends...", "Attends…");
+	assert.equal(api.fixPunctuationSpacing(ellipses), normalizedEllipses);
+	assert.equal(api.cleanTypography(ellipses), normalizedEllipses);
+	assert.equal(api.fixPunctuationSpacing(normalizedEllipses), normalizedEllipses);
 	assert.ok(!/\brequire\s*\(\s*["'](?:node:)?fs(?:\/promises)?["']\s*\)/u.test(api.engineScripts.join("\n")), "Grammalecte embarque un accès direct au système de fichiers");
 	const plugin = new api.FinitionPlugin();
 	plugin.saved = { mode: "tic-ia" };
@@ -111,6 +131,15 @@ async function main() {
 	assert.equal(plugin.settings.mode, "ternary");
 	assert.equal(plugin.saved.mode, "ternary");
 	assert.equal(plugin.settings.debugMode, false);
+	assert.equal(plugin.settings.copuleColorIndex, 14, "Une nouvelle installation n’attribue pas la couleur 14 aux copules");
+	const colorPlugin = new api.FinitionPlugin();
+	colorPlugin.saved = { hedgingColorIndex: 3, stereotypeColorIndex: 6, hingeColorIndex: 12, grammalecteColorIndex: 15 };
+	await colorPlugin.loadSettings();
+	const colors = api.FORM_TYPES.map(type => colorPlugin.settings[type.key]);
+	assert.equal(new Set(colors).size, 4);
+	assert.ok(colors.every(color => ![3, 6, 12, 15].includes(color) && color >= 0));
+	await colorPlugin.loadSettings();
+	assert.deepEqual(api.FORM_TYPES.map(type => colorPlugin.settings[type.key]), colors, "Les couleurs de Formes changent au rechargement");
 	plugin.showModeMenu({});
 	assert.ok(!menuTitles.some((title) => title.startsWith("Tic IA")));
 	assert.ok(menuTitles.includes("Tricolons") && !menuTitles.includes("Structure"));
@@ -118,8 +147,9 @@ async function main() {
 	assert.ok(menuTitles.includes("Synonymes IA"));
 	assert.deepEqual(menuTitles.filter(title => !menuParents.get(title)), ["Surlignages", "Dictionnaires", "Grammalecte", "Neuronal", "Corrections IA", "Ponctuations", "Paramètres", "Reset"]);
 	assert.ok(!menuTitles.includes("Statistiques"));
-	assert.deepEqual(menuTitles.filter(title => menuParents.get(title) === "Surlignages"), ["Répétitions", "Atténuations", "Stéréotypes", "Monotonie", "Tricolons", "Cadence", "Charnières"]);
-	assert.deepEqual(menuTitles.filter(title => menuParents.get(title) === "Dictionnaires"), ["Synonyme", "Synonymes IA", "Définitions", "Antonymes", "Phonétique", "Rimes"]);
+	assert.deepEqual(menuTitles.filter(title => menuParents.get(title) === "Surlignages"), ["Répétitions", "Atténuations", "Stéréotypes", "Monotonies", "Tricolons", "Cadences", "Charnières", "Formes", "Copules"]);
+	assert.equal(menuDisabled.get("Copules"), true, "Copules doit demander le lexique");
+	assert.deepEqual(menuTitles.filter(title => menuParents.get(title) === "Dictionnaires"), ["Synonymes", "Synonymes IA", "Définitions", "Antonymes", "Phonétique", "Rimes"]);
 	plugin.settings.debugMode = true;
 	await plugin.saveData(plugin.settings);
 	await plugin.loadSettings();
@@ -790,6 +820,15 @@ async function main() {
 	assert.equal(detachedFailures, 0);
 
 	const cases: Array<[string, string]> = [
+		["Je ne vois pas la mer.", "SUJET NE PAS VERBE COMPLÉMENT."],
+		["Je n’aime plus la pluie.", "SUJET NE PAS VERBE COMPLÉMENT."],
+		["Je ne pars jamais.", "SUJET NE PAS VERBE."],
+		["Personne ne vient.", "SUJET NE PAS VERBE."],
+		["Je sais qu’il ne vient pas.", "SUJET VERBE que SUBORDONNÉE."],
+		["Je ne crois pas qu’il vienne.", "SUJET NE PAS VERBE que SUBORDONNÉE."],
+		["Si tu ne chantes pas, ne danses pas et ne ris pas, je pars.", "si SUJET NE PAS VERBE (1), NE PAS VERBE (2), et NE PAS VERBE (3), SUJET VERBE."],
+		["Je ne vois pas la mer : je regarde le ciel.", "SUJET NE PAS VERBE COMPLÉMENT : SUJET VERBE COMPLÉMENT."],
+		["Je ne vois ni chat ni chien.", "SUJET NE PAS VERBE COMPLÉMENT."],
 		["Le plus souvent, je restais dehors, mais en route vers le Lot-et-Garonne, nous avons allumé pour toi des cierges dans l’abbatiale de Moissac, comme nous l’avions fait ensemble alors que ta mère était souffrante.", "CADRATIF, SUJET VERBE COMPLÉMENT, mais COMPLÉMENT, SUJET VERBE COMPLÉMENT, comme SUBORDONNÉE."],
 		["Si tu me rudoyais, me remettais en place ou te moquais de mes défauts, tu étais néanmoins ma vigie et ma boussole.", "si SUJET VERBE COMPLÉMENT (1), VERBE COMPLÉMENT (2), ou VERBE COMPLÉMENT (3), SUJET VERBE COMPLÉMENT."],
 		["Si tu me rudoyais, me remettais en place, te moquais de mes défauts ou me donnais des ordres, tu étais ma vigie.", "si SUJET VERBE COMPLÉMENT, VERBE COMPLÉMENT, VERBE COMPLÉMENT, ou VERBE COMPLÉMENT, SUJET VERBE COMPLÉMENT."],
@@ -814,8 +853,8 @@ async function main() {
 		["Le feu a gagné ma rue vers 9 h 58.", "SUJET VERBE COMPLÉMENT."],
 		["Sa cuisine a explosé.", "SUJET VERBE."],
 		["Ton nom est une loterie.", "SUJET VERBE COMPLÉMENT."],
-		["Il n’a pas pleuré.", "SUJET VERBE."],
-		["Ce n’est pas une invention.", "SUJET VERBE COMPLÉMENT."],
+		["Il n’a pas pleuré.", "SUJET NE PAS VERBE."],
+		["Ce n’est pas une invention.", "SUJET NE PAS VERBE COMPLÉMENT."],
 		["Alors j’ai obéi.", "SUJET VERBE."],
 		["Peut-être une bagarre.", "NOM."],
 		["Le lendemain, elle m’a servi un café froid.", "CADRATIF, SUJET VERBE COMPLÉMENT."],

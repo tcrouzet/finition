@@ -11,7 +11,7 @@
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
 import { Notice } from "obsidian";
-import { FinitionRuntime, Highlight } from "./types";
+import { FinitionMode, FinitionRuntime, Highlight } from "./types";
 import { computeRepetitions } from "./modes/repetition";
 import { computeHedgingHighlights } from "./modes/hedging";
 import { computeStereotypeHighlights } from "./modes/stereotype";
@@ -21,6 +21,8 @@ import { computeCadenceHighlights, computeCadenceHighlightsStructural } from "./
 import { structureCategoryWords } from "./modes/structure-signature";
 import { computeHingeHighlights } from "./modes/hinges";
 import { analyzeTicIA } from "./modes/tic-ia";
+import { computeFormHighlights } from "./modes/formes";
+import { computeCopuleHighlights } from "./modes/copules";
 
 /** Classe CSS appliquée aux occurrences du lemme actuellement sélectionné au clic. */
 const FOCUS_CLASS = "finition-focused";
@@ -33,7 +35,7 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 			text = text.replace(/[\p{L}\p{M}\p{N}_’'-]+$/u, "");
 		}
 	}
-	if ((runtime.settings.mode === "repetition" || runtime.settings.mode === "stereotype") && !runtime.lexicon.size) {
+	if (["repetition", "stereotype", "copules"].includes(runtime.settings.mode) && !runtime.lexicon.size) {
 		runtime.updateAnalysisHighlights(view, [], false);
 		return Decoration.none;
 	}
@@ -126,6 +128,18 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 			const base = `finition-tic-ia finition-color-${highlight.colorIndex}`;
 			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
 		};
+	} else if (runtime.settings.mode === "copules") {
+		highlights = computeCopuleHighlights(text, runtime.copuleLexicon);
+		cssClass = highlight => {
+			const base = `finition-copule finition-color-${runtime.settings.copuleColorIndex}`;
+			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
+		};
+	} else if (runtime.settings.mode === "formes") {
+		highlights = computeFormHighlights(text, runtime.settings);
+		cssClass = highlight => {
+			const base = `finition-forme finition-color-${highlight.colorIndex}`;
+			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
+		};
 	} else if (runtime.settings.mode === "hinges") {
 		highlights = computeHingeHighlights(text, runtime.syntaxHinges);
 		cssClass = (highlight) => {
@@ -138,7 +152,7 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 	}
 
 	highlights.sort((a, b) => a.from - b.from);
-	runtime.updateAnalysisHighlights(view, highlights, pending);
+	runtime.updateAnalysisHighlights(view, focusedLemma === null ? highlights : highlights.filter(highlight => highlight.lemma === focusedLemma), pending);
 	const builder = new RangeSetBuilder<Decoration>();
 	for (const highlight of highlights) {
 		builder.add(
@@ -167,6 +181,7 @@ export function finitionEditorExtension(runtime: FinitionRuntime) {
 			// pas un caractère (le `update()` ne se déclenchait que sur
 			// `docChanged`).
 			private lastSettingsVersion: number;
+			private lastMode: FinitionMode;
 			// Voir FinitionRuntime.wordCategoryCacheVersion (types.ts) : sans
 			// ce suivi, la résolution asynchrone des catégories Grammalecte
 			// (Tricolon, Cadence "grammalecte") ne déclenchait aucun
@@ -182,6 +197,7 @@ export function finitionEditorExtension(runtime: FinitionRuntime) {
 			constructor(view: EditorView) {
 				this.view = view;
 				this.lastSettingsVersion = runtime.settingsVersion;
+				this.lastMode = runtime.settings.mode;
 				this.lastWordCategoryCacheVersion = runtime.wordCategoryCacheVersion;
 				this.decorations = buildDecorations(view, runtime, this.focusedLemma);
 
@@ -212,9 +228,11 @@ export function finitionEditorExtension(runtime: FinitionRuntime) {
 			}
 
 			update(update: ViewUpdate) {
-				const settingsChanged = this.lastSettingsVersion !== runtime.settingsVersion;
+				const settingsChanged = this.lastSettingsVersion !== runtime.settingsVersion || this.lastMode !== runtime.settings.mode;
 				const categoryCacheChanged = this.lastWordCategoryCacheVersion !== runtime.wordCategoryCacheVersion;
 				if (!update.docChanged && !settingsChanged && !categoryCacheChanged) return;
+				if (this.lastMode !== runtime.settings.mode) this.focusedLemma = null;
+				this.lastMode = runtime.settings.mode;
 				this.lastSettingsVersion = runtime.settingsVersion;
 				this.lastWordCategoryCacheVersion = runtime.wordCategoryCacheVersion;
 				const view = update.view;

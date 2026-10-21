@@ -49,6 +49,7 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	await new Promise(requestAnimationFrame);
 	loading = false;
 	check(dictionaryReads === 1 && plugin.lexicon.get("serrait") === "serrer" && plugin.lexicon.get("abaissant") === "abaisser", "Chargement partagé du lexique ou préférences de lemmes perdus");
+	check(plugin.copuleLexicon.forms.get("a")?.includes("avoir") && plugin.copuleLexicon.forms.get("parais")?.includes("paraître") && plugin.copuleLexicon.participles.has("connu"), "Le Worker perd les flexions ou les participes nécessaires aux copules");
 	check(frames > 0, "Le chargement du lexique bloque l’affichage");
 	const loadedLexicon = plugin.lexicon;
 	await plugin.loadLexiconData(true);
@@ -122,6 +123,36 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 		check(view.state.selection.main.head === first && view.hasFocus, `Navigation ${mode} : première occurrence inaccessible`);
 	};
 	const initialLimit = plugin.settings.maxDocumentLength;
+	const formsText = "😀 Je ne viens pas. Viens-tu ? Quelle joie ! Attends… Ne viens-tu pas ?!";
+	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: formsText } });
+	await activate("formes", 5, 0);
+	const forms = Array.from(view.dom.querySelectorAll<HTMLElement>(".finition-forme"));
+	check(forms.length === 5 && new Set(forms.map(mark => getComputedStyle(mark).backgroundColor)).size === 4, "Formes : les 4 couleurs ne correspondent pas aux types de phrase");
+	check(forms.at(-1)?.title === "Négatives · Interrogatives · Exclamatives", "Formes : le cumul des types est perdu au survol");
+	view.dispatch({ selection: { anchor: formsText.indexOf("Viens-tu") } });
+	forms[1].click();
+	check(counter!.textContent === "2", "Formes : compteur non limité à la catégorie interrogative");
+	next!.click();
+	check(view.state.selection.main.head === formsText.indexOf("Ne viens-tu"), "Formes : la flèche ne saute pas les autres catégories");
+	next!.click();
+	check(view.state.selection.main.head === formsText.indexOf("Viens-tu"), "Formes : la catégorie ne boucle pas");
+	view.dom.querySelector<HTMLElement>(".finition-focused")!.click();
+	check(counter!.textContent === "5", "Formes : désélection sans retour au compteur total");
+	next!.click();
+	check(view.state.selection.main.head === formsText.indexOf("Quelle joie"), "Formes : navigation globale non restaurée");
+	host.commands.find(command => command.name === "Reset")!.checkCallback!(false);
+	await waitFor(() => !view.dom.querySelector(".finition-forme"), "Formes : Reset conserve les surlignages");
+	const copuleText = "😀 Il a fait beau. Elle se révèle. Ils sont restés.";
+	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: copuleText } });
+	await activate("copules", 3, copuleText.indexOf("fait"));
+	const copuleMarks = Array.from(view.dom.querySelectorAll<HTMLElement>(".finition-copule"));
+	check(copuleMarks.map(mark => mark.textContent).join("|") === "fait|révèle|restés", "Copules : mauvais mots surlignés ou auxiliaires conservés");
+	check(dictionaryReads === 1, "Copules recharge le lexique déjà partagé");
+	view.dispatch({ selection: { anchor: copuleText.indexOf("fait") } });
+	copuleMarks[0].click();
+	check(counter!.textContent === "1", "Copules : compteur non limité au verbe sélectionné");
+	next!.click();
+	check(view.state.selection.main.head === copuleText.indexOf("fait"), "Copules : la flèche rejoint un autre verbe");
 	const prefix = "😀 Le chat et le chat, mais pas la souris.";
 	const longText = prefix + " Le chat et le chat.";
 	for (const [mode, expandedCount, first, selector] of [
@@ -300,7 +331,7 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 		for (const item of getMenu()) command(item.title);
 		check(command("Structure").checkCallback!(true) === debug, "Structure ne respecte pas le mode debug dans la palette");
 	}
-	for (const [name, mode] of [["Répétitions", "repetition"], ["Atténuations", "hedging"], ["Stéréotypes", "stereotype"], ["Monotonie", "burstiness"], ["Tricolons", "ternary"], ["Cadence", "cadence"], ["Charnières", "hinges"]] as const) {
+	for (const [name, mode] of [["Répétitions", "repetition"], ["Atténuations", "hedging"], ["Stéréotypes", "stereotype"], ["Monotonies", "burstiness"], ["Tricolons", "ternary"], ["Cadences", "cadence"], ["Charnières", "hinges"], ["Formes", "formes"], ["Copules", "copules"]] as const) {
 		plugin.settings.mode = "none";
 		const action = command(name).checkCallback!;
 		check(action(true) === true && plugin.settings.mode === "none", `${name} : vérifier active le mode`);

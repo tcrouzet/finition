@@ -74,7 +74,7 @@ export async function checkLocalSynonyms(Plugin: typeof FinitionPlugin, getMenu:
 	check(Array.from(container.querySelectorAll(".setting-item-name")).map(row => row.textContent).join("|") === "Synonymes|Dictionnaire|Finition|Charger un dictionnaire", "L’ordre des réglages de synonymes est incorrect");
 	check(buttons().map(button => button.textContent).join("|") === "Charger|Charger|Parcourir…", "Des commandes de suppression sont présentes sans dictionnaire personnel");
 	const menu = () => { (plugin as unknown as { showModeMenu: (event: MouseEvent) => void }).showModeMenu(new MouseEvent("click")); return getMenu(); };
-	check(menu().find(item => item.title === "Synonyme")?.disabled, "Synonyme actif sans données");
+	check(menu().find(item => item.title === "Synonymes")?.disabled, "Synonymes actif sans données");
 	const beforeDownload = requests.length;
 	const engine = plugin.settings.spellingEngine;
 	const prefix = "https://github.com/tcrouzet/finition/releases/download/resources-0.4.3/";
@@ -86,13 +86,13 @@ export async function checkLocalSynonyms(Plugin: typeof FinitionPlugin, getMenu:
 	check(requests.length === beforeDownload + 6 && plugin.hasSynonyms && plugin.settings.spellingEngine === engine, "Pack synonymes incomplet ou moteur modifié");
 	await plugin.loadSettings();
 	await plugin.loadLinguisticResources();
-	check(plugin.hasSynonyms && !menu().find(item => item.title === "Synonyme")?.disabled && menu().some(item => item.title === "Synonymes IA"), "Choix locaux/IA absents après rechargement");
+	check(plugin.hasSynonyms && !menu().find(item => item.title === "Synonymes")?.disabled && menu().some(item => item.title === "Synonymes IA"), "Choix locaux/IA absents après rechargement");
 	tab.update();
 	check(select().options.length === 1 && select().options[0].text === "Finition" && buttons()[0].textContent === "Recharger", "Finition installé manque dans le sélecteur");
 	const offline = requests.length;
 	setHandler(async () => { throw new Error("Réseau interdit pendant la recherche locale"); });
 	await plugin.runSynonymsLocal();
-	check(document.querySelector(".finition-synonyms")?.closest(".modal")?.querySelector("h2")?.textContent === "Synonyme", "Fenêtre locale absente");
+	check(document.querySelector(".finition-synonyms")?.closest(".modal")?.querySelector("h2")?.textContent === "Synonymes", "Fenêtre locale absente");
 	check(document.querySelector('[aria-label="Remplacer par véloce"]'), "Données publiques non utilisées");
 	document.querySelector<HTMLButtonElement>('[aria-label="Remplacer par véloce"]')!.click();
 	check(editor.getValue() === "Un pas véloce.", "Remplacement local incorrect");
@@ -119,7 +119,7 @@ export async function checkLocalSynonyms(Plugin: typeof FinitionPlugin, getMenu:
 	active = markdown;
 	for (const selection of [{ anchor: 7, head: 7 }, { anchor: 3, head: 13 }]) {
 		view.dispatch({ selection });
-		const item = menu().find(item => item.title === "Synonyme")!;
+		const item = menu().find(item => item.title === "Synonymes")!;
 		check(!item.disabled, "Une sélection absente ou invalide grise Synonyme malgré le dictionnaire installé");
 		const before = notices.length;
 		await item.click();
@@ -192,7 +192,7 @@ export async function checkLocalSynonyms(Plugin: typeof FinitionPlugin, getMenu:
 	for (const path of ["../hors-coffre.json", "/tmp/hors-coffre.json", "absent.json", "dictionnaires/prive.json"]) {
 		let rejected = false;
 		try { await plugin.setSynonymDictionaryPath(path); } catch { rejected = true; }
-		check(rejected && plugin.settings.synonymDictionaryPath === importedPath && plugin.hasSynonyms && !menu().find(item => item.title === "Synonyme")?.disabled, "Un import invalide désactive le dernier dictionnaire valide");
+		check(rejected && plugin.settings.synonymDictionaryPath === importedPath && plugin.hasSynonyms && !menu().find(item => item.title === "Synonymes")?.disabled, "Un import invalide désactive le dernier dictionnaire valide");
 	}
 	const save = plugin.saveSettings.bind(plugin);
 	plugin.saveSettings = async () => { throw new Error("Écriture impossible"); };

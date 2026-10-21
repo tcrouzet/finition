@@ -11,11 +11,13 @@ import type { LexemeRow } from "../plugin/modes/finition-corrector/lexicon";
 import * as process from "node:process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkCopules } from "./check-copules";
 
 export async function checkSharedLexicon() {
 	const read = (path: string) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 	const source: unknown = JSON.parse(await read("resources/lexique/finition-dictionnaire.json"));
 	const dictionary = await decodeDictionary(source);
+	checkCopules(dictionary);
 	const reference = JSON.parse(await read("scripts/lexicon/repetition-v1.json")) as Record<string, string>;
 	const repetition = adaptRepetitions(dictionary);
 	for (const [form, lemma] of Object.entries(reference)) assert.equal(repetition.get(form), lemma, `Lemme de répétition modifié : ${form}`);

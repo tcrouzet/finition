@@ -161,7 +161,7 @@ export function fixBlankLines(text: string): string {
 /** Règles de ponctuation inline (espaces, tirets, apostrophes), sur le texte passé tel quel (typiquement une sélection). */
 export function fixPunctuationSpacing(text: string): string {
 	const { text: protectedText, restore } = protectSpans(text);
-	let result = protectedText;
+	let result = protectedText.replace(/\.{3,}/g, "…");
 	result = fixGuillemets(result);
 	result = fixDoublePunctuation(result);
 	result = fixLineStartDashes(result);

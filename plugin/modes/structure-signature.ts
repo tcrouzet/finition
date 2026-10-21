@@ -5,6 +5,7 @@
  */
 
 import { splitRanges, trimRange } from "./clause-split";
+import { hasNegation } from "./formes";
 
 // --- Constantes, copiées telles quelles depuis stats.py --------------------
 
@@ -64,7 +65,7 @@ function structureTokens(sentence: string): string[] {
 			const prefix = rawToken.slice(0, idx);
 			const rest = rawToken.slice(idx + 1);
 			if (ELIDED_PREFIXES.has(prefix) && rest) {
-				tokens.push(prefix, rest);
+				tokens.push(prefix === "qu" ? "que" : prefix, rest);
 				continue;
 			}
 		}
@@ -200,9 +201,13 @@ function categorizeStructureWords(words: string[], getCategory: GetCategory): st
 	let previousCategory = "";
 	let previousWordCategory = "";
 	let subjectPronoun = "";
+	let negativePredicate = false;
 	for (let wordIndex = 0; wordIndex < words.length; wordIndex++) {
 		const word = words[wordIndex];
-		if (NEGATIONS.has(word)) continue;
+		if (NEGATIONS.has(word)) {
+			if (word === "ne" || word === "n") negativePredicate = true;
+			continue;
+		}
 		if (IGNORED_STRUCTURE_PUNCTUATION.has(word)) continue;
 		if (STRUCTURE_PUNCTUATION.has(word)) {
 			tokens.push(word);
@@ -218,6 +223,10 @@ function categorizeStructureWords(words: string[], getCategory: GetCategory): st
 
 		let category = pourInfinitive ? "subordination" : wordCategory(word, words[wordIndex + 1], getCategory) || "inconnu";
 		const alternatives = getCategory(word).toLowerCase().split("|");
+		if (negativePredicate && alternatives.includes("verbe")) {
+			category = "verbe";
+			negativePredicate = false;
+		}
 		if (!["participe", "adjectif"].includes(category) && alternatives.includes("verbe") && !["déterminant", "préposition"].includes(previousWordCategory) && ["nom", "pronom"].includes(previousCategory)) category = "verbe";
 		if (word === "tout" && getCategory(words[wordIndex + 1] ?? "").split("|").includes("adjectif")) category = "adverbe";
 		if (previousWordCategory === "déterminant" && alternatives.includes("nom") && !AUXILIARIES.has(word) && !COPULAR_FORMS.has(word)) category = "nom";
@@ -601,6 +610,14 @@ export function analyzeSentenceStructure(text: string, start: number, end: numbe
 		if (wordCategory(words[0], words[1], getCategory) === "conjonction" && aligned[index].displayTokens[0] !== words[0]) {
 			aligned[index].displayTokens.unshift(words[0]);
 		}
+		const group = text.slice(...ranges[index]);
+		if (!aligned[index].displayTokens.includes("VERBE") || !hasNegation(group)) continue;
+		const rawWords = structureTokensWithOffsets(group);
+		const hinge = subordinationOccurrences(rawWords, getCategory)[0];
+		const head = group.slice(0, hinge?.start ?? group.length);
+		const headRoles = categorizeStructureWords(structureTokens(head), getCategory);
+		const predicate = headRoles.some(role => role === "VERBE" || role === "COPULE") ? head : group.slice(hinge?.end ?? 0);
+		if (hasNegation(predicate)) aligned[index].displayTokens = aligned[index].displayTokens.flatMap(role => role === "VERBE" ? ["NE", "PAS", "VERBE"] : [role]);
 	}
 	return aligned;
 }
@@ -714,7 +731,7 @@ function structureTokensWithOffsets(sentence: string): Array<{ word: string; sta
 			const prefix = rawToken.slice(0, idx);
 			const rest = rawToken.slice(idx + 1);
 			if (ELIDED_PREFIXES.has(prefix) && rest) {
-				tokens.push({ word: prefix, start, end: start + idx });
+				tokens.push({ word: prefix === "qu" ? "que" : prefix, start, end: start + idx });
 				tokens.push({ word: rest, start: start + idx + 1, end: start + rawToken.length });
 				continue;
 			}

@@ -92,12 +92,12 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	check(!getMenu().some(item => item.title === "Structure"), "Structure est visible sans mode debug");
 	plugin.settings.debugMode = true;
 	check(menus().every(item => item.disabled), "Installation vide : menus actifs");
-	check(["Répétitions", "Stéréotypes"].every(title => getMenu().find(item => item.title === title)?.disabled), "Un surlignage lexical est disponible sans dictionnaire");
-	for (const mode of ["repetition", "stereotype"] as const) {
+	check(["Répétitions", "Stéréotypes", "Copules"].every(title => getMenu().find(item => item.title === title)?.disabled), "Un surlignage lexical est disponible sans dictionnaire");
+	for (const mode of ["repetition", "stereotype", "copules"] as const) {
 		await plugin.setMode(mode);
 		check(plugin.settings.mode !== mode, "Un surlignage lexical s’active sans dictionnaire");
 	}
-	check(["Atténuations", "Monotonie", "Charnières"].every(title => !getMenu().find(item => item.title === title)?.disabled), "Une analyse sans lexique est grisée");
+	check(["Atténuations", "Monotonies", "Charnières"].every(title => !getMenu().find(item => item.title === title)?.disabled), "Une analyse sans lexique est grisée");
 	const container = document.body.createDiv();
 	const tab = new FinitionSettingTab(plugin.app, plugin);
 	tab.containerEl = container;

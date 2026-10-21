@@ -40,6 +40,8 @@ export function buildStructureReport(text: string, getCategory: GetCategory): st
 	const lines: string[] = [
 		"# Finition — Structure",
 		"",
+		"Un verbe négatif est noté NE PAS VERBE, quelle que soit la marque de négation (pas, plus, jamais…).",
+		"",
 		"Encodage syntaxique de chaque groupe (CADRATIF, SUJET, VERBE, COMPLÉMENT, CONJONCTION, INCONNU ; les compléments postverbaux sont condensés en COMPLÉMENT et toute suite avec son propre verbe conjugué après une charnière est condensée en SUBORDONNÉE), généré pour comprendre comment les modes Cadence et Tricolons analysent le texte. Le « (N) » après un groupe indique sa position (1, 2 ou 3) dans un tricolon détecté. Lecture seule : ce document n'est lié à aucun autre et peut être supprimé sans conséquence.",
 		"",
 		"---",

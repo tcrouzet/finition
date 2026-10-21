@@ -6,6 +6,7 @@ import { createNeuralCorrector } from "./neural";
 import { createElectraCorrector } from "./electra";
 import { decodeDictionary, dictionaryFile, personalDictionaryFile } from "../../lexicon/shared";
 import { adaptRepetitions } from "../../lexicon/repetition-adapter";
+import { buildCopuleLexicon } from "../copules";
 
 let corrector: Promise<FinitionCorrector> | undefined;
 let neural: ReturnType<typeof createNeuralCorrector> | undefined;
@@ -31,7 +32,8 @@ self.onmessage = (event: MessageEvent<{ id: number; text: string; words?: string
 	queue = queue.then(async () => {
 		if (event.data.lemmas) {
 			const value: unknown = JSON.parse(new TextDecoder().decode(await readAsset(dictionaryFile)));
-			return adaptRepetitions(await decodeDictionary(value, "neural"));
+			const dictionary = await decodeDictionary(value, "neural");
+			return { lemmas: adaptRepetitions(dictionary), copules: buildCopuleLexicon(dictionary) };
 		}
 		if (lexicalOnly) {
 			neural ??= createNeuralCorrector(readAsset).catch((error: unknown) => { neural = undefined; throw error; });

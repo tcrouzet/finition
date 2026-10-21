@@ -135,7 +135,9 @@
  * (8 sur 16), les phrases plus courtes/longues s'en écartent par pas de 2
  * (voir modes/burstiness.ts, colorsForRun()).
  */
-.finition-burst {
+.finition-burst,
+.finition-forme,
+.finition-copule {
 	border-radius: 3px;
 	padding: 0 0.05em;
 	cursor: help;

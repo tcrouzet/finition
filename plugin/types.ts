@@ -10,13 +10,21 @@
 
 import type { SynonymMetadata } from "./synonyms";
 import type { DictionaryKind, StoredDictionary } from "./dictionaries";
+import AI_MODEL_PRESETS from "./ai/models.json";
 
 /**
  * Modes d'analyse, mutuellement exclusifs : un seul actif à la fois
  * (cumuler les surlignages rendrait le texte illisible et serait coûteux
  * à calculer en direct). "none" = aucun surlignage.
  */
-export type FinitionMode = "none" | "repetition" | "hedging" | "stereotype" | "burstiness" | "ternary" | "cadence" | "hinges" | "tic-ia";
+export type FinitionMode = "none" | "repetition" | "hedging" | "stereotype" | "burstiness" | "ternary" | "cadence" | "hinges" | "formes" | "copules" | "tic-ia";
+
+export const FORM_TYPES = [
+	{ id: "negative", key: "formNegativeColorIndex", label: "Négatives" },
+	{ id: "question", key: "formQuestionColorIndex", label: "Interrogatives" },
+	{ id: "exclamation", key: "formExclamationColorIndex", label: "Exclamatives" },
+	{ id: "ellipsis", key: "formEllipsisColorIndex", label: "Points de suspension" },
+] as const;
 
 // Prompts "système" de Corrections IA, édités directement dans ai/prompt-*.md
 // (pas en dur dans le code) — inlinés comme texte au build par esbuild (voir
@@ -131,6 +139,11 @@ export interface FinitionSettings {
 	stereotypeColorIndex: number;
 	ternaryColorIndex: number;
 	hingeColorIndex: number;
+	copuleColorIndex: number;
+	formNegativeColorIndex: number;
+	formQuestionColorIndex: number;
+	formExclamationColorIndex: number;
+	formEllipsisColorIndex: number;
 	// La palette elle-même (PALETTE_SIZE couleurs hexadécimales), éditable
 	// via un sélecteur de couleur natif dans les réglages — plus besoin de
 	// toucher palette.css à la main. Appliquée en direct par main.ts via une
@@ -244,9 +257,14 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	stereotypeColorIndex: 5, // turquoise pastel (même couleur qu'avant, nouvel index)
 	ternaryColorIndex: 14, // violet pastel (même couleur qu'avant, nouvel index)
 	hingeColorIndex: 2, // bleu clair pastel
+	copuleColorIndex: 14,
+	formNegativeColorIndex: 3,
+	formQuestionColorIndex: 6,
+	formExclamationColorIndex: 12,
+	formEllipsisColorIndex: 15,
 	palette: DEFAULT_PALETTE,
 	aiApiKey: "",
-	aiModel: "claude-sonnet-5-5",
+	aiModel: AI_MODEL_PRESETS[0].value,
 	localAIServer: "",
 	localAIModel: "",
 	aiChunkSize: 5000,
@@ -322,6 +340,7 @@ export interface FinitionRuntime {
 	updateTicIAStats: (view: import("@codemirror/view").EditorView, tagged: number, total: number, pending: boolean) => void;
 	settings: FinitionSettings;
 	lexicon: Map<string, string>;
+	copuleLexicon: import("./modes/copules").CopuleLexicon;
 	functionWords: Set<string>;
 	hedgingPhrases: string[];
 	// Motifs de stéréotypes : chaque entrée est une séquence de lemmes

@@ -6,17 +6,20 @@ import { resourceEngines, resourceLabels } from "./linguistic-files";
 import { finitionSynonymMetadata, isSynonymDocumentation, synonymDocumentation, synonymFileLimit, type SynonymMetadata } from "./synonyms";
 import type FinitionPlugin from "./main";
 import { neuralDocumentation, neuralFileLimit } from "./neural-models";
-import { DEFAULT_PALETTE, DEFAULT_SETTINGS, parseGrammalecteDictionary, parseStopWords } from "./types";
+import { DEFAULT_PALETTE, DEFAULT_SETTINGS, FORM_TYPES, parseGrammalecteDictionary, parseStopWords } from "./types";
 import { dictionaryDocumentation, dictionaryLabels, publicDictionaryMetadata, type DictionaryKind } from "./dictionaries";
 import { lexiconDocumentation, publicLexiconMetadata } from "./lexicon/dictionaries";
+import AI_MODEL_PRESETS from "./ai/models.json";
 
-type ColorFunctionKey = "hedgingColorIndex" | "stereotypeColorIndex" | "hingeColorIndex" | "grammalecteColorIndex";
+type ColorFunctionKey = "hedgingColorIndex" | "stereotypeColorIndex" | "hingeColorIndex" | "copuleColorIndex" | "grammalecteColorIndex" | typeof FORM_TYPES[number]["key"];
 
 const COLOR_FUNCTIONS: Array<{ key: ColorFunctionKey; label: string }> = [
 	{ key: "hedgingColorIndex", label: "Atténuations" },
 	{ key: "stereotypeColorIndex", label: "Stéréotypes" },
 	{ key: "hingeColorIndex", label: "Charnières" },
+	{ key: "copuleColorIndex", label: "Copules" },
 	{ key: "grammalecteColorIndex", label: "Orthographe" },
+	...FORM_TYPES.map(type => ({ key: type.key, label: `Formes : ${type.label.toLowerCase()}` })),
 ];
 // Tricolons n'a plus de couleur unique réglable ici : chaque tricolon
 // détecté prend désormais une couleur différente de la palette (tournante,
@@ -497,12 +500,6 @@ export class FinitionSettingTab extends PluginSettingTab {
 		openaiModelLink.rel = "noopener";
 		modelDesc.appendChild(openaiModelLink);
 
-		const AI_MODEL_PRESETS: Array<{ value: string; label: string }> = [
-			{ value: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" },
-			{ value: "claude-haiku-5-5", label: "Claude Haiku 5.5" },
-			{ value: "gpt-6-luna", label: "GPT-6 Luna" },
-			{ value: "gpt-6.1-sol", label: "GPT-6.1 Sol" },
-		];
 		const CUSTOM_MODEL_VALUE = "__custom__";
 		const isPreset = AI_MODEL_PRESETS.some((p) => p.value === this.plugin.settings.aiModel);
 
@@ -1025,7 +1022,12 @@ export class FinitionSettingTab extends PluginSettingTab {
 			dropdown.setValue(assigned ? assigned.key : "none");
 			dropdown.onChange(async (value) => {
 				if (value === "none") return; // retrait : réassigne la fonction à une autre couleur à la place
-				this.plugin.settings[value as ColorFunctionKey] = index;
+				const key = value as ColorFunctionKey;
+				const previous = this.plugin.settings[key];
+				for (const assigned of COLOR_FUNCTIONS) {
+					if (assigned.key !== key && this.plugin.settings[assigned.key] === index) this.plugin.settings[assigned.key] = previous;
+				}
+				this.plugin.settings[key] = index;
 				await this.plugin.saveSettings();
 				this.plugin.refreshAllEditors();
 				this.update(); // réaffiche pour mettre à jour les autres menus déroulants (fonction réassignée)

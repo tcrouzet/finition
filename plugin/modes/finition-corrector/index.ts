@@ -5,6 +5,9 @@ import type { ReadNeuralAsset } from "./neural-assets";
 import { maskMarkdown } from "./markdown";
 import { specializedFiles } from "./neural-assets";
 import { personalDictionaryFile } from "../../lexicon/shared";
+import type { CopuleLexicon } from "../copules";
+
+export interface LexicalData { lemmas: Map<string, string>; copules: CopuleLexicon }
 
 export class FinitionCorrectorEngine {
 	neuralEnabled = false;
@@ -54,7 +57,10 @@ export class FinitionCorrectorEngine {
 		return this.request("", words) as Promise<Record<string, string>>;
 	}
 	getLemmas(): Promise<Map<string, string>> {
-		return this.request("", undefined, false, undefined, true) as Promise<Map<string, string>>;
+		return this.getLexicalData().then(data => data.lemmas);
+	}
+	getLexicalData(): Promise<LexicalData> {
+		return this.request("", undefined, false, undefined, true) as Promise<LexicalData>;
 	}
 	private request(text: string, words?: string[], phonetics = false, onPartial?: (errors: GrammalecteError[]) => void, lemmas = false): Promise<unknown> {
 		if (!this.worker) {
