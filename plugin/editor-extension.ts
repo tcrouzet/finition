@@ -238,6 +238,12 @@ export function finitionEditorExtension(runtime: FinitionRuntime) {
 				const view = update.view;
 				if (update.docChanged) runtime.updateAnalysisHighlights(view, [], true);
 				if (this.timer !== null) window.clearTimeout(this.timer);
+				if (runtime.settings.mode === "none") {
+					this.timer = null;
+					this.decorations = Decoration.none;
+					runtime.updateAnalysisHighlights(view, [], false);
+					return;
+				}
 				// Un changement de réglages ou l'arrivée de nouvelles
 				// catégories Grammalecte doit s'appliquer immédiatement ;
 				// seule la frappe est debouncée pour éviter de ralentir la

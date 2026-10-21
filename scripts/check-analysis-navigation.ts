@@ -74,8 +74,8 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	const documentCount = document.querySelector<HTMLElement>(".finition-document-count");
 	check(!documentCount!.parentElement!.hasAttribute("aria-label"), "L’infobulle Finition recouvre celle du compteur");
 	check(documentCount?.hidden, "Compteur du document visible par défaut");
-	check(documentCount!.parentElement!.querySelector(".finition-document-navigation") === documentCount!.parentElement!.firstElementChild && documentCount!.previousElementSibling?.classList.contains("finition-document-navigation"), "Les flèches de navigation doivent précéder le compteur du document");
-	check(documentCount!.nextElementSibling?.getAttribute("aria-label") === "Finition", "Infobulle Finition absente de l’icône");
+	check(documentCount!.parentElement!.firstElementChild === documentCount && documentCount!.nextElementSibling?.classList.contains("finition-document-navigation"), "Le compteur de taille doit précéder les flèches de navigation");
+	check(documentCount!.parentElement!.querySelector(".finition-status-icon")?.getAttribute("aria-label") === "Finition", "Infobulle Finition absente de l’icône");
 	plugin.settings.documentCountDisplay = "both";
 	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "Un été 😀." } });
 	events.get("editor-change")!();
@@ -112,7 +112,7 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	const previous = document.querySelector<HTMLButtonElement>(".finition-previous-occurrence");
 	const next = document.querySelector<HTMLButtonElement>(".finition-next-occurrence");
 	check(counter && previous && next, "Compteur et flèches absents");
-	check(counter!.previousElementSibling === previous && counter!.nextElementSibling === next && next!.nextElementSibling === documentCount, "La navigation doit être groupée avant la taille : gauche, nombre, droite");
+	check(documentCount!.nextElementSibling === previous && counter!.previousElementSibling === previous && counter!.nextElementSibling === next && next!.nextElementSibling?.classList.contains("finition-status-icon"), "La navigation doit être groupée entre la taille et la musique : gauche, nombre, droite");
 	check(previous!.dataset.icon === "arrow-left" && next!.dataset.icon === "arrow-right" && document.querySelectorAll(".finition-document-navigation").length === 2, "Les flèches horizontales doivent remplacer l’ancien mécanisme, sans doublon");
 	const activate = async (mode: FinitionMode, expected: number, first: number) => {
 		document.querySelector<HTMLElement>("#result")!.dataset.stage = mode;
@@ -123,6 +123,7 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 		document.querySelector<HTMLElement>("#result")!.dataset.stage = `${mode}: mode activé`;
 		await waitFor(() => counter!.textContent === String(expected), `Activation ${mode} : compteur incorrect`);
 		await turn();
+		check(view.dom.querySelector(".finition-navigation-focused"), `Activation ${mode} : aucune occurrence initialement repérée`);
 		check(view.state.selection.main.eq(selection) && view.scrollDOM.scrollTop === scrollTop, `Activation ${mode} : sélection ou défilement déplacé`);
 		next!.click();
 		check(view.state.selection.main.head === first && view.hasFocus, `Navigation ${mode} : première occurrence inaccessible`);
@@ -226,6 +227,12 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	check(focused && getComputedStyle(focused).backgroundColor === "rgb(0, 0, 0)" && getComputedStyle(focused).color === "rgb(255, 255, 255)", "Le groupe sélectionné ne reste pas blanc sur noir");
 	focused.click();
 	check(!view.dom.querySelector(".finition-focused") && getComputedStyle(view.dom.querySelector<HTMLElement>(".finition-hedging")!).backgroundColor === normalBackground, "La désélection ne restaure pas la couleur du groupe");
+	const switching = plugin.setMode("hinges");
+	check(!view.dom.querySelector("[data-finition-lemma], .finition-navigation-focused"), "Le reset doit effacer les anciens surlignages avant le traitement suivant");
+	check(document.querySelector(".notice .finition-correction-spinner"), "Le changement de fonction n’affiche aucune roue");
+	await switching;
+	await waitFor(() => !document.querySelector(".notice .finition-correction-spinner"), "La roue reste après le calcul du surlignage");
+	await activate("hedging", 2, text.indexOf("Il semblerait"));
 	next!.click();
 	check(view.state.selection.main.head === text.lastIndexOf("Il semblerait"), "La flèche ne rejoint pas l’occurrence suivante");
 	next!.click();
@@ -257,6 +264,7 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	internal.updateAnalysisHighlights(view, ranges, true);
 	await turn();
 	check(counter!.textContent === "…" && next!.disabled && view.state.selection.main.head === view.state.doc.length, "Un résultat provisoire déclenche la navigation");
+	check(view.dom.querySelector(".finition-navigation-focused"), "Le premier résultat doit être repéré avant la fin de l’analyse");
 	internal.updateAnalysisHighlights(view, ranges, false);
 	await turn();
 	check(counter!.textContent === "1" && view.state.selection.main.head === view.state.doc.length, "La résolution asynchrone déplace le curseur");

@@ -119,6 +119,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	private finitionCorrectorEngine: FinitionCorrectorEngine | null = null;
 	private spellingRequest = 0;
 	private pendingCorrectionRequest: number | null = null;
+	private analysisProgress: { notice: Notice; view: MarkdownView | null; mode?: FinitionMode } | null = null;
 	private linguisticResources: LinguisticResources | null = null;
 	private neuralModels: NeuralModels | null = null;
 	wordDictionaries: WordDictionaries | null = null;
@@ -150,7 +151,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.registerEditorExtension(finitionAIExtension(this));
 		this.registerEditorExtension(finitionGrammalecteExtension(this));
 		this.addSettingTab(new FinitionSettingTab(this.app, this));
-		this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.updateStatusBarIcon()));
+		this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
+			if (this.analysisProgress?.view !== this.app.workspace.getActiveViewOfType(MarkdownView)) this.finishAnalysisProgress();
+			this.updateStatusBarIcon();
+		}));
 		this.registerEvent(this.app.workspace.on("editor-change", () => this.updateDocumentCounts()));
 		this.registerEvent(this.app.workspace.on("file-open", () => this.updateDocumentCounts()));
 
@@ -218,6 +222,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	onunload(): void {
+		this.finishAnalysisProgress();
 		this.lexiconEngine?.destroy();
 		this.lexiconLoad = undefined;
 		document.body.classList.remove("finition-hide-backlinks-count");
@@ -447,9 +452,9 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		const icon = this.statusBarItem.createSpan({ cls: "finition-status-icon", attr: { "aria-label": "Finition" } });
 		setIcon(icon, "music");
 		this.documentCountEl = this.statusBarItem.createSpan({ cls: "finition-document-count" });
-		this.statusBarItem.prepend(this.documentCountEl);
 		this.ticIAPercentage = this.statusBarItem.createSpan();
 		this.analysisNavigation = new AnalysisNavigation(this, this.statusBarItem);
+		this.statusBarItem.prepend(this.documentCountEl);
 		this.updateStatusBarIcon();
 		this.registerDomEvent(this.statusBarItem, "click", (evt) => this.showModeMenu(evt));
 	}
@@ -480,6 +485,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 	updateAnalysisHighlights(view: EditorView, highlights: Highlight[], pending: boolean): void {
 		this.analysisNavigation?.update(view, highlights, pending);
+		const progress = this.analysisProgress;
+		if (!pending && progress?.mode === this.settings.mode && (progress.view?.editor as { cm?: EditorView } | undefined)?.cm === view) this.finishAnalysisProgress(progress.notice);
 	}
 
 	updateGrammalecteHighlights(view: EditorView, highlights: Pick<Highlight, "from" | "to">[]): void {
@@ -505,37 +512,65 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			new Notice("Chargez le dictionnaire ou le moteur requis dans les paramètres de Finition.");
 			return;
 		}
-		if (this.settings.mode !== mode && ["repetition", "stereotype", "copules"].includes(mode)) {
-			await this.loadLexiconData(true);
-			if (!this.lexicon.size) return;
+		const deactivate = this.settings.mode === mode || mode === "none";
+		const reset = this.resetAnalysis();
+		const request = this.spellingRequest;
+		if (deactivate) { await reset; return; }
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const notice = this.startAnalysisProgress(analysisModes.find(item => item.mode === mode)?.name ?? "Analyse", view, mode);
+		let activated = false;
+		try {
+			await reset;
+			// Laisser l’éditeur effacer l’ancien affichage et afficher la roue avant le calcul.
+			await new Promise<void>(resolve => window.setTimeout(resolve, 0));
+			if (request !== this.spellingRequest) return;
+			if (["repetition", "stereotype", "copules"].includes(mode)) {
+				await this.loadLexiconData(true);
+				if (!this.lexicon.size) return;
+			}
+			if (request !== this.spellingRequest || view !== this.app.workspace.getActiveViewOfType(MarkdownView)) return;
+			this.settings.mode = mode;
+			await this.saveSettings();
+			if (request !== this.spellingRequest) return;
+			this.updateStatusBarIcon();
+			this.refreshAllEditors();
+			activated = Boolean((view?.editor as { cm?: EditorView } | undefined)?.cm);
+		} finally {
+			if (!activated) this.finishAnalysisProgress(notice);
 		}
-		// Recliquer sur le mode déjà actif l'éteint (retour à "none").
-		this.settings.mode = this.settings.mode === mode ? "none" : mode;
-		await this.saveSettings();
-		this.updateStatusBarIcon();
-		this.refreshAllEditors();
+	}
+
+	private startAnalysisProgress(label: string, view: MarkdownView | null, mode?: FinitionMode): Notice {
+		this.finishAnalysisProgress();
+		const notice = new Notice(loadingMessage(`${label} : analyse en cours…`), 0);
+		this.analysisProgress = { notice, view, mode };
+		return notice;
+	}
+
+	private finishAnalysisProgress(notice = this.analysisProgress?.notice): void {
+		notice?.hide();
+		if (this.analysisProgress?.notice === notice) this.analysisProgress = null;
 	}
 
 	private async runSpellingEngine(engine: ResourceEngine): Promise<void> {
 		if (!this.isLinguisticEngineInstalled(engine)) return;
-		if (this.settings.spellingEngine === engine && this.grammalecteErrors.length > 0) { await this.runGrammalecte(); return; }
-		if (engine === "finition-corrector") this.settings.spellingNeural = true;
-		await this.setSpellingEngine(engine);
-		await this.runGrammalecte();
+		await this.runGrammalecte(engine);
 	}
 
 	private get hasActiveAnalysis(): boolean {
-		return this.settings.mode !== "none" || this.pendingCorrectionRequest === this.spellingRequest || this.grammalecteErrors.length > 0 || this.aiGroups.length > 0;
+		return this.analysisProgress !== null || this.settings.mode !== "none" || this.pendingCorrectionRequest === this.spellingRequest || this.grammalecteErrors.length > 0 || this.aiGroups.length > 0;
 	}
 
 	private async resetAnalysis(): Promise<void> {
-		this.spellingRequest++;
+		const request = ++this.spellingRequest;
+		this.finishAnalysisProgress();
 		this.pendingCorrectionRequest = null;
 		this.settings.mode = "none";
 		this.grammalecteErrors = [];
 		this.grammalecteErrorsVersion++;
 		this.clearAISuggestions();
 		await this.saveSettings();
+		if (request !== this.spellingRequest) return;
 		this.updateStatusBarIcon();
 		this.refreshAllEditors();
 	}
@@ -646,8 +681,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	 */
 	private async toggleOrthoTypoIA(): Promise<void> {
 		if (this.aiGroups.length > 0) {
-			this.spellingRequest++;
-			this.clearAISuggestions();
+			await this.resetAnalysis();
 			return;
 		}
 		await this.runOrthoTypoIA();
@@ -668,13 +702,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			new Notice(`Corrections IA : ${error instanceof Error ? error.message : String(error)}`);
 			return;
 		}
-		const request = ++this.spellingRequest;
+		const reset = this.resetAnalysis();
+		const request = this.spellingRequest;
 		this.pendingCorrectionRequest = request;
 		const document = editor.getValue();
-		this.grammalecteErrors = [];
-		this.grammalecteErrorsVersion++;
-
-		this.clearAISuggestions();
 
 		this.aiSourcePath = view.file?.path ?? null;
 		const selectionFrom = editor.posToOffset(editor.getCursor("from"));
@@ -688,7 +719,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		// setMessage) plutôt qu'un message figé affiché une fois pour toutes
 		// au début — sinon rien ne permet de suivre ce qui se passe pendant
 		// l'attente des appels API, potentiellement longs.
-		const progress = new Notice(`Corrections IA : tronçon 1/${chunks.length}...`, 0);
+		const progress = this.startAnalysisProgress("Corrections IA", view);
 		const errors: string[] = [];
 
 		// try/finally : si quoi que ce soit plante de façon inattendue (pas
@@ -696,9 +727,11 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		// notification de progression se ferme quand même et l'erreur
 		// s'affiche, au lieu de laisser croire que le plugin est resté bloqué.
 		try {
+			await reset;
 			for (let i = 0; i < chunks.length; i++) {
+				if (request !== this.spellingRequest || document !== editor.getValue() || this.app.workspace.getActiveViewOfType(MarkdownView) !== view) return;
 				const chunk = chunks[i];
-				progress.setMessage(`Corrections IA : tronçon ${i + 1}/${chunks.length}...`);
+				progress.setMessage(loadingMessage(`Corrections IA : tronçon ${i + 1}/${chunks.length}…`));
 				if (chunk.text.trim().length === 0) continue;
 				const reviseChunk = connection.provider === "openai" ? reviseChunkWithRetryOpenAI : reviseChunkWithRetryAnthropic;
 				const start = selectionFrom + chunk.start;
@@ -732,10 +765,11 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			}
 			if (debugMode && errors.length === 0 && debugChunks.length) await this.createDebugNote(view, debugChunks.join("\n\n"), "");
 		} catch (e) {
+			if (request !== this.spellingRequest) return;
 			errors.push(`Erreur inattendue : ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
 			if (this.pendingCorrectionRequest === request) this.pendingCorrectionRequest = null;
-			progress.hide();
+			this.finishAnalysisProgress(progress);
 		}
 
 		if (errors.length > 0) {
@@ -817,8 +851,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	private async resolvePendingWordCategories(): Promise<void> {
 		const toFetch = [...this.pendingCategoryWords];
 		this.pendingCategoryWords.clear();
+		const generation = this.wordCategoryCacheVersion;
 		try {
-			const generation = this.wordCategoryCacheVersion;
 			const engine = await this.ensureSpellingEngine(this.settings.analysisEngine);
 			const result = await engine.getCategories(toFetch);
 			if (generation !== this.wordCategoryCacheVersion) return;
@@ -826,20 +860,29 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				this.wordCategoryCache.set(word, category);
 			}
 			this.wordCategoryCacheVersion++;
-			this.refreshAllEditors();
+			this.refreshAllEditors(false);
 		} catch (e) {
+			if (generation !== this.wordCategoryCacheVersion) return;
+			if (this.analysisProgress?.mode && ["ternary", "cadence", "tic-ia"].includes(this.analysisProgress.mode)) {
+				this.finishAnalysisProgress();
+				new Notice("Analyse : impossible de résoudre les catégories grammaticales.");
+			}
 			console.error("Finition — Cadence (Grammalecte) : impossible de résoudre les catégories.", e);
 		}
 	}
 
-	async setSpellingEngine(engine: FinitionSettings["spellingEngine"]): Promise<void> {
+	private configureSpellingEngine(engine: ResourceEngine): void {
 		if (!resourceEngines.includes(engine)) throw new Error("Moteur orthographique inconnu.");
 		this.settings.spellingEngine = engine;
 		if (this.finitionCorrectorEngine) this.finitionCorrectorEngine.neuralEnabled = engine === "finition-corrector" && this.settings.spellingNeural;
+		this.resetWordCategories();
+	}
+
+	async setSpellingEngine(engine: FinitionSettings["spellingEngine"]): Promise<void> {
+		this.configureSpellingEngine(engine);
 		this.spellingRequest++;
 		this.grammalecteErrors = [];
 		this.grammalecteErrorsVersion++;
-		this.resetWordCategories();
 		if (!this.hasAnalysisResources && this.settings.mode === "ternary") this.settings.mode = "none";
 		this.refreshAllEditors();
 		await this.saveSettings();
@@ -1155,40 +1198,28 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		return this.finitionCorrectorEngine;
 	}
 
-	private async runGrammalecte(): Promise<void> {
-		if (this.grammalecteErrors.length > 0) {
-			this.spellingRequest++;
-			this.grammalecteErrors = [];
-			this.grammalecteErrorsVersion++;
-			this.refreshAllEditors();
+	private async runGrammalecte(engine?: ResourceEngine): Promise<void> {
+		if ((!engine || engine === this.settings.spellingEngine) && this.grammalecteErrors.length > 0) {
+			await this.resetAnalysis();
 			return;
 		}
-		if (!this.hasLinguisticResources) { new Notice("Téléchargez un moteur linguistique dans les paramètres de Finition."); return; }
+		if (engine ? !this.isLinguisticEngineInstalled(engine) : !this.hasLinguisticResources) { new Notice("Téléchargez un moteur linguistique dans les paramètres de Finition."); return; }
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) return;
 		const editor = view.editor;
 		const document = editor.getValue();
 		const from = editor.posToOffset(editor.getCursor("from"));
 		const to = editor.posToOffset(editor.getCursor("to"));
-		const request = ++this.spellingRequest;
-
-		// Grammalecte souligne lui-même le texte (rouge/bleu) : le cumul avec
-		// un mode de surlignage continu (Répétition, Monotonie, Cadence,
-		// Tricolon...) ou avec des suggestions Corrections IA encore en attente
-		// rendrait le texte illisible. On désactive donc tout le reste au
-		// lancement, comme le changement de mode le fait déjà normalement.
-		if (this.settings.mode !== "none") {
-			this.settings.mode = "none";
-			await this.saveSettings();
+		if (engine) {
+			if (engine === "finition-corrector") this.settings.spellingNeural = true;
+			this.configureSpellingEngine(engine);
 		}
-		if (this.aiGroups.length > 0) {
-			this.clearAISuggestions();
-		}
+		const reset = this.resetAnalysis();
+		const request = this.spellingRequest;
 
 		const label = this.settings.spellingEngine === "finition-corrector" && this.settings.spellingNeural ? "Correction neurale" : "Corrections";
-		if (request !== this.spellingRequest) return;
 		this.pendingCorrectionRequest = request;
-		const notice = new Notice(loadingMessage(label), 0);
+		const notice = this.startAnalysisProgress(label, view);
 		const publish = (rawErrors: GrammalecteError[]): boolean => {
 			if (request !== this.spellingRequest || document !== editor.getValue() || this.app.workspace.getActiveViewOfType(MarkdownView) !== view) return false;
 			const dictionary = parseGrammalecteDictionary(this.settings.grammalecteCustomDictionary);
@@ -1200,25 +1231,30 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				(err) => !(err.sType === "orthographe" && err.sValue && dictionary.has(err.sValue.toLowerCase()))
 			);
 			this.grammalecteErrorsVersion++;
-			this.refreshAllEditors();
+			this.refreshAllEditors(this.grammalecteErrors.length === 0);
 			return true;
 		};
 		try {
+			await reset;
+			if (request !== this.spellingRequest) return;
 			const engine = await this.ensureSpellingEngine();
+			if (request !== this.spellingRequest) return;
 			const rawErrors = await analyzeCorrections(engine, document, from, to, publish);
-			if (!publish(rawErrors)) { notice.hide(); return; }
-			notice.hide();
+			if (!publish(rawErrors)) return;
+			this.finishAnalysisProgress(notice);
 			if (this.grammalecteErrors.length === 0) {
 				new Notice(`${label} : aucune suggestion.`);
 			} else {
 				new Notice(`${label} : ${this.grammalecteErrors.length} suggestion(s).`);
 			}
 		} catch (e) {
-			notice.hide();
+			if (request !== this.spellingRequest) return;
+			this.finishAnalysisProgress(notice);
 			new Notice(`${label} : erreur — ${e instanceof Error ? e.message : String(e)}`, 10000);
 			console.error(`Finition — ${label} :`, e);
 		} finally {
 			if (this.pendingCorrectionRequest === request) this.pendingCorrectionRequest = null;
+			this.finishAnalysisProgress(notice);
 		}
 	}
 
@@ -1342,12 +1378,12 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	/** Force CodeMirror à relire les décorations sur tous les éditeurs ouverts. */
-	refreshAllEditors(): void {
+	refreshAllEditors(clearNavigationFocus = true): void {
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			const view = leaf.view;
 			if (view instanceof MarkdownView) {
 				const cm = (view.editor as unknown as { cm?: EditorView }).cm;
-				cm?.dispatch({ effects: setNavigationFocus.of(null) });
+				cm?.dispatch(clearNavigationFocus ? { effects: setNavigationFocus.of(null) } : {});
 			}
 		});
 	}

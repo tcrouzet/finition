@@ -37,16 +37,25 @@ async function main() {
 		bundle: true, platform: "node", format: "cjs", write: false, loader: { ".md": "text" }, external: ["obsidian"], plugins: [rawAssets],
 	});
 	const notices: string[] = [];
+	const noticeInstances: Notice[] = [];
 	let requestHandler: (request: { url: string; body: string; headers: Record<string, string> }) => unknown = () => { throw new Error("Appel API inattendu"); };
 	class Notice {
-		constructor(message: string) { notices.push(message); }
-		setMessage(message: string) { notices.push(message); }
-		hide() {}
+		hidden = false;
+		spinning = false;
+		message = "";
+		constructor(message: string | { textContent: string }) { this.setMessage(message); noticeInstances.push(this); }
+		setMessage(message: string | { textContent: string }) {
+			this.spinning = typeof message !== "string";
+			this.message = typeof message === "string" ? message : message.textContent;
+			notices.push(this.message);
+		}
+		hide() { this.hidden = true; }
 	}
 	const menuTitles: string[] = [];
 	const menuDisabled = new Map<string, boolean>();
 	const menuParents = new Map<string, string>();
 	const menuActions = new Map<string, () => void | Promise<void>>();
+	class MarkdownView {}
 	class Plugin {
 		app = { workspace: { getActiveViewOfType: () => null } };
 		saved: Partial<FinitionSettings> | null = null;
@@ -71,14 +80,17 @@ async function main() {
 	const module = { exports: {} };
 	const sandbox = vm.createContext({ module, exports: module.exports, Buffer, TextEncoder, TextDecoder, CompressionStream, Response, Blob, URL, setTimeout, clearTimeout, Date: class extends Date { constructor() { super("2026-10-19T12:34:56"); } }, require: (name: string) => {
 		assert.equal(name, "obsidian");
-		return { Plugin, PluginSettingTab: class {}, Modal: class {}, Component: class {}, Menu, Notice, setIcon() {}, requestUrl: (request: { url: string; body: string; headers: Record<string, string> }) => requestHandler(request) };
+		return { Plugin, MarkdownView, PluginSettingTab: class {}, Modal: class {}, Component: class {}, Menu, Notice, setIcon() {}, requestUrl: (request: { url: string; body: string; headers: Record<string, string> }) => requestHandler(request) };
 	} });
 	sandbox.window = sandbox;
+	sandbox.createFragment = () => ({ textContent: "", append(...nodes: Array<string | { textContent: string }>) { this.textContent += nodes.map(node => typeof node === "string" ? node : node.textContent).join(""); } });
+	sandbox.createSpan = () => ({ textContent: "" });
 	vm.runInContext(modules.outputFiles[0].text, sandbox);
 	sandbox.document = { body: { classList: { toggle() {} }, style: { setProperty() {} } } };
 	const api = module.exports as {
 		AnalysisNavigation: typeof import("../plugin/ui/analysis-navigation").AnalysisNavigation;
 		navigationFocus: typeof import("../plugin/ui/analysis-navigation").navigationFocus;
+		setNavigationFocus: typeof import("../plugin/ui/analysis-navigation").setNavigationFocus;
 		registerSingleNote: typeof import("../plugin/ui/single-note").registerSingleNote;
 		gzipData: Uint8Array;
 		DEFAULT_SETTINGS: typeof import("../plugin/types").DEFAULT_SETTINGS;
@@ -112,15 +124,113 @@ async function main() {
 			aiGroups: DiffGroup[];
 			grammalecteErrors: import("../plugin/modes/grammalecte").GrammalecteError[];
 			loadSettings: () => Promise<void>;
+			refreshAllEditors: (clearNavigationFocus?: boolean) => void;
+			setMode: (mode: FinitionSettings["mode"]) => Promise<void>;
+			updateAnalysisHighlights: (view: EditorView, highlights: [], pending: boolean) => void;
 			showModeMenu: (event: unknown) => void;
 			runStructureReport: () => Promise<void>;
 			runStatisticsReport: () => Promise<void>;
 			runOrthoTypoIA: () => Promise<void>;
+			runGrammalecte: () => Promise<void>;
 			createDebugNote: (view: unknown, content: string, prefix: string) => Promise<{ path: string }>;
 		};
 	};
 	await checkSingleNote(api.registerSingleNote);
 	await checkDocumentNavigation(api.AnalysisNavigation, api.EditorState, api.DEFAULT_SETTINGS, api.navigationFocus);
+	const focusedState = api.EditorState.create({ doc: "😀 texte", extensions: [api.navigationFocus] }).update({ effects: api.setNavigationFocus.of({ from: 3, to: 8 }) }).state;
+	const navigationSpec = focusedState.field(api.navigationFocus).iter().value?.spec as { class?: string } | undefined;
+	assert.equal(navigationSpec?.class, "finition-navigation-focused");
+	assert.equal(focusedState.update({ effects: api.setNavigationFocus.of(null) }).state.field(api.navigationFocus).size, 0, "Reset doit effacer le repère de navigation");
+	assert.equal(focusedState.update({ effects: api.setNavigationFocus.of({ from: 0, to: 100 }) }).state.field(api.navigationFocus).size, 0, "Une plage périmée ne doit pas créer de repère invalide");
+	const refreshPlugin = new api.FinitionPlugin();
+	let refreshedState = focusedState;
+	const refreshView = Object.assign(new MarkdownView(), { editor: { cm: { dispatch(transaction: TransactionSpec) { refreshedState = refreshedState.update(transaction).state; } } } });
+	Object.assign(refreshPlugin.app.workspace, { iterateAllLeaves: (visit: (leaf: { view: MarkdownView }) => void) => visit({ view: refreshView }) });
+	refreshPlugin.refreshAllEditors(false);
+	assert.equal(refreshedState.field(api.navigationFocus).size, 1, "Les résultats progressifs doivent conserver le repère existant");
+	refreshPlugin.refreshAllEditors();
+	assert.equal(refreshedState.field(api.navigationFocus).size, 0, "Un reset ou changement de mode doit toujours effacer le repère");
+	const modePlugin = new api.FinitionPlugin();
+	await modePlugin.loadSettings();
+	modePlugin.settings.mode = "hinges";
+	modePlugin.aiGroups = [{ delFrom: 0, delTo: 1, delText: "a", insText: "b" }];
+	modePlugin.grammalecteErrors = [{ nStart: 0, nEnd: 1, sRuleId: "test", sType: "orthographe", sMessage: "Faute", aSuggestions: [] }];
+	const modeEditor = { state: api.EditorState.create({ doc: "texte" }) } as EditorView;
+	const modeView = Object.assign(new MarkdownView(), { editor: { cm: modeEditor } });
+	Object.assign(modePlugin.app.workspace, { getActiveViewOfType: () => modeView, iterateAllLeaves() {} });
+	Object.defineProperty(modePlugin, "hasLexicon", { value: true });
+	let finishLexicon = () => {};
+	let lexiconLoads = 0;
+	Object.assign(modePlugin, { loadLexiconData: () => new Promise<void>(resolve => { lexiconLoads++; finishLexicon = resolve; }), lexicon: new Map([["texte", "texte"]]) });
+	const turn = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+	const waitFor = async (condition: () => boolean) => {
+		for (let attempt = 0; attempt < 20; attempt++) { if (condition()) return; await turn(); }
+		assert.fail("L’opération attendue n’a pas commencé");
+	};
+	const switching = modePlugin.setMode("repetition");
+	await waitFor(() => lexiconLoads === 1);
+	assert.equal(modePlugin.settings.mode, "none", "Le reset doit précéder le chargement du nouveau mode");
+	assert.equal(modePlugin.aiGroups.length, 0, "Changer de surlignage laisse des suggestions IA");
+	assert.equal(modePlugin.grammalecteErrors.length, 0, "Changer de surlignage laisse des corrections");
+	const modeNotice = noticeInstances.at(-1)!;
+	assert.ok(modeNotice.spinning && !modeNotice.hidden && modeNotice.message.includes("Répétitions"), "La roue doit être visible pendant le chargement");
+	finishLexicon();
+	await switching;
+	assert.equal(modePlugin.settings.mode, "repetition");
+	modePlugin.updateAnalysisHighlights(modeEditor, [], true);
+	assert.equal(modeNotice.hidden, false, "Des résultats partiels ferment la roue");
+	modePlugin.updateAnalysisHighlights({} as EditorView, [], false);
+	assert.equal(modeNotice.hidden, false, "Un éditeur en arrière-plan ferme la roue");
+	modePlugin.updateAnalysisHighlights(modeEditor, [], false);
+	assert.equal(modeNotice.hidden, true, "La roue reste après la fin du traitement, même sans résultat");
+	const noticesBeforeToggle = noticeInstances.length;
+	await modePlugin.setMode("repetition");
+	assert.equal(modePlugin.settings.mode, "none");
+	assert.equal(noticeInstances.length, noticesBeforeToggle, "Désactiver un mode affiche inutilement une roue");
+	const outdated = modePlugin.setMode("repetition");
+	await waitFor(() => lexiconLoads === 2);
+	const outdatedNotice = noticeInstances.at(-1)!;
+	await modePlugin.setMode("formes");
+	assert.equal(outdatedNotice.hidden, true, "Changer de fonction laisse l’ancienne roue ouverte");
+	finishLexicon();
+	await outdated;
+	assert.equal(modePlugin.settings.mode, "formes", "Un ancien chargement réactive le mode abandonné");
+	modePlugin.updateAnalysisHighlights(modeEditor, [], false);
+	Object.assign(modePlugin, { loadLexiconData: async () => { throw new Error("Chargement impossible"); } });
+	await assert.rejects(modePlugin.setMode("repetition"), /Chargement impossible/);
+	assert.equal(modePlugin.settings.mode, "none");
+	assert.equal(noticeInstances.at(-1)!.hidden, true, "Un échec laisse la roue ouverte");
+	Object.defineProperty(modePlugin, "hasLinguisticResources", { value: true });
+	Object.assign(modeView.editor, { getValue: () => "texte", getCursor: () => ({ ch: 0 }), posToOffset: (position: { ch: number }) => position.ch });
+	let finishCorrection = (_errors: typeof modePlugin.grammalecteErrors) => {};
+	let correctionCalls = 0;
+	Object.assign(modePlugin, { ensureSpellingEngine: async () => ({ parse: () => new Promise<typeof modePlugin.grammalecteErrors>(resolve => { correctionCalls++; finishCorrection = resolve; }) }) });
+	modePlugin.settings.mode = "hinges";
+	modePlugin.aiGroups = [{ delFrom: 0, delTo: 1, delText: "a", insText: "b" }];
+	const correcting = modePlugin.runGrammalecte();
+	assert.equal(modePlugin.settings.mode, "none", "Les corrections commencent sans reset du surlignage");
+	assert.equal(modePlugin.aiGroups.length, 0);
+	await waitFor(() => correctionCalls === 1);
+	const correctionNotice = noticeInstances.at(-1)!;
+	assert.ok(correctionNotice.spinning && !correctionNotice.hidden);
+	await modePlugin.setMode("formes");
+	const replacementNotice = noticeInstances.at(-1)!;
+	assert.equal(correctionNotice.hidden, true, "Le changement de mode laisse la roue du correcteur ouverte");
+	finishCorrection([{ nStart: 0, nEnd: 1, sRuleId: "test", sType: "orthographe", sMessage: "Faute", aSuggestions: [] }]);
+	await correcting;
+	assert.equal(modePlugin.grammalecteErrors.length, 0, "Un correcteur annulé réaffiche ses résultats");
+	assert.equal(replacementNotice.hidden, false, "Le correcteur annulé ferme la roue du nouveau mode");
+	modePlugin.updateAnalysisHighlights(modeEditor, [], false);
+	const finalCorrection = modePlugin.runGrammalecte();
+	await waitFor(() => correctionCalls === 2);
+	const finalCorrectionNotice = noticeInstances.at(-1)!;
+	finishCorrection([{ nStart: 0, nEnd: 1, sRuleId: "test", sType: "orthographe", sMessage: "Faute", aSuggestions: [] }]);
+	await finalCorrection;
+	assert.equal(finalCorrectionNotice.hidden, true);
+	assert.equal(modePlugin.grammalecteErrors.length, 1);
+	await modePlugin.runGrammalecte();
+	assert.equal(modePlugin.grammalecteErrors.length, 0, "Le reclic sur Corrections ne désactive plus l’analyse");
+	process.stdout.write("Changement de fonction : reset avant chargement, roue jusqu’au résultat final, reclic et concurrence vérifiés\n");
 	assert.equal(api.gzipData[9], 255, "Le gzip embarqué dépend du système de compilation");
 	assert.ok(modelPresets.length > 0 && modelPresets.every(model => model.value.trim() && model.label.trim()), "Les modèles IA doivent avoir un identifiant et un libellé");
 	assert.equal(new Set(modelPresets.map(model => model.value)).size, modelPresets.length, "Identifiants de modèles IA dupliqués");
@@ -426,6 +536,7 @@ async function main() {
 		getLeaf: () => ({ async openFile(file: { path: string }) { opened.push(file.path); } }),
 	} });
 	const raw = `"J'ai des mots."`;
+	aiPlugin.settings.mode = "hinges";
 	requestHandler = request => {
 		assert.equal(request.url, "https://api.openai.com/v1/chat/completions");
 		const body = JSON.parse(request.body) as { messages: Array<{ content: string }> };
@@ -433,6 +544,7 @@ async function main() {
 		return { status: 200, json: { choices: [{ message: { content: raw } }] } };
 	};
 	await aiPlugin.runOrthoTypoIA();
+	assert.equal(aiPlugin.settings.mode, "none", "Corrections IA ne réinitialise pas le surlignage actif");
 	assert.equal(notes.size, 0, "Une note Debug est créée alors que Debug est désactivé");
 	aiPlugin.settings.debugMode = true;
 	await aiPlugin.runOrthoTypoIA();
@@ -556,22 +668,30 @@ async function main() {
 	const responses: Array<(response: unknown) => void> = [];
 	requestHandler = () => new Promise(resolve => { responses.push(resolve); });
 	const cancelledAnalysis = aiPlugin.runOrthoTypoIA();
+	await waitFor(() => responses.length === 1);
 	assert.equal(responses.length, 1);
+	const cancelledNotice = noticeInstances.at(-1)!;
+	assert.ok(cancelledNotice.spinning && !cancelledNotice.hidden, "Corrections IA attend la réponse sans roue");
 	aiPlugin.showModeMenu({});
 	assert.equal(menuTitles.at(-1), "Reset", "Reset est absent pendant l’attente du correcteur IA");
 	await menuActions.get("Reset")!();
+	assert.equal(cancelledNotice.hidden, true, "Reset ne ferme pas la roue IA");
 	aiPlugin.showModeMenu({});
 	assert.equal(menuTitles.at(-1), "Paramètres", "Reset reste affiché après annulation");
 	const nextAnalysis = aiPlugin.runOrthoTypoIA();
+	await waitFor(() => responses.length === 2);
 	assert.equal(responses.length, 2);
+	const nextNotice = noticeInstances.at(-1)!;
 	const correctedResponse = { status: 200, json: { choices: [{ message: { content: "Une faute." } }] } };
 	responses[0](correctedResponse);
 	await cancelledAnalysis;
+	assert.equal(nextNotice.hidden, false, "Une ancienne réponse ferme la roue IA suivante");
 	assert.equal(aiPlugin.aiGroups.length, 0, "Une réponse annulée réaffiche ses suggestions");
 	aiPlugin.showModeMenu({});
 	assert.equal(menuTitles.at(-1), "Reset", "L’ancienne requête annule l’état de la nouvelle");
 	responses[1](correctedResponse);
 	await nextAnalysis;
+	assert.equal(nextNotice.hidden, true, "La roue IA reste après la réponse");
 	assert.ok(aiPlugin.aiGroups.length > 0, "Une nouvelle analyse ne fonctionne plus après Reset");
 	aiPlugin.grammalecteErrors = [{ nStart: 4, nEnd: 8, sRuleId: "test", sType: "orthographe", sMessage: "Faute", aSuggestions: [] }];
 	aiPlugin.settings.mode = "hinges";
@@ -660,6 +780,7 @@ async function main() {
 	sandbox.clearTimeout = (id: number) => assert.equal(id, 1);
 	requestHandler = () => new Promise(() => {});
 	const timeoutAnalysis = aiPlugin.runOrthoTypoIA();
+	await waitFor(() => Boolean(expire));
 	assert.ok(expire, "La requête locale n’a aucun délai limite");
 	expire();
 	await timeoutAnalysis;
@@ -758,8 +879,6 @@ async function main() {
 	statsPlugin.settings.debugMode = true;
 	statsPlugin.showModeMenu({});
 	assert.equal(menuDisabled.get("Statistiques"), false);
-	sandbox.createFragment = () => ({ append() {} });
-	sandbox.createSpan = () => ({});
 	await statsPlugin.runStatisticsReport();
 	const statsPath = "Dossier/Article_stats_2026-10-19_123456.md";
 	assert.ok(notes.has(statsPath), "La note Statistiques n’est pas créée");

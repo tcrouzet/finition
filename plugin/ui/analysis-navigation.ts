@@ -25,6 +25,7 @@ interface AnalysisSnapshot {
 	mode: FinitionMode | "grammalecte";
 	highlights: Pick<Highlight, "from" | "to">[];
 	pending: boolean;
+	initialized: boolean;
 }
 
 export class AnalysisNavigation {
@@ -36,6 +37,7 @@ export class AnalysisNavigation {
 	private next: HTMLButtonElement;
 	private analysisActive = false;
 	private refreshDocuments: () => void;
+	private initialTimer: number | null = null;
 
 	constructor(private plugin: Pick<Plugin, "app" | "registerDomEvent" | "register" | "registerEvent"> & Pick<FinitionRuntime, "settings">, parent: HTMLElement) {
 		this.count = parent.createSpan({ cls: "finition-analysis-count", attr: { "aria-live": "polite", title: "Occurrences surlignées" } });
@@ -52,9 +54,11 @@ export class AnalysisNavigation {
 				const view = this.activeView();
 				const snapshot = this.current(view);
 				if (!view || !snapshot || snapshot.pending || !snapshot.highlights.length) return;
-				const position = view.state.selection.main.head;
+				const selected = view.state.field(navigationFocus, false);
+				const position = selected?.size ? selected.iter().from : view.state.selection.main.head;
 				const highlights = direction === "next" ? snapshot.highlights : [...snapshot.highlights].reverse();
 				const highlight = highlights.find(({ from }) => direction === "next" ? from > position : from < position) ?? highlights[0];
+				snapshot.initialized = true;
 				this.goTo(view, highlight);
 			});
 			return button;
@@ -66,13 +70,17 @@ export class AnalysisNavigation {
 
 	update(view: EditorView, highlights: Highlight[], pending: boolean): void {
 		if (this.disposed) return;
-		this.snapshots.set(view, { doc: view.state.doc, mode: this.plugin.settings.mode, highlights, pending });
+		const previous = this.snapshots.get(view);
+		const initialized = previous?.initialized === true && previous.doc === view.state.doc && previous.mode === this.plugin.settings.mode;
+		this.snapshots.set(view, { doc: view.state.doc, mode: this.plugin.settings.mode, highlights, pending, initialized });
 		this.refresh();
 	}
 
 	updateGrammalecte(view: EditorView, highlights: Pick<Highlight, "from" | "to">[]): void {
 		if (this.disposed) return;
-		this.grammalecteSnapshots.set(view, { doc: view.state.doc, mode: "grammalecte", highlights, pending: false });
+		const previous = this.grammalecteSnapshots.get(view);
+		const initialized = highlights.length > 0 && previous?.initialized === true && previous.doc === view.state.doc;
+		this.grammalecteSnapshots.set(view, { doc: view.state.doc, mode: "grammalecte", highlights, pending: false, initialized });
 		this.refresh();
 	}
 
@@ -93,10 +101,28 @@ export class AnalysisNavigation {
 			button.hidden = false;
 			button.disabled = !ready || snapshot.highlights.length === 0;
 		}
+		if (snapshot?.highlights.length && !snapshot.initialized && this.initialTimer === null) {
+			// Les résultats arrivent aussi pendant une mise à jour CodeMirror : différer la décoration.
+			this.initialTimer = window.setTimeout(() => this.selectInitial(), 0);
+		}
 	}
 
 	destroy(): void {
 		this.disposed = true;
+		if (this.initialTimer !== null) window.clearTimeout(this.initialTimer);
+	}
+
+	private selectInitial(): void {
+		this.initialTimer = null;
+		if (this.disposed || !this.analysisActive) return;
+		const view = this.activeView();
+		const snapshot = this.current(view);
+		if (!view || !snapshot || snapshot.initialized || !snapshot.highlights.length) return;
+		const position = view.state.selection.main.head;
+		const distance = (highlight: Pick<Highlight, "from" | "to">) => Math.max(highlight.from - position, position - highlight.to + 1, 0);
+		const closest = snapshot.highlights.reduce((best, highlight) => distance(highlight) < distance(best) ? highlight : best);
+		snapshot.initialized = true;
+		view.dispatch({ effects: setNavigationFocus.of(closest) });
 	}
 
 	private activeView(): EditorView | undefined {
