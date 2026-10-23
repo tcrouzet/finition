@@ -1,10 +1,18 @@
 import type { DataAdapter } from "obsidian";
 import { resourceHash, type LinguisticResources } from "./linguistic-resources";
-import { isSynonymDocumentation, isSynonymWord, personalSynonymPath, synonymFileLimit, synonymKey, type SynonymMetadata } from "./synonyms";
+import { dictionaryResourcePacks } from "./linguistic-files";
+import { dictionaryKeys, emptyDictionaryLemmas, isSynonymDocumentation, isSynonymWord, personalSynonymPath, synonymFileLimit, synonymKey, type DictionaryLemmas, type SynonymMetadata } from "./synonyms";
+import { tokenize } from "./modes/tokenize";
 
-export const dictionaryKinds = ["definitions", "antonymes", "phonetique", "rimes"] as const;
+export const publicDictionaryKinds = dictionaryResourcePacks;
+export const dictionaryKinds = publicDictionaryKinds;
+export const dictionaryCommands = dictionaryKinds.filter(kind => kind !== "champ-lexical");
 export type DictionaryKind = typeof dictionaryKinds[number];
-export const dictionaryLabels: Record<DictionaryKind, string> = { definitions: "Définitions", antonymes: "Antonymes", phonetique: "Phonétique", rimes: "Rimes" };
+export const isPublicDictionaryKind = (kind: DictionaryKind): kind is typeof publicDictionaryKinds[number] => publicDictionaryKinds.some(value => value === kind);
+export const dictionaryLabels: Record<DictionaryKind, string> = {
+	definitions: "Définitions", antonymes: "Antonymes", phonetique: "Phonétique", rimes: "Rimes",
+	conjugaisons: "Conjugaisons", historique: "Étymologie", citations: "Citations", "champ-lexical": "Champ lexical",
+};
 export const dictionaryDocumentation = "https://github.com/tcrouzet/finition/blob/main/doc/dictionnaires.md";
 export const publicDictionaryMetadata = { name: "Finition", description: "Wiktionnaire via Kaikki — entrées canoniques françaises", documentation: dictionaryDocumentation };
 export interface DictionaryLicense {
@@ -19,6 +27,28 @@ export interface WordDictionary extends SynonymMetadata {
 }
 export interface StoredDictionary extends SynonymMetadata { kind: DictionaryKind; path: string }
 export interface DictionarySettings { wordDictionaries: StoredDictionary[]; wordDictionaryPaths: Partial<Record<DictionaryKind, string>> }
+
+export async function buildCitationIndex(dictionary: WordDictionary, lexicon: DictionaryLemmas): Promise<Map<string, DictionaryRow[]>> {
+	const rows = new Map<string, DictionaryRow>();
+	let processed = 0;
+	for (const entries of Object.values(dictionary.entries)) for (const row of entries) {
+		rows.set(JSON.stringify(row), row);
+		if (++processed % 500 === 0) await new Promise(resolve => window.setTimeout(resolve, 0));
+	}
+	const index = new Map<string, DictionaryRow[]>();
+	for (const row of rows.values()) {
+		// Avec des exemples, text contient la référence bibliographique des imports historiques.
+		const quote = (row.examples?.length ? row.examples.join("\n") : row.text ?? "").normalize("NFC");
+		const words = [...tokenize(quote, lexicon.lemmas).flatMap(token => [token.form, token.lemma]), ...Array.from(quote.matchAll(/\p{L}[\p{L}\p{M}]*(?:['’ʼ\-‑][\p{L}\p{M}]+)*/gu), match => match[0])];
+		for (const key of new Set(words.flatMap(word => dictionaryKeys(word, lexicon)))) {
+			const matches = index.get(key) ?? [];
+			matches.push(row);
+			index.set(key, matches);
+		}
+		if (++processed % 500 === 0) await new Promise(resolve => window.setTimeout(resolve, 0));
+	}
+	return index;
+}
 
 export function parseWordDictionary(text: string, kind: DictionaryKind): WordDictionary {
 	const fail = (): never => { throw new Error("Dictionnaire invalide ou incompatible avec cette section."); };
@@ -46,6 +76,7 @@ export function parseWordDictionary(text: string, kind: DictionaryKind): WordDic
 			if (kind === "phonetique" && !row.text) return fail();
 			if (kind === "antonymes" && !row.words) return fail();
 			if (kind === "rimes" && !row.text && !row.words) return fail();
+			if (!row.text && !row.words && (!Array.isArray(row.examples) || !row.examples.length)) return fail();
 		}
 	}
 	return value as unknown as WordDictionary;
@@ -54,7 +85,8 @@ export function parseWordDictionary(text: string, kind: DictionaryKind): WordDic
 export class WordDictionaries {
 	options: StoredDictionary[] = [];
 	private cached: { path: string; loading: Promise<WordDictionary> } | null = null;
-	constructor(private adapter: DataAdapter, private directory: string, private settings: () => DictionarySettings, private save: () => Promise<void>, private resources: LinguisticResources) {}
+	private citationIndex: { dictionary: WordDictionary; lexicon: DictionaryLemmas; loading: Promise<Map<string, DictionaryRow[]>> } | null = null;
+	constructor(private adapter: DataAdapter, private directory: string, private settings: () => DictionarySettings, private save: () => Promise<void>, private resources: LinguisticResources, private readLemmas?: () => Promise<DictionaryLemmas>) {}
 
 	private owns(path: string, kind: DictionaryKind): boolean {
 		const prefix = `${this.directory}/data/dictionnaires-${kind}-`;
@@ -73,7 +105,7 @@ export class WordDictionaries {
 		}));
 		const paths = settings.wordDictionaryPaths;
 		settings.wordDictionaryPaths = Object.fromEntries(dictionaryKinds.flatMap(kind => paths && typeof paths[kind] === "string" && (paths[kind] === "" || this.owns(paths[kind], kind)) ? [[kind, paths[kind]]] : []));
-		this.options = dictionaryKinds.filter(kind => this.resources.available(kind)).map(kind => ({ kind, path: "", ...publicDictionaryMetadata }));
+		this.options = publicDictionaryKinds.filter(kind => this.resources.available(kind)).map(kind => ({ kind, path: "", ...publicDictionaryMetadata }));
 		for (const entry of settings.wordDictionaries) {
 			try {
 				const stat = await this.adapter.stat(entry.path);
@@ -89,6 +121,7 @@ export class WordDictionaries {
 		try { await this.save(); }
 		catch (error) { settings.wordDictionaries = previous.entries; settings.wordDictionaryPaths = previous.paths; throw error; }
 		this.cached = null;
+		this.citationIndex = null;
 	}
 	async select(kind: DictionaryKind, path: string): Promise<void> {
 		await this.refresh();
@@ -132,7 +165,11 @@ export class WordDictionaries {
 		const path = this.settings().wordDictionaryPaths[kind] ?? "";
 		const cacheKey = `${kind}:${path}`;
 		if (this.cached?.path !== cacheKey) {
-			const loading = (path ? this.adapter.readBinary(path) : this.resources.read(kind, `${kind}.json`)).then(raw => {
+			const loading = Promise.resolve().then(() => {
+				if (path) return this.adapter.readBinary(path);
+				if (!isPublicDictionaryKind(kind)) throw new Error("Dictionnaire local absent.");
+				return this.resources.read(kind, `${kind}.json`);
+			}).then(raw => {
 				if (raw.byteLength > synonymFileLimit) throw new Error("Dictionnaire trop volumineux.");
 				return parseWordDictionary(new TextDecoder("utf-8", { fatal: true }).decode(raw), kind);
 			}).catch((error: unknown) => { if (this.cached?.path === cacheKey) this.cached = null; throw error; });
@@ -140,7 +177,17 @@ export class WordDictionaries {
 		}
 		const dictionary = await this.cached.loading;
 		const key = synonymKey(word);
-		const rows = Object.prototype.hasOwnProperty.call(dictionary.entries, key) ? dictionary.entries[key] : [];
+		const lexicon = kind === "phonetique" || kind === "rimes" ? emptyDictionaryLemmas : await this.readLemmas?.() ?? emptyDictionaryLemmas;
+		const keys = dictionaryKeys(word, lexicon);
+		let citations: Map<string, DictionaryRow[]> | undefined;
+		if (kind === "citations") {
+			if (this.citationIndex?.dictionary !== dictionary || this.citationIndex.lexicon.lemmas !== lexicon.lemmas || this.citationIndex.lexicon.variants !== lexicon.variants) {
+				const cache = this.citationIndex = { dictionary, lexicon, loading: buildCitationIndex(dictionary, lexicon) };
+				cache.loading = cache.loading.catch((error: unknown) => { if (this.citationIndex === cache) this.citationIndex = null; throw error; });
+			}
+			citations = await this.citationIndex.loading;
+		}
+		const rows = [...new Map(keys.flatMap(key => citations ? citations.get(key) ?? [] : Object.prototype.hasOwnProperty.call(dictionary.entries, key) ? dictionary.entries[key] : []).map(row => [JSON.stringify(row), row])).values()];
 		if (kind !== "rimes" || rows.some(row => row.words)) return { dictionary, rows };
 		const vowels = /[aàâeéèêëiîïoôöuûüyɑɛɔœøəɒɐɜɞɪʊɤɨɯʉɘɶɚɝ]/giu;
 		const endings = rows.flatMap(row => {

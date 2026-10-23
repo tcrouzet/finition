@@ -1,5 +1,6 @@
 import { sentenceRanges, trimRange } from "./clause-split";
 import { analyzeSentenceStructure, tricolonMembership, type GetCategory } from "./structure-signature";
+import { markdownExclusionRanges, maskMarkdownExclusions } from "../markdown-tags";
 
 // Identifiants de la section « Données brutes » de stats-notes.md (Unshiter).
 export const rawStatisticNames = [
@@ -114,7 +115,7 @@ export const rawStatisticNames = [
 ] as const;
 
 type Statistics = Record<typeof rawStatisticNames[number], number | "-">;
-export const statisticsWords = (text: string): string[] => (text.toLowerCase().replace(/’/g, "'").match(/[\p{L}\p{N}_]+(?:'[\p{L}\p{N}_]+)?/gu) ?? []);
+export const statisticsWords = (text: string): string[] => (maskMarkdownExclusions(text).toLowerCase().replace(/’/g, "'").match(/[\p{L}\p{N}_]+(?:'[\p{L}\p{N}_]+)?/gu) ?? []);
 const frequencies = (values: string[]): Map<string, number> => {
 	const counts = new Map<string, number>();
 	for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
@@ -123,7 +124,11 @@ const frequencies = (values: string[]): Map<string, number> => {
 
 export async function buildStatisticsReport(source: string, getCategory: GetCategory, lexicon: Map<string, string>): Promise<string> {
 	const stats = Object.fromEntries(rawStatisticNames.map(name => [name, "-"])) as Statistics;
-	const text = source.replace(/\r\n?/g, "\n").replace(/\.{3,}/g, "…").replace(/\n{3,}/g, "\n\n");
+	const exclusions = markdownExclusionRanges(source);
+	const normalize = (text: string) => text.replace(/\r\n?/g, "\n").replace(/\.{3,}/g, "…").replace(/\n{3,}/g, "\n\n");
+	const text = normalize(maskMarkdownExclusions(source, exclusions));
+	for (const [from, to] of [...exclusions].reverse()) source = source.slice(0, from) + source.slice(to);
+	const measuredText = normalize(source);
 	const words = statisticsWords(text);
 	const paragraphs = text.split(/\n\s*\n/).filter(paragraph => paragraph.trim());
 	const lemma = (word: string) => lexicon.get(word) ?? word;
@@ -163,8 +168,8 @@ export async function buildStatisticsReport(source: string, getCategory: GetCate
 	stats.bigram_count = bigrams.size;
 	stats.hapax_bigram_count = [...bigrams.values()].filter(count => count === 1).length;
 	stats.paragraph_count = paragraphs.length;
-	stats.document_char_count = [...text].length;
-	const bytes = new TextEncoder().encode(text);
+	stats.document_char_count = [...measuredText].length;
+	const bytes = new TextEncoder().encode(measuredText);
 	stats.utf8_byte_count = bytes.length;
 	if (!bytes.length) stats.gzip_byte_count = 0;
 	else if (typeof CompressionStream !== "undefined") {

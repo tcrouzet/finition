@@ -4,8 +4,9 @@ import type { EditorState, StateField, TransactionSpec } from "@codemirror/state
 import type { DecorationSet, EditorView } from "@codemirror/view";
 import type { AnalysisNavigation } from "../plugin/ui/analysis-navigation";
 import type { FinitionSettings } from "../plugin/types";
+import type { addLeftSidebarToggle } from "../plugin/ui/left-sidebar-toggle";
 
-export async function checkDocumentNavigation(Navigation: typeof AnalysisNavigation, State: typeof EditorState, defaults: FinitionSettings, focus: StateField<DecorationSet>): Promise<void> {
+export async function checkDocumentNavigation(Navigation: typeof AnalysisNavigation, State: typeof EditorState, defaults: FinitionSettings, focus: StateField<DecorationSet>, sidebarToggle: typeof addLeftSidebarToggle): Promise<void> {
 	class Control extends EventTarget {
 		hidden = false; disabled = false; title = ""; textContent = "";
 		private attributes = new Map<string, string>();
@@ -113,6 +114,21 @@ export async function checkDocumentNavigation(Navigation: typeof AnalysisNavigat
 	navigation.update(view, [], false);
 	assert.ok(back.disabled && forward.disabled, "Une analyse vide doit afficher zéro et désactiver les flèches");
 	assert.equal(count.textContent, "0");
+	for (const mode of ["repetition", "hinges", "formes", "copules"] as const) {
+		plugin.settings.mode = mode;
+		const grouped = marks.map((mark, index) => ({ ...mark, to: mark.from + 2, lemma: index === 1 ? "autre" : "sélection" }));
+		editor.dispatch({ selection: { anchor: 2, head: 4 } });
+		navigation.update(view, grouped, false);
+		forward.dispatchEvent(new Event("click"));
+		assert.equal(editor.state.selection.main.head, 20, `${mode} : la flèche doit sauter les autres groupes après une sélection de texte`);
+		forward.dispatchEvent(new Event("click"));
+		assert.equal(editor.state.selection.main.head, 2, `${mode} : la navigation doit boucler dans le même groupe`);
+		back.dispatchEvent(new Event("click"));
+		assert.equal(editor.state.selection.main.head, 20, `${mode} : la flèche précédente doit rester dans le groupe pointé`);
+		editor.dispatch({ selection: { anchor: 10 } });
+		forward.dispatchEvent(new Event("click"));
+		assert.equal(editor.state.selection.main.head, 10, `${mode} : un groupe isolé ne doit pas rejoindre une autre catégorie`);
+	}
 	editor.dispatch({ selection: { anchor: 12 } });
 	plugin.settings.mode = "none";
 	navigation.updateGrammalecte(view, marks);
@@ -137,6 +153,37 @@ export async function checkDocumentNavigation(Navigation: typeof AnalysisNavigat
 	active = first; events.get("active-leaf-change")!();
 	Reflect.deleteProperty(first, "history"); events.get("layout-change")!();
 	assert.ok(back.hidden && forward.hidden, "Un historique natif indisponible doit masquer les flèches sans erreur");
+	let sidebarClicks = 0;
+	const leftSplit = { collapsed: false, toggle() { this.collapsed = !this.collapsed; sidebarClicks++; } };
+	let layoutReady = () => {};
+	Object.assign(plugin.app.workspace, { onLayoutReady(callback: () => void) { layoutReady = callback; } });
+	let refreshSidebar = () => {};
+	assert.doesNotThrow(() => { refreshSidebar = sidebarToggle(plugin, parent as unknown as HTMLElement, () => plugin.settings.showLeftSidebarToggle); }, "Le chargement ne doit pas planter avant la création de la barre latérale");
+	const sidebarButton = children[0];
+	assert.ok(sidebarButton.hidden && sidebarButton.disabled, "Le bouton doit attendre la barre latérale sans bloquer le plugin");
+	assert.doesNotThrow(() => sidebarButton.dispatchEvent(new Event("click")), "Un clic avant initialisation ne doit pas planter");
+	Object.assign(plugin.app.workspace, { leftSplit });
+	layoutReady();
+	assert.equal(sidebarButton.hidden, false, "Le bouton de barre latérale doit être visible par défaut");
+	assert.equal(sidebarButton.getAttribute("aria-expanded"), "true");
+	assert.equal(sidebarButton.getAttribute("data-icon"), "sidebar-toggle-button-icon", "Le bouton doit réutiliser l’icône native d’Obsidian");
+	const sidebarClick = new Event("click");
+	let sidebarStopped = false;
+	sidebarClick.stopPropagation = () => { sidebarStopped = true; };
+	sidebarButton.dispatchEvent(sidebarClick);
+	assert.ok(sidebarStopped && leftSplit.collapsed && sidebarClicks === 1, "Le bouton doit appeler le toggle natif sans ouvrir le menu musique");
+	assert.equal(sidebarButton.getAttribute("aria-expanded"), "false");
+	assert.equal(sidebarButton.getAttribute("data-icon"), "sidebar-toggle-button-icon", "Fermer la barre doit conserver l’icône native et changer son remplissage");
+	sidebarButton.dispatchEvent(new Event("click"));
+	assert.equal(leftSplit.collapsed, false, "Le second clic doit réafficher la barre latérale");
+	assert.equal(sidebarButton.getAttribute("data-icon"), "sidebar-toggle-button-icon");
+	leftSplit.collapsed = true; events.get("layout-change")!();
+	assert.equal(sidebarButton.getAttribute("aria-expanded"), "false", "L’état doit suivre une fermeture native");
+	assert.equal(sidebarButton.getAttribute("data-icon"), "sidebar-toggle-button-icon", "Une fermeture native doit conserver le dessin d’Obsidian");
+	plugin.settings.showLeftSidebarToggle = false; refreshSidebar();
+	assert.equal(sidebarButton.hidden, true, "Le réglage désactivé doit masquer le bouton");
+	plugin.settings.showLeftSidebarToggle = true; refreshSidebar();
+	assert.equal(sidebarButton.hidden, false);
 	plugin.settings.mode = "hedging"; navigation.update(view, marks, false);
 	navigation.destroy(); cleanup.forEach(dispose => dispose());
 	await turn();
@@ -144,5 +191,9 @@ export async function checkDocumentNavigation(Navigation: typeof AnalysisNavigat
 	assert.equal(historyEvents.size, 0, "Le déchargement doit retirer l’écouteur d’historique");
 	back.dispatchEvent(new Event("click"));
 	assert.deepEqual(calls, ["back", "forward"], "Une flèche déchargée ne doit plus naviguer");
+	sidebarButton.dispatchEvent(new Event("click"));
+	assert.equal(sidebarClicks, 2, "Un bouton déchargé ne doit plus agir sur la barre latérale");
+	leftSplit.collapsed = false; layoutReady();
+	assert.equal(sidebarButton.getAttribute("aria-expanded"), "false", "Une restauration tardive ne doit plus modifier un bouton déchargé");
 	process.stdout.write("Navigation unifiée : historique natif, compteur central, surlignages précédent/suivant, bouclage, catégories, corrections et arrêt vérifiés\n");
 }

@@ -6,6 +6,7 @@
 
 import { splitRanges, trimRange } from "./clause-split";
 import { hasNegation } from "./formes";
+import { maskHashtags, maskMarkdownExclusions } from "../markdown-tags";
 
 // --- Constantes, copiées telles quelles depuis stats.py --------------------
 
@@ -57,7 +58,7 @@ export type GetCategory = (word: string) => string;
 
 function structureTokens(sentence: string): string[] {
 	const tokens: string[] = [];
-	const lowered = sentence.toLowerCase().replace(/’/g, "'");
+	const lowered = maskHashtags(sentence).toLowerCase().replace(/’/g, "'");
 	const matches = lowered.match(STRUCTURE_TOKEN_RE) ?? [];
 	for (const rawToken of matches) {
 		if (rawToken.includes("'")) {
@@ -75,7 +76,7 @@ function structureTokens(sentence: string): string[] {
 }
 
 export function structureCategoryWords(text: string): string[] {
-	return [...new Set(structureTokens(text).filter(
+	return [...new Set(structureTokens(maskMarkdownExclusions(text)).filter(
 		(word) => !STRUCTURE_PUNCTUATION.has(word) && !IGNORED_STRUCTURE_PUNCTUATION.has(word)
 	))];
 }
@@ -722,7 +723,7 @@ function splitCoordinatedEnumeration(text: string, commaRanges: Array<[number, n
 
 function structureTokensWithOffsets(sentence: string): Array<{ word: string; start: number; end: number }> {
 	const tokens: Array<{ word: string; start: number; end: number }> = [];
-	const lowered = sentence.toLowerCase().replace(/’/g, "'");
+	const lowered = maskHashtags(sentence).toLowerCase().replace(/’/g, "'");
 	for (const match of lowered.matchAll(STRUCTURE_TOKEN_RE)) {
 		const rawToken = match[0];
 		const start = match.index ?? 0;

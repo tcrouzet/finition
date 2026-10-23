@@ -23,17 +23,29 @@ import modelPresets from "../plugin/ai/models.json";
 import { checkSingleNote } from "./check-single-note";
 import { formatDocumentCount } from "../plugin/ui/document-count";
 import { checkDocumentNavigation } from "./check-document-navigation";
+import { computeHingeHighlights } from "../plugin/modes/hinges";
+import { computeHedgingHighlights } from "../plugin/modes/hedging";
+import { checkFamily } from "./check-family";
+import { checkExtraDictionaryFormat } from "./check-extra-dictionary-format";
+import { checkMarkdownExclusions } from "./check-markdown-exclusions";
+import { checkDictionaryLemmas } from "./check-dictionary-lemmas";
 
 async function main() {
+	assert.deepEqual(computeHingeHighlights("Et mais et OU où", ["et", "mais", "ou", "où"]).map(highlight => highlight.lemma), ["et", "mais", "et", "ou", "où"], "Chaque charnière doit garder son identité, sans distinguer les majuscules");
+	assert.deepEqual(computeHedgingHighlights("D'après moi, d’après moi.", ["d’après moi"]).map(highlight => highlight.lemma), ["d’après moi", "d’après moi"], "Casse et apostrophes ne doivent pas séparer la même atténuation");
 	for (const [value, words, characters] of [[0, "0W", "0S"], [1, "1W", "1S"], [999, "999W", "999S"], [1000, "1K", "1K"], [1001, "1K", "1K"], [1050, "1,1K", "1,1K"], [1500, "1,5K", "1,5K"], [10000, "10K", "10K"]] as const) {
 		assert.equal(formatDocumentCount(value, "mot"), words, `Compteur de mots : ${value}`);
 		assert.equal(formatDocumentCount(value, "signe"), characters, `Compteur de signes : ${value}`);
 	}
 	await checkSharedLexicon();
+	await checkFamily();
+	await checkExtraDictionaryFormat();
+	await checkMarkdownExclusions();
+	await checkDictionaryLemmas();
 	const dataSources = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "plugin/data"], { encoding: "utf8" }).split("\0").filter(file => file && existsSync(file));
 	assert.ok(dataSources.every(file => file.endsWith(".json")), "Les sources de plugin/data doivent être uniquement des JSON d’analyse");
 	const modules = await build({
-		stdin: { contents: "export * from \"./plugin/ui/analysis-navigation\"; export * from \"./plugin/ui/single-note\"; export * from \"./plugin/modes/formes\"; export { DEFAULT_SETTINGS, FORM_TYPES } from \"./plugin/types\"; export { default as gzipData } from \"./plugin/vendor/grammalecte/gc_rules_graph.js?gzip\"; export { EditorState } from \"@codemirror/state\"; export * from \"./plugin/ai/ai-extension\"; export * from \"./plugin/ai/protected-links\"; export * from \"./plugin/markdown-links\"; export * from \"./plugin/ai/clean\"; export * from \"./plugin/modes/punctuation\"; export * from \"./plugin/modes/repetition\"; export * from \"./plugin/modes/stereotype\"; export * from \"./plugin/modes/clause-split\"; export * from \"./plugin/modes/structure-report\"; export * from \"./plugin/modes/statistics\"; export * from \"./plugin/modes/structure-signature\"; export * from \"./plugin/modes/ternary\"; export * from \"./plugin/modes/tic-ia\"; export { engineScripts } from \"./plugin/modes/grammalecte-resources\"; export { default as FinitionPlugin } from \"./main\";", resolveDir: process.cwd() },
+		stdin: { contents: "export { synonymContext } from \"./plugin/ai/synonyms\"; export * from \"./plugin/ui/left-sidebar-toggle\"; export * from \"./plugin/ui/analysis-navigation\"; export * from \"./plugin/ui/single-note\"; export * from \"./plugin/modes/formes\"; export { DEFAULT_SETTINGS, FORM_TYPES } from \"./plugin/types\"; export { default as gzipData } from \"./plugin/vendor/grammalecte/gc_rules_graph.js?gzip\"; export { EditorState } from \"@codemirror/state\"; export * from \"./plugin/ai/ai-extension\"; export * from \"./plugin/ai/protected-links\"; export * from \"./plugin/markdown-links\"; export * from \"./plugin/ai/clean\"; export * from \"./plugin/modes/punctuation\"; export * from \"./plugin/modes/repetition\"; export * from \"./plugin/modes/stereotype\"; export * from \"./plugin/modes/clause-split\"; export * from \"./plugin/modes/structure-report\"; export * from \"./plugin/modes/statistics\"; export * from \"./plugin/modes/structure-signature\"; export * from \"./plugin/modes/ternary\"; export * from \"./plugin/modes/tic-ia\"; export { engineScripts } from \"./plugin/modes/grammalecte-resources\"; export { default as FinitionPlugin } from \"./main\";", resolveDir: process.cwd() },
 		bundle: true, platform: "node", format: "cjs", write: false, loader: { ".md": "text" }, external: ["obsidian"], plugins: [rawAssets],
 	});
 	const notices: string[] = [];
@@ -80,7 +92,7 @@ async function main() {
 	const module = { exports: {} };
 	const sandbox = vm.createContext({ module, exports: module.exports, Buffer, TextEncoder, TextDecoder, CompressionStream, Response, Blob, URL, setTimeout, clearTimeout, Date: class extends Date { constructor() { super("2026-10-19T12:34:56"); } }, require: (name: string) => {
 		assert.equal(name, "obsidian");
-		return { Plugin, MarkdownView, PluginSettingTab: class {}, Modal: class {}, Component: class {}, Menu, Notice, setIcon() {}, requestUrl: (request: { url: string; body: string; headers: Record<string, string> }) => requestHandler(request) };
+		return { Plugin, MarkdownView, PluginSettingTab: class {}, Modal: class {}, Component: class {}, Menu, Notice, setIcon(element: { setAttribute?: (name: string, value: string) => void }, icon: string) { element.setAttribute?.("data-icon", icon); }, requestUrl: (request: { url: string; body: string; headers: Record<string, string> }) => requestHandler(request) };
 	} });
 	sandbox.window = sandbox;
 	sandbox.createFragment = () => ({ textContent: "", append(...nodes: Array<string | { textContent: string }>) { this.textContent += nodes.map(node => typeof node === "string" ? node : node.textContent).join(""); } });
@@ -88,10 +100,12 @@ async function main() {
 	vm.runInContext(modules.outputFiles[0].text, sandbox);
 	sandbox.document = { body: { classList: { toggle() {} }, style: { setProperty() {} } } };
 	const api = module.exports as {
+		synonymContext: typeof import("../plugin/ai/synonyms").synonymContext;
 		AnalysisNavigation: typeof import("../plugin/ui/analysis-navigation").AnalysisNavigation;
 		navigationFocus: typeof import("../plugin/ui/analysis-navigation").navigationFocus;
 		setNavigationFocus: typeof import("../plugin/ui/analysis-navigation").setNavigationFocus;
 		registerSingleNote: typeof import("../plugin/ui/single-note").registerSingleNote;
+		addLeftSidebarToggle: typeof import("../plugin/ui/left-sidebar-toggle").addLeftSidebarToggle;
 		gzipData: Uint8Array;
 		DEFAULT_SETTINGS: typeof import("../plugin/types").DEFAULT_SETTINGS;
 		FORM_TYPES: typeof import("../plugin/types").FORM_TYPES;
@@ -136,7 +150,12 @@ async function main() {
 		};
 	};
 	await checkSingleNote(api.registerSingleNote);
-	await checkDocumentNavigation(api.AnalysisNavigation, api.EditorState, api.DEFAULT_SETTINGS, api.navigationFocus);
+	const synonymDocument = "---\ntitle: confidentiel\n---\n\nUn pas rapide #secret/privé.\n\nSuite.";
+	const synonymFrom = synonymDocument.indexOf("rapide");
+	const synonymContext = api.synonymContext(synonymDocument, synonymFrom, synonymFrom + 6);
+	assert.ok(synonymContext.includes("**rapide**") && !synonymContext.includes("confidentiel") && !synonymContext.includes("secret"), "Synonymes IA ne doit envoyer ni YAML ni tags voisins");
+	for (const from of [synonymDocument.indexOf("title"), synonymDocument.indexOf("secret")]) assert.throws(() => api.synonymContext(synonymDocument, from, from + 3), /YAML et des tags/);
+	await checkDocumentNavigation(api.AnalysisNavigation, api.EditorState, api.DEFAULT_SETTINGS, api.navigationFocus, api.addLeftSidebarToggle);
 	const focusedState = api.EditorState.create({ doc: "😀 texte", extensions: [api.navigationFocus] }).update({ effects: api.setNavigationFocus.of({ from: 3, to: 8 }) }).state;
 	const navigationSpec = focusedState.field(api.navigationFocus).iter().value?.spec as { class?: string } | undefined;
 	assert.equal(navigationSpec?.class, "finition-navigation-focused");
@@ -254,10 +273,13 @@ async function main() {
 	assert.equal(plugin.saved.mode, "ternary");
 	assert.equal(plugin.settings.debugMode, false);
 	assert.equal(plugin.settings.singleNoteOpen, false, "Une seule note ouverte doit être désactivé par défaut");
+	assert.equal(plugin.settings.showLeftSidebarToggle, true, "Le bouton de barre latérale doit être proposé par défaut");
+	plugin.settings.showLeftSidebarToggle = false;
 	plugin.settings.singleNoteOpen = true;
 	await plugin.saveData(plugin.settings);
 	await plugin.loadSettings();
 	assert.equal(plugin.settings.singleNoteOpen, true, "Une seule note ouverte doit être conservé au rechargement");
+	assert.equal(plugin.settings.showLeftSidebarToggle, false, "Le choix de masquer le bouton doit être conservé");
 	assert.equal(plugin.settings.copuleColorIndex, 14, "Une nouvelle installation n’attribue pas la couleur 14 aux copules");
 	const colorPlugin = new api.FinitionPlugin();
 	colorPlugin.saved = { hedgingColorIndex: 3, stereotypeColorIndex: 6, hingeColorIndex: 12, grammalecteColorIndex: 15 };
@@ -276,7 +298,8 @@ async function main() {
 	assert.ok(!menuTitles.includes("Statistiques"));
 	assert.deepEqual(menuTitles.filter(title => menuParents.get(title) === "Surlignages"), ["Répétitions", "Atténuations", "Stéréotypes", "Monotonies", "Tricolons", "Cadences", "Charnières", "Formes", "Copules"]);
 	assert.equal(menuDisabled.get("Copules"), true, "Copules doit demander le lexique");
-	assert.deepEqual(menuTitles.filter(title => menuParents.get(title) === "Dictionnaires"), ["Synonymes", "Synonymes IA", "Définitions", "Antonymes", "Phonétique", "Rimes"]);
+	assert.deepEqual(menuTitles.filter(title => menuParents.get(title) === "Dictionnaires"), ["Synonymes", "Synonymes IA", "Flexions", "Définitions", "Antonymes", "Phonétique", "Rimes", "Conjugaisons", "Étymologie", "Citations"]);
+	assert.equal(menuDisabled.get("Flexions"), true, "Flexions doit demander le lexique actif");
 	plugin.settings.debugMode = true;
 	await plugin.saveData(plugin.settings);
 	await plugin.loadSettings();

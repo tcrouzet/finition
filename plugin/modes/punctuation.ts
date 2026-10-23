@@ -1,5 +1,5 @@
 import { linkRanges, mergeRanges } from "../markdown-links";
-import { hashtagRanges } from "../markdown-tags";
+import { markdownExclusionRanges } from "../markdown-tags";
 import { SENTENCE_SEPARATOR_RE } from "./clause-split";
 
 /**
@@ -41,7 +41,7 @@ import { SENTENCE_SEPARATOR_RE } from "./clause-split";
 const PROTECT_RE = /^[ \t]*```.*$[\s\S]*?^[ \t]*```[ \t]*$|`[^`\n]*`|\b\d{1,2}:\d{2}(?::\d{2})?\b/gm;
 
 export function protectSpans(text: string): { text: string; restore: (s: string) => string } {
-	const ranges = mergeRanges([...linkRanges(text), ...hashtagRanges(text), ...[...text.matchAll(PROTECT_RE)].map(match => [match.index, match.index + match[0].length] as const)]);
+	const ranges = mergeRanges([...linkRanges(text), ...markdownExclusionRanges(text), ...[...text.matchAll(PROTECT_RE)].map(match => [match.index, match.index + match[0].length] as const)]);
 	const stash: string[] = [];
 	let prefix = "\uE000";
 	while (text.includes(prefix)) prefix += "\uE000";

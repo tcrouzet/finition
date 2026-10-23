@@ -53,13 +53,15 @@ import { loadingMessage } from "./ui/loading-message";
 import { AnalysisNavigation, navigationFocus, setNavigationFocus } from "./ui/analysis-navigation";
 import { countDocument, formatDocumentCount } from "./ui/document-count";
 import { registerSingleNote } from "./ui/single-note";
+import { addLeftSidebarToggle } from "./ui/left-sidebar-toggle";
 import { LinguisticResources, resourceHash } from "./linguistic-resources";
 import type { ResourceEngine, ResourcePack } from "./linguistic-files";
 import { resourceEngines, resourceLabels, resourcePacks } from "./linguistic-files";
-import { finitionSynonymMetadata, isSynonymDocumentation, parseSynonymDictionary, personalSynonymPath, synonymFileLimit, SynonymsDictionary, type SynonymMetadata } from "./synonyms";
+import { finitionSynonymMetadata, isSynonymDocumentation, parseSynonymDictionary, personalSynonymPath, synonymFileLimit, SynonymsDictionary, type DictionaryLemmas, type SynonymMetadata } from "./synonyms";
 import { runLocalSynonyms, runLocalWordLookup } from "./ui/local-synonyms";
+import { lookupFamily } from "./ui/family";
 import { NeuralModels, neuralFileLimit } from "./neural-models";
-import { dictionaryKinds, dictionaryLabels, WordDictionaries, type DictionaryKind } from "./dictionaries";
+import { dictionaryCommands, dictionaryLabels, WordDictionaries, type DictionaryKind } from "./dictionaries";
 import { LexiconDictionaries } from "./lexicon/dictionaries";
 
 // Les petites ressources stylistiques restent intégrées au plugin.
@@ -84,6 +86,7 @@ const analysisModes: Array<{ mode: FinitionMode; name: string; icon: string }> =
 export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	settings: FinitionSettings = DEFAULT_SETTINGS;
 	lexicon: Map<string, string> = new Map();
+	private dictionaryLemmaVariants = new Map<string, string[]>();
 	copuleLexicon = emptyCopuleLexicon();
 	private lexiconEngine: FinitionCorrectorEngine | null = null;
 	private lexiconLoad: Promise<LexicalData> | undefined;
@@ -99,6 +102,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	private documentCountCache: { text: string; words: number; characters: number } | null = null;
 	updateSingleNote: () => void = () => {};
 	private analysisNavigation: AnalysisNavigation | null = null;
+	private updateLeftSidebarToggle: () => void = () => {};
 	private ticIAPercentage: HTMLElement | null = null;
 	private ticIAStats = new WeakMap<EditorView, { doc: EditorView["state"]["doc"]; tagged: number; total: number; pending: boolean }>();
 
@@ -188,7 +192,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			callback: () => runSynonyms(this.app, this.settings),
 		});
 		this.addCommand({ id: "synonyme", name: "Synonymes", callback: () => this.runSynonymsLocal() });
-		for (const kind of dictionaryKinds) this.addCommand({ id: kind, name: dictionaryLabels[kind], callback: () => this.runWordDictionary(kind) });
+		this.addCommand({ id: "famille", name: "Flexions", callback: () => this.runFamily() });
+		for (const kind of dictionaryCommands) this.addCommand({ id: kind, name: dictionaryLabels[kind], callback: () => this.runWordDictionary(kind) });
 
 		this.addCommand({
 			id: "punctuation-fix",
@@ -244,6 +249,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		if (!["none", "words", "characters", "both"].includes(this.settings.documentCountDisplay)) this.settings.documentCountDisplay = "none";
 		this.settings.hideBacklinksCount = this.settings.hideBacklinksCount === true;
 		this.settings.singleNoteOpen = this.settings.singleNoteOpen === true;
+		this.settings.showLeftSidebarToggle = this.settings.showLeftSidebarToggle !== false;
 		document.body.classList.toggle("finition-hide-backlinks-count", this.settings.hideBacklinksCount);
 		const unknownEngine = !resourceEngines.includes(this.settings.spellingEngine);
 		if (unknownEngine) this.settings.spellingEngine = "grammalecte";
@@ -398,6 +404,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			this.lexiconEngine?.destroy();
 			this.lexiconLoad = undefined;
 			this.lexicon = new Map();
+			this.dictionaryLemmaVariants = new Map();
 			this.copuleLexicon = emptyCopuleLexicon();
 		}
 		else if (!this.lexicon.size && loadLemmas) {
@@ -408,7 +415,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 					loading = this.lexiconLoad = engine.getLexicalData().finally(() => { engine.destroy(); if (this.lexiconEngine === engine) this.lexiconEngine = null; });
 				}
 				const data = await loading;
-				if (this.lexiconLoad === loading) { this.lexicon = data.lemmas; this.copuleLexicon = data.copules; }
+				if (this.lexiconLoad === loading) { this.lexicon = data.lemmas; this.dictionaryLemmaVariants = data.variants; this.copuleLexicon = data.copules; }
 			} catch (error) {
 				if (this.lexiconLoad === loading) {
 					this.lexiconLoad = undefined;
@@ -455,11 +462,13 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.ticIAPercentage = this.statusBarItem.createSpan();
 		this.analysisNavigation = new AnalysisNavigation(this, this.statusBarItem);
 		this.statusBarItem.prepend(this.documentCountEl);
+		this.updateLeftSidebarToggle = addLeftSidebarToggle(this, this.statusBarItem, () => this.settings.showLeftSidebarToggle);
 		this.updateStatusBarIcon();
 		this.registerDomEvent(this.statusBarItem, "click", (evt) => this.showModeMenu(evt));
 	}
 
 	updateStatusBarIcon(): void {
+		this.updateLeftSidebarToggle();
 		this.updateDocumentCounts();
 		const stats = this.activeTicIAStats();
 		this.ticIAPercentage?.setText(this.settings.mode === "tic-ia" ? ` ${stats && !stats.pending ? `${(stats.total ? stats.tagged * 100 / stats.total : 0).toFixed(1)} %` : "…"}` : "");
@@ -596,7 +605,9 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				.onClick(() => this.runSynonymsLocal()));
 			submenu.addItem(item => item.setTitle("Synonymes IA").setIcon("book-open")
 				.onClick(() => runSynonyms(this.app, this.settings)));
-			for (const kind of dictionaryKinds) submenu.addItem(item => item.setTitle(dictionaryLabels[kind]).setIcon("book-open")
+			submenu.addItem(item => item.setTitle("Flexions").setIcon("book-open")
+				.setDisabled(!this.hasLexicon).onClick(() => this.runFamily()));
+			for (const kind of dictionaryCommands) submenu.addItem(item => item.setTitle(dictionaryLabels[kind]).setIcon("book-open")
 				.setDisabled(!this.wordDictionaries?.has(kind)).onClick(() => this.runWordDictionary(kind)));
 		});
 
@@ -1051,17 +1062,27 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		if (!this.hasSynonyms) { new Notice("Synonyme : télécharge un dictionnaire dans les réglages de Finition."); return; }
 		this.synonymsDictionary ??= new SynonymsDictionary(() => this.settings.synonymDictionaryPath
 			? this.app.vault.adapter.readBinary(personalSynonymPath(this.settings.synonymDictionaryPath))
-			: this.readLinguisticAsset("synonymes", "synonymes.json"));
+			: this.readLinguisticAsset("synonymes", "synonymes.json"), () => this.dictionaryLemmas());
 		await runLocalSynonyms(this.app, this.synonymsDictionary);
+	}
+	private async dictionaryLemmas(): Promise<DictionaryLemmas> {
+		await this.loadLexiconData(true);
+		return { lemmas: this.lexicon, variants: this.dictionaryLemmaVariants };
+	}
+	async runFamily(): Promise<void> {
+		await runLocalWordLookup(this.app, "Flexions", async word => ({
+			rows: await lookupFamily(() => this.readLinguisticAsset("lexique", dictionaryFile), word),
+			description: "Toutes les flexions des lemmes du mot sélectionné, d’après le lexique actif.",
+		}));
 	}
 	isLinguisticEngineInstalled(engine: ResourcePack): boolean { return engine === "lexique" ? (this.lexiconDictionaries?.available ?? false) : (this.linguisticResources?.available(engine) ?? false); }
 	async runWordDictionary(kind: DictionaryKind): Promise<void> {
 		await runLocalWordLookup(this.app, dictionaryLabels[kind], async word => {
 			if (!this.wordDictionaries) throw new Error("Charge un dictionnaire dans les réglages de Finition.");
-			const { dictionary, rows } = await this.wordDictionaries.lookup(kind, word);
+			const { rows } = await this.wordDictionaries.lookup(kind, word);
 			return kind === "antonymes" || kind === "rimes"
 				? { groups: rows.filter(row => row.words?.length).map(row => ({ category: "", label: row.label ?? "", words: row.words!, sources: [] })) }
-				: { rows, description: dictionary.encoding === "phonetic-internal" ? "Notation phonétique interne du dictionnaire (non API)." : undefined };
+				: { rows, citationLexicon: kind === "citations" ? await this.dictionaryLemmas() : undefined };
 		});
 	}
 	async setWordDictionaryPath(kind: DictionaryKind, path: string): Promise<void> {
@@ -1079,6 +1100,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.lexiconEngine = null;
 		this.lexiconLoad = undefined;
 		this.lexicon = new Map();
+		this.dictionaryLemmaVariants = new Map();
 		this.copuleLexicon = emptyCopuleLexicon();
 		this.finitionCorrectorEngine?.destroy();
 		this.finitionCorrectorEngine = null;
@@ -1140,7 +1162,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			} catch { /* Un ancien dictionnaire absent ou incompatible reste désactivé. */ }
 		}
 		await this.refreshSynonymDictionaries();
-		this.wordDictionaries ??= new WordDictionaries(this.app.vault.adapter, this.manifest.dir, () => this.settings, () => this.saveSettings(), this.linguisticResources);
+		this.wordDictionaries ??= new WordDictionaries(this.app.vault.adapter, this.manifest.dir, () => this.settings, () => this.saveSettings(), this.linguisticResources, () => this.dictionaryLemmas());
 		await this.wordDictionaries.refresh();
 		await this.loadLexiconData();
 	}
@@ -1168,6 +1190,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			this.lexiconEngine?.destroy();
 			this.lexiconLoad = undefined;
 			this.lexicon = new Map();
+			this.dictionaryLemmaVariants = new Map();
 			this.copuleLexicon = emptyCopuleLexicon();
 		}
 		await this.loadLinguisticResources();

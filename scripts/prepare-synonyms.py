@@ -98,6 +98,8 @@ def public_dictionary():
 
 
 def personal_dictionary(folder):
+    if (folder / 'originaux').is_dir():
+        folder = folder / 'originaux'
     lexicon = json.loads((folder / 'dictionnaire.json').read_text())
     raw = json.loads((folder / 'synonymes.json').read_text())
     lemmas = {word: lexicon['formes'][form] for word, form in lexicon['mots']}

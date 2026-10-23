@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PRIVATE = ROOT / 'Antidote/dictionnaires'
+PRIVATE = ROOT / 'Antidote/dictionnaires/originaux'
 api = runpy.run_path(str(ROOT / 'scripts/prepare-private-lexicon.py'))
 api['self_check']()
 codes = json.loads((PRIVATE / 'morphologie-codes.json').read_text())
@@ -33,7 +33,7 @@ for expected in [
 assert not any(row[0] == 'prises' and row[5] == 'ind:pre:3p' for row in analyses)
 assert not any(row[0] == 'tables' and row[3:5] == ('m', 's') for row in analyses)
 
-private = json.loads((PRIVATE / 'finition-lexique.json').read_text())
+private = json.loads((PRIVATE.parent / 'finition/lexique-antidote-finition.json').read_text())
 public = json.loads((ROOT / 'resources/lexique/finition-dictionnaire.json').read_text())
 for name in ['dictionnaire.json', 'morphologie.json', 'morphologie-codes.json']:
     assert hashlib.sha256((PRIVATE / name).read_bytes()).hexdigest() == private['inputs'][name], name

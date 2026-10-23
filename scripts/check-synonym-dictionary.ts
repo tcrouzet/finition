@@ -77,7 +77,7 @@ async function main() {
 	const publicDictionary = new SynonymsDictionary(async () => new TextEncoder().encode(publicText).buffer);
 	assert.ok((await publicDictionary.lookup("rapide")).some(word => synonymKey(word) === "véloce"));
 	assert.ok((await publicDictionary.lookup("maison")).length > 1);
-	const privatePath = "Antidote/dictionnaires/finition-synonymes.json";
+	const privatePath = "Antidote/dictionnaires/finition/synonyme-antidote-finition-sans-details.json";
 	if (existsSync(privatePath)) {
 		const personal = parseSynonymDictionary(readFileSync(privatePath, "utf8"));
 		assert.deepEqual(personal.sources.map(source => source.id), ["personnel"]);
@@ -85,7 +85,7 @@ async function main() {
 		const groups = await new SynonymsDictionary(async () => new TextEncoder().encode(JSON.stringify(personal)).buffer).lookupGroups("défenseur");
 		for (const label of ["Partisan", "Protecteur", "Avocat"]) assert.ok(groups.some(group => group.label === label && group.words.length), label);
 	}
-	const detailsPath = "Antidote/dictionnaires/finition-synonymes-details.json";
+	const detailsPath = "Antidote/dictionnaires/finition/synonyme-antidote-finition.json";
 	if (existsSync(detailsPath)) {
 		const text = readFileSync(detailsPath, "utf8");
 		parseSynonymDictionary(text);

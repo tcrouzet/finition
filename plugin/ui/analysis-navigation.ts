@@ -23,7 +23,7 @@ export const navigationFocus = StateField.define<DecorationSet>({
 interface AnalysisSnapshot {
 	doc: EditorView["state"]["doc"];
 	mode: FinitionMode | "grammalecte";
-	highlights: Pick<Highlight, "from" | "to">[];
+	highlights: Array<Pick<Highlight, "from" | "to"> & { lemma?: string }>;
 	pending: boolean;
 	initialized: boolean;
 }
@@ -55,8 +55,10 @@ export class AnalysisNavigation {
 				const snapshot = this.current(view);
 				if (!view || !snapshot || snapshot.pending || !snapshot.highlights.length) return;
 				const selected = view.state.field(navigationFocus, false);
-				const position = selected?.size ? selected.iter().from : view.state.selection.main.head;
-				const highlights = direction === "next" ? snapshot.highlights : [...snapshot.highlights].reverse();
+				const position = selected?.size ? selected.iter().from : view.state.selection.main.from;
+				const group = snapshot.highlights.find(highlight => highlight.from <= position && position < highlight.to)?.lemma;
+				const matches = group ? snapshot.highlights.filter(highlight => highlight.lemma === group) : snapshot.highlights;
+				const highlights = direction === "next" ? matches : [...matches].reverse();
 				const highlight = highlights.find(({ from }) => direction === "next" ? from > position : from < position) ?? highlights[0];
 				snapshot.initialized = true;
 				this.goTo(view, highlight);

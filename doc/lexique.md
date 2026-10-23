@@ -63,7 +63,7 @@ Le catalogue indépendant `lexique-resources.json` et les catalogues de téléch
 
 Les analyses publiques proviennent de [Morphalou 3.1](https://www.ortolang.fr/market/lexicons/morphalou), sous LGPL-LR, de [Lexique 3.83](https://www.lexique.org/), sous CC-BY-SA-4.0, et du [lexique français de Grammalecte](https://github.com/Pofilo/grammalecte/blob/master/lexicons/French.lex), sous MPL-2.0. Les textes et liens de licence restent dans les métadonnées ; la notice MPL accompagne les téléchargements. La licence MIT du plugin ne remplace pas celles des données.
 
-Les formes personnelles sans licence renseignée sont exclues du fichier public et conservées dans `Antidote/dictionnaires/finition-personnel.json`, ignoré par Git. La migration sauvegarde aussi l’ancien dictionnaire complet dans ce dossier. Les deux moteurs peuvent lire le complément local ; il ne fournit aucune morphologie inventée et n’est jamais inclus dans les téléchargements publics.
+Les formes personnelles sans licence renseignée sont exclues du fichier public et conservées dans `Antidote/dictionnaires/finition-personnel.json`, ignoré par Git. Ce chemin reste utilisé par les deux moteurs ; son emplacement n’attribue pas ces formes à Antidote. L’ancien dictionnaire complet est conservé dans `Antidote/dictionnaires/archives/finition-dictionnaire-legacy.json`, avec sa provenance historique. Le complément local ne fournit aucune morphologie inventée et n’est jamais inclus dans les téléchargements publics.
 
 ```sh
 npx --no-install jiti scripts/merge-lexicons.ts
@@ -75,7 +75,7 @@ La fusion conserve les préférences de lemmes de `scripts/lexicon/repetition-v1
 
 ## Conversion du lexique privé existant
 
-`scripts/prepare-private-lexicon.py` convertit les exports JSON locaux `Antidote/dictionnaires/dictionnaire.json`, `morphologie.json` et `morphologie-codes.json`, sans lancer l’application ni modifier ces sources. Le dernier fichier contient les catégories par identifiant de mot et les libellés des types de flexion décodés statiquement. Le convertisseur ajoute les analyses natives au lexique public, conserve les analyses publiques complètes et leurs index Grammalecte, puis écrit `Antidote/dictionnaires/finition-lexique.json`. Ce fichier porte `name: "Antidote"`, une `description` précisant l’enrichissement et `documentation: ""` lorsqu’aucun lien n’est fourni. Les sources et leurs empreintes sont conservées ; le fichier reste privé et ignoré par Git. Toute version précédente reconnue est sauvegardée avec son empreinte avant remplacement.
+`scripts/prepare-private-lexicon.py` convertit les exports JSON locaux `Antidote/dictionnaires/originaux/dictionnaire.json`, `morphologie.json` et `morphologie-codes.json`, sans lancer l’application ni modifier ces sources. Le dernier fichier contient les catégories par identifiant de mot et les libellés des types de flexion décodés statiquement. Le convertisseur ajoute les analyses natives au lexique public, conserve les analyses publiques complètes et leurs index Grammalecte, puis écrit `Antidote/dictionnaires/finition/lexique-antidote-finition.json`. Ce fichier porte `name: "Antidote"`, une `description` précisant l’enrichissement et `documentation: ""` lorsqu’aucun lien n’est fourni. Les sources et leurs empreintes sont conservées ; le fichier reste privé et ignoré par Git. Toute version précédente reconnue est sauvegardée dans `archives/` avec son empreinte avant remplacement.
 
 Les types natifs `17` à `20` décrivent les flexions masculine singulière, masculine plurielle, féminine singulière et féminine plurielle. Les types `21` à `71` décrivent les conjugaisons, l’infinitif, les participes et l’impératif. Le convertisseur les traduit dans les conventions communes ci-dessus, en conservant les analyses multiples d’une même forme. La catégorie provient d’une table de mots supplémentaire de `Grimoire.03.psi`, distincte du type de flexion ; les anciens champs `flags` ne sont pas utilisés comme catégorie grammaticale.
 
@@ -85,3 +85,19 @@ Les catégories spécialisées sans équivalent vérifié, notamment les gentil�
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/prepare-private-lexicon.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/check-private-lexicon.py
 ```
+
+## Rangement des dictionnaires privés
+
+`Antidote/dictionnaires/originaux/` conserve les JSON natifs, les tables de décodage et les rapports d’extraction sans changer leurs octets. `Antidote/dictionnaires/finition/` contient les conversions importables : `synonyme-antidote-finition.json`, `definition-antidote-finition.json`, `antonyme-antidote-finition.json`, `phonetique-antidote-finition.json`, `rime-antidote-finition.json` et `lexique-antidote-finition.json`. Les noms de ces fichiers distinguent leur origine du format d’import ; ils ne rendent pas leur contenu redistribuable.
+
+Le fichier de synonymes canonique conserve les sens et les registres. `synonyme-antidote-finition-sans-details.json` conserve également l’ancienne conversion simple, dont certaines entrées n’existent pas dans la version détaillée : les deux versions restent disponibles, sans prétendre que l’une remplace intégralement l’autre. Les anciennes variantes du lexique sont conservées dans `archives/`, avec leurs noms et leurs provenances historiques.
+
+`scripts/organize-private-dictionaries.py` vérifie les collisions et les empreintes avant de déplacer les fichiers. Le manifeste local `Antidote/dictionnaires/organisation.json` conserve chaque ancien chemin, son nouveau chemin, sa taille et son SHA-256 ; il permet de retrouver le rangement précédent. Une réexécution ne déplace rien si le rangement et les fichiers sont inchangés. Le contrôle échoue si un fichier manque ou diffère du manifeste. Il ne contrôle pas les fichiers extraits ultérieurement, absents de cet inventaire.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/organize-private-dictionaries.py --check
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/prepare-private-dictionaries.py
+npx --no-install jiti scripts/check-synonym-dictionary.ts
+```
+
+Le menu **Dictionnaires → Flexions** affiche les flexions du ou des lemmes correspondant au mot sélectionné, à partir du lexique actif. Il conserve les analyses ambiguës et leurs indications grammaticales disponibles. Les formes complémentaires sans analyse forme–lemme ne permettent pas de reconstruire des flexions ; aucun mot dérivé n’est inventé.

@@ -32,9 +32,11 @@ Ouvrir **♫ → Surlignages** et choisir ce que l’on veut observer :
 - **Formes** surligne les phrases négatives, interrogatives, exclamatives et celles contenant des points de suspension (`...` ou `…`). Les 4 couleurs se choisissent dans **Réglages → Finition → Palette**. Une phrase cumulant plusieurs formes compte une seule fois ; le survol les indique toutes et la ponctuation détermine sa couleur principale (interrogation, exclamation, puis suspension).
 - **Copules** surligne les flexions des verbes de la liste dédiée (« être », « avoir », « sembler », « devenir »…), avec leurs formes pronominales (« se montrer », « se révéler », « s’appeler »). Les auxiliaires des temps composés sont exclus : « avons connu » n’est pas surligné, « ai un bateau » l’est. Ce mode utilise le dictionnaire Finition ; sa couleur par défaut est 14, réglable dans **Palette**. Les emplois adjectivaux des participes restent ambigus.
 
-L’analyse conserve la position du curseur. Le compteur et la flèche descendante permettent de parcourir les passages repérés. Cliquer sur un passage surligné fait ressortir son groupe en noir : le compteur et la flèche se limitent alors à ce groupe. Recliquer sur le groupe ou cliquer hors surlignage rétablit la navigation complète. Quand une analyse est active, **Reset**, en bas du menu musique, efface ses surlignages et suggestions sans modifier le texte.
+L’analyse conserve la position du curseur. Le compteur et les flèches permettent de parcourir les passages repérés. Cliquer sur un passage surligné fait ressortir son groupe en noir : le compteur et les flèches se limitent alors à ce groupe. Recliquer sur le groupe ou cliquer hors surlignage rétablit la navigation complète. Quand une analyse est active, **Reset**, en bas du menu musique, efface ses surlignages et suggestions sans modifier le texte.
 
 Une seule analyse stylistique est active à la fois ; recliquer sur son nom la désactive. Les couleurs, les distances de recherche et les sensibilités se règlent dans **Réglages → Finition**. Sur les longues notes, l’analyse porte sur le début jusqu’à la limite configurée : le texte reste entier.
+
+Le bloc YAML en tête de note et les tags `#mot` ou `#thème/sous-thème` sont exclus des analyses et des textes envoyés à l’IA. La ponctuation les préserve. Un bloc YAML commencé mais non fermé reste exclu jusqu’à la fin de la note.
 
 ### Structure et statistiques
 
@@ -68,6 +70,7 @@ Cette commande modifie directement toute la note, sans étape de validation.
 Sélectionner un mot, ouvrir **♫ → Dictionnaires** et choisir le dictionnaire :
 
 - **Synonymes** propose des variantes, regroupées par sens et catégorie lorsque le dictionnaire le permet.
+- **Flexions** affiche toutes les flexions disponibles dans le lexique actif, à partir d’un mot ou de son lemme.
 - **Définitions** aide à vérifier le sens d’un mot.
 - **Antonymes** propose ses contraires.
 - **Phonétique** donne sa prononciation.
@@ -75,7 +78,11 @@ Sélectionner un mot, ouvrir **♫ → Dictionnaires** et choisir le dictionnair
 
 Cliquer sur un synonyme remplace la sélection. Le bouton **Insérer la liste en remarque** conserve les résultats après le paragraphe dans un commentaire Obsidian `%% … %%`. La fenêtre se déplace par son titre pour laisser voir le texte.
 
-Chaque dictionnaire se charge dans sa section des réglages. Vous pouvez aussi importer vos propres dictionnaires au format Finition.
+Chaque dictionnaire public se télécharge avec **Charger** dans sa section des réglages, puis se met à jour avec **Recharger**. **Flexions** utilise le lexique déjà installé. Tous les dictionnaires acceptent aussi vos fichiers au [format Finition](doc/dictionnaires.md).
+
+**Synonymes**, **Étymologie** et **Citations** recherchent les lemmes du mot sélectionné avec le lexique actif : « bateaux » retrouve « bateau ». Les citations sont aussi indexées sur les lemmes de leur texte ; leur formulation et leurs références restent intactes. Sans lexique installé, la recherche reste limitée aux formes exactes. **Phonétique** et **Rimes** conservent la forme sélectionnée.
+
+**Citations** rassemble plus de 34 000 extraits de plus de 470 auteurs, issus du Wiktionnaire et de Wikiquote, avec leurs références : Balzac, Sand, Hugo, Rousseau, Proust, Colette, Gide… La sélection suit le domaine public français en 2026, avec contrôle des dates de décès, traductions et exceptions connues. Après une mise à jour du corpus, sélectionner **Recharger** sur la ligne **Finition** de cette section dans les réglages. Les [sources et critères de sélection](doc/dictionnaires.md#conjugaisons-étymologie-citations-et-champ-lexical) sont documentés.
 
 ## Une IA, si vous la souhaitez
 

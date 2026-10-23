@@ -25,8 +25,8 @@ export async function resourceFixture(seed = true) {
 		const privateFile = /\/Antidote\/model\/(pack\.json|electra\/(?:model\.json|weights\.bin|tokenizer\.json|labels\.json))$/u.exec(path);
 		if (seed && privateFile) return files.get(`private-${privateFile[1].replace(/\//gu, "__")}`);
 		if (seed && path.endsWith("/" + personalDictionaryPath)) return files.get(`private-${personalDictionaryFile}`);
-		const match = /\/resources\/(lexique|grammalecte|finition-corrector|synonymes|definitions|antonymes|phonetique|rimes)\/([a-f0-9]{64})\/(.+)$/u.exec(path);
-		if (!seed || !match || revisions[match[1] as ResourcePack] !== match[2]) return undefined;
+		const match = /\/resources\/([^/]+)\/([a-f0-9]{64})\/(.+)$/u.exec(path);
+		if (!seed || !match || !resourcePacks.some(engine => engine === match[1]) || revisions[match[1] as ResourcePack] !== match[2]) return undefined;
 		return files.get(match[3] === "resources.json" ? `${match[1]}-resources.json` : resourceAssetName(match[1] as ResourcePack, match[3]));
 	};
 	const readBinary = async (path: string) => {

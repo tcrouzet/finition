@@ -1,11 +1,11 @@
 import { cleanTypography } from "./clean";
 import { diffToGroups, type DiffGroup } from "./diff";
 import { markdownLinks, linkRanges, mergeRanges, type MarkdownLink } from "../markdown-links";
-import { hashtagRanges } from "../markdown-tags";
+import { frontmatterRanges, hashtagRanges } from "../markdown-tags";
 
 export function protectLinks(original: string, from = 0, to = original.length, links: readonly MarkdownLink[] = markdownLinks(original)): { text: string; diff: (revised: string) => DiffGroup[] } {
 	const tags = hashtagRanges(original);
-	const spans: MarkdownLink[] = [...links, ...tags.map(([start, stop]) => {
+	const spans: MarkdownLink[] = [...frontmatterRanges(original).map(([from, to]) => ({ from, to })), ...links, ...tags.map(([start, stop]) => {
 		let end = stop;
 		while (/[ \t\u00a0\u202f]/u.test(original[end] ?? "")) end++;
 		if (end === original.length || /[\r\n]/u.test(original[end])) while (start > 0 && /[ \t\u00a0\u202f]/u.test(original[start - 1])) start--;
@@ -22,7 +22,7 @@ export function protectLinks(original: string, from = 0, to = original.length, l
 		if (link.to <= cursor || link.from >= to) continue;
 		append(Math.max(from, link.from));
 		if (link.label) {
-			let label = original.slice(Math.max(from, link.label[0]), Math.min(to, link.label[1]));
+			let label = original.slice(Math.max(from, cursor, link.label[0]), Math.min(to, link.label[1]));
 			label = label.replace(/<[^>]*>/g, "");
 			for (const [start, end] of mergeRanges([...linkRanges(label), ...hashtagRanges(label)]).reverse()) label = label.slice(0, start) + label.slice(end);
 			text += label;

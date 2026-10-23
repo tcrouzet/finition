@@ -4,7 +4,8 @@
  * commun Finition, avec gestion correcte des élisions.
  */
 
-import { linkRanges } from "../markdown-links";
+import { linkRanges, mergeRanges } from "../markdown-links";
+import { markdownExclusionRanges } from "../markdown-tags";
 
 export interface Token {
 	start: number;
@@ -50,7 +51,7 @@ const ELISION_LEMMAS: Record<string, string> = {
 /** Découpe `text` en mots et résout le lemme de chacun (élisions comprises). */
 export function tokenize(text: string, lexicon: Map<string, string>): Token[] {
 	const tokens: Token[] = [];
-	const links = linkRanges(text);
+	const links = mergeRanges([...linkRanges(text), ...markdownExclusionRanges(text)]);
 	let segment = 0;
 	WORD_RE.lastIndex = 0;
 	let match: RegExpExecArray | null;

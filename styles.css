@@ -202,8 +202,18 @@
 	cursor: pointer;
 }
 
-.finition-document-navigation {
+.finition-document-navigation,
+.finition-left-sidebar-toggle {
 	padding: 0;
+}
+
+.finition-left-sidebar-toggle .sidebar-toggle-icon-inner {
+	stroke: none;
+	width: var(--sidebar-left-toggle-inner-width, 8.33%);
+}
+
+.finition-left-sidebar-toggle[aria-expanded="true"] .sidebar-toggle-icon-inner {
+	width: var(--sidebar-left-toggle-inner-width-open, 24%);
 }
 
 .finition-status-icon {
@@ -211,6 +221,7 @@
 }
 
 .finition-document-navigation[hidden],
+.finition-left-sidebar-toggle[hidden],
 .finition-document-count[hidden],
 .finition-analysis-count[hidden] {
 	display: none;
@@ -365,6 +376,10 @@ body.is-mobile .finition-synonyms-insert {
 	min-width: 0;
 }
 
+.finition-settings-section {
+	padding-top: var(--size-4-4);
+}
+
 .finition-settings-section > summary {
 	display: list-item;
 	padding: var(--size-4-4) 0;
@@ -373,10 +388,14 @@ body.is-mobile .finition-synonyms-insert {
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.finition-settings-section-host.setting-item {
+.setting-group .finition-settings-section-host.setting-item {
 	display: block;
 	padding: 0;
 	border: 0;
+}
+
+.finition-settings-section-host::before {
+	display: none;
 }
 
 .finition-settings-section > summary:focus-visible {

@@ -5,6 +5,7 @@ import FinitionPlugin from "../main";
 import { DEFAULT_SETTINGS, FinitionMode, Highlight } from "../plugin/types";
 import { resourceFixture } from "./check-linguistic-resources";
 import { countDocument, formatDocumentCount } from "../plugin/ui/document-count";
+import { FinitionSettingTab } from "../plugin/settings-tab";
 
 export async function checkAnalysisNavigation(menuOpened: () => number, getMenu: () => Array<{ title: string; click: () => unknown }>): Promise<void> {
 	const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
@@ -29,15 +30,41 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	const host = plugin as unknown as { saved: unknown; commands: Command[]; extensions: Extension[]; cleanup: Array<() => void> };
 	host.saved = { ...DEFAULT_SETTINGS, mode: "none", debounceMs: 0, resourcePacks: fixture.revisions };
 	let active: MarkdownView | null = null;
+	let sidebarToggles = 0;
+	const leftSplit = { collapsed: false, toggle() { this.collapsed = !this.collapsed; sidebarToggles++; } };
+	let sidebar: typeof leftSplit | undefined;
+	const layoutReady: Array<() => void> = [];
 	const events = new Map<string, () => void>();
 	plugin.app = { vault: { adapter }, workspace: {
-		onLayoutReady() {},
+		get leftSplit() { return sidebar; },
+		onLayoutReady(callback: () => void) { layoutReady.push(callback); },
 		getMostRecentLeaf: () => null,
 		getActiveViewOfType: () => active,
 		iterateAllLeaves: (visit: (leaf: { view: MarkdownView }) => void) => { if (active) visit({ view: active }); },
 		on: (event: string, callback: () => void) => { events.set(event, callback); return {}; },
 	} } as unknown as App;
 	await plugin.onload();
+	const sidebarButton = document.querySelector<HTMLButtonElement>(".finition-left-sidebar-toggle")!;
+	check(sidebarButton?.hidden && sidebarButton.disabled, "Le bouton doit attendre la restauration de l’espace de travail sans empêcher le plugin de charger");
+	sidebar = leftSplit;
+	layoutReady.forEach(callback => callback());
+	check(sidebarButton && !sidebarButton.hidden, "Bouton de barre latérale absent par défaut");
+	check(sidebarButton.dataset.icon === "sidebar-toggle-button-icon", "Barre ouverte : l’icône native d’Obsidian est absente");
+	check(new FinitionSettingTab(plugin.app, plugin).getSettingDefinitions()[0]?.name === "Barre latérale gauche", "Le réglage de barre latérale doit être en tête");
+	sidebarButton.click();
+	check(leftSplit.collapsed && sidebarToggles === 1 && menuOpened() === 0, "Le bouton doit masquer la barre gauche par le toggle natif, sans ouvrir le menu");
+	check(sidebarButton.dataset.icon === "sidebar-toggle-button-icon" && sidebarButton.getAttribute("aria-expanded") === "false", "Barre fermée : le dessin natif doit conserver son état fermé");
+	sidebarButton.click();
+	check(!leftSplit.collapsed && sidebarButton.getAttribute("aria-expanded") === "true", "Le second clic doit restaurer la barre gauche");
+	check(sidebarButton.dataset.icon === "sidebar-toggle-button-icon", "Barre réouverte : l’icône native a changé");
+	plugin.settings.showLeftSidebarToggle = false;
+	await plugin.saveSettings();
+	await plugin.loadSettings();
+	plugin.updateStatusBarIcon();
+	check(sidebarButton.hidden && getComputedStyle(sidebarButton).display === "none" && !plugin.settings.showLeftSidebarToggle, "Le réglage masqué ne persiste pas ou laisse le bouton visible");
+	plugin.settings.showLeftSidebarToggle = true;
+	await plugin.saveSettings();
+	plugin.updateStatusBarIcon();
 	const started = performance.now();
 	let frames = 0, lastFrame = started, maxFrameGap = 0, loading = true;
 	const tick = (now: number) => {
@@ -74,7 +101,7 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	const documentCount = document.querySelector<HTMLElement>(".finition-document-count");
 	check(!documentCount!.parentElement!.hasAttribute("aria-label"), "L’infobulle Finition recouvre celle du compteur");
 	check(documentCount?.hidden, "Compteur du document visible par défaut");
-	check(documentCount!.parentElement!.firstElementChild === documentCount && documentCount!.nextElementSibling?.classList.contains("finition-document-navigation"), "Le compteur de taille doit précéder les flèches de navigation");
+	check(documentCount!.parentElement!.firstElementChild === sidebarButton && sidebarButton.nextElementSibling === documentCount && documentCount!.nextElementSibling?.classList.contains("finition-document-navigation"), "Le bouton de barre gauche doit précéder la taille, les flèches et la musique");
 	check(documentCount!.parentElement!.querySelector(".finition-status-icon")?.getAttribute("aria-label") === "Finition", "Infobulle Finition absente de l’icône");
 	plugin.settings.documentCountDisplay = "both";
 	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "Un été 😀." } });
@@ -125,6 +152,7 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 		await turn();
 		check(view.dom.querySelector(".finition-navigation-focused"), `Activation ${mode} : aucune occurrence initialement repérée`);
 		check(view.state.selection.main.eq(selection) && view.scrollDOM.scrollTop === scrollTop, `Activation ${mode} : sélection ou défilement déplacé`);
+		view.dispatch({ selection: { anchor: view.state.doc.length } });
 		next!.click();
 		check(view.state.selection.main.head === first && view.hasFocus, `Navigation ${mode} : première occurrence inaccessible`);
 		const current = view.dom.querySelector<HTMLElement>(".finition-navigation-focused");
@@ -166,6 +194,29 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	next!.click();
 	check(view.state.selection.main.head === copuleText.indexOf("fait"), "Copules : la flèche rejoint un autre verbe");
 	const prefix = "😀 Le chat et le chat, mais pas la souris.";
+	for (const [mode, sample, word, selector] of [
+		["repetition", "Le chat suit la souris. Le chat voit la souris. Le chat dort.", "chat", ".finition-repeat"],
+		["hinges", "Et mais et mais ET.", "et", ".finition-hinge"],
+	] as const) {
+		view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: sample } });
+		await plugin.setMode(mode);
+		await waitFor(() => !!view.dom.querySelector(selector), `${mode} : surlignages absents`);
+		const matching = Array.from(view.dom.querySelectorAll<HTMLElement>(selector)).filter(mark => mark.textContent?.toLowerCase() === word);
+		const offsets = matching.map(mark => view.posAtDOM(mark));
+		check(offsets.length === 3, `${mode} : fixture sans plusieurs occurrences et groupes`);
+		view.dispatch({ selection: { anchor: offsets[0] } });
+		matching[0].click();
+		check(counter!.textContent === "3", `${mode} : compteur non limité au groupe sélectionné`);
+		next!.click();
+		check(view.state.selection.main.head === offsets[1], `${mode} : suivant atteint un autre groupe`);
+		previous!.click();
+		check(view.state.selection.main.head === offsets[0], `${mode} : précédent atteint un autre groupe`);
+		previous!.click();
+		check(view.state.selection.main.head === offsets[2], `${mode} : boucle arrière sort du groupe`);
+		view.dom.querySelector<HTMLElement>(".finition-focused")!.click();
+		check(counter!.textContent === "5", `${mode} : désélection sans retour à tous les surlignages`);
+	}
+	await plugin.setMode("hinges");
 	const longText = prefix + " Le chat et le chat.";
 	for (const [mode, expandedCount, first, selector] of [
 		["hinges", 3, prefix.indexOf("et"), ".finition-hinge"],
@@ -369,6 +420,9 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	}
 	plugin.settings.hideBacklinksCount = true;
 	await plugin.saveSettings();
+	const menusBeforeMusicClick = menuOpened();
+	document.querySelector<HTMLElement>(".finition-status-icon")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+	check(menuOpened() === menusBeforeMusicClick + 1 && getMenu().some(item => item.title === "Surlignages"), "Le menu musique ne s’ouvre plus après un démarrage sans barre latérale");
 	plugin.onunload();
 	check(!document.body.classList.contains("finition-hide-backlinks-count"), "Masquage des backlinks conservé après déchargement");
 	for (const cleanup of host.cleanup) cleanup();

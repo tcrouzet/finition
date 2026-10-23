@@ -1,7 +1,9 @@
+import { maskMarkdownExclusions } from "../../markdown-tags";
+
 const blank = (text: string): string => text.replace(/[^\r\n]/g, " ");
 
 export function maskMarkdown(text: string): string {
-	let prose = text.replace(/^---\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/, blank);
+	let prose = maskMarkdownExclusions(text);
 	const fences = /^ {0,3}(`{3,}|~{3,})[^\r\n]*(?:\r?\n|$)/gm;
 	let opening: RegExpExecArray | null;
 	while ((opening = fences.exec(prose))) {

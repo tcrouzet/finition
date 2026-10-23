@@ -7,12 +7,15 @@ import { callOpenAI } from "./openai";
 import { splitIntoChunks } from "./chunk";
 import { getAIConnection } from "./provider";
 import { selectionTouchesLink } from "../markdown-links";
+import { markdownExclusionRanges, maskMarkdownExclusions } from "../markdown-tags";
 import systemPrompt from "./system-prompt-synonymes.md";
 
 export function synonymContext(text: string, from: number, to: number): string {
 	if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to > text.length || from >= to || !text.slice(from, to).trim()) {
 		throw new Error("Sélectionne d’abord un texte.");
 	}
+	if (markdownExclusionRanges(text).some(([start, end]) => from < end && to > start)) throw new Error("Sélectionne un texte hors du YAML et des tags.");
+	text = maskMarkdownExclusions(text);
 	const paragraphs = splitIntoChunks(text, 0).filter((paragraph) => paragraph.text.trim());
 	const first = paragraphs.findIndex(({ end }) => from < end);
 	const last = paragraphs.findIndex(({ end }) => to <= end);

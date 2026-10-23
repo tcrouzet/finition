@@ -93,6 +93,7 @@ export interface Highlight {
 
 export interface FinitionSettings {
 	mode: FinitionMode;
+	showLeftSidebarToggle: boolean;
 	documentCountDisplay: "none" | "words" | "characters" | "both";
 	hideBacklinksCount: boolean;
 	singleNoteOpen: boolean;
@@ -243,6 +244,7 @@ export const DEFAULT_PALETTE: string[] = [
 export const DEFAULT_SETTINGS: FinitionSettings = {
 	mode: "repetition",
 	documentCountDisplay: "none",
+	showLeftSidebarToggle: true,
 	hideBacklinksCount: false,
 	singleNoteOpen: false,
 	debugMode: false,

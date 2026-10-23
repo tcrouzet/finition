@@ -3,9 +3,10 @@ import { dictionaryFile } from "./lexicon/shared";
 
 export const resourceEngines = ["grammalecte", "finition-corrector"] as const;
 export type ResourceEngine = typeof resourceEngines[number];
-export const resourcePacks = ["lexique", ...resourceEngines, "synonymes", "definitions", "antonymes", "phonetique", "rimes"] as const;
+export const dictionaryResourcePacks = ["definitions", "antonymes", "phonetique", "rimes", "conjugaisons", "historique", "citations", "champ-lexical"] as const;
+export const resourcePacks = ["lexique", ...resourceEngines, "synonymes", ...dictionaryResourcePacks] as const;
 export type ResourcePack = typeof resourcePacks[number];
-export const resourceLabels: Record<ResourcePack, string> = { lexique: "Dictionnaire Finition", grammalecte: "Grammalecte", "finition-corrector": "Neuronal", synonymes: "Synonymes", definitions: "Définitions", antonymes: "Antonymes", phonetique: "Phonétique", rimes: "Rimes" };
+export const resourceLabels: Record<ResourcePack, string> = { lexique: "Dictionnaire Finition", grammalecte: "Grammalecte", "finition-corrector": "Neuronal", synonymes: "Synonymes", definitions: "Définitions", antonymes: "Antonymes", phonetique: "Phonétique", rimes: "Rimes", conjugaisons: "Conjugaisons", historique: "Étymologie", citations: "Citations", "champ-lexical": "Champ lexical" };
 export const grammarFiles = {
 	classic: "_dictionaries/fr-classic.json", reform: "_dictionaries/fr-reform.json",
 	conjugations: "conj_data.json", phonetics: "phonet_data.json", plurals: "mfsp_data.json",
@@ -20,6 +21,10 @@ export const resourceFiles: Record<ResourcePack, readonly string[]> = {
 	antonymes: ["antonymes.json", "CC-BY-SA-4.0.txt"],
 	phonetique: ["phonetique.json", "CC-BY-SA-4.0.txt"],
 	rimes: ["rimes.json", "CC-BY-SA-4.0.txt"],
+	conjugaisons: ["conjugaisons.json", "CC-BY-SA-4.0.txt"],
+	historique: ["historique.json", "CC-BY-SA-4.0.txt"],
+	citations: ["citations.json", "CC-BY-SA-4.0.txt"],
+	"champ-lexical": ["champ-lexical.json", "CC-BY-SA-4.0.txt"],
 };
 export const resourceAssetName = (engine: ResourcePack, file: string): string => `${file === dictionaryFile || file === "MPL-2.0.txt" ? "lexique" : engine}-${file.replace(/\//g, "__")}`;
 export const resourceSource = (engine: ResourcePack, file: string): string => file === dictionaryFile || file === "MPL-2.0.txt" ? `resources/lexique/${file}` : `${file.endsWith(".bin") ? "scripts/neural" : "resources"}/${file === "phonet_data.json" ? "grammalecte" : engine === "finition-corrector" ? "camembert" : engine}/${file}`;

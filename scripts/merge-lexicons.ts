@@ -56,8 +56,8 @@ async function main() {
 	let neural = JSON.parse(neuralBytes.toString()) as { name: string; version: number; encoding: string; payload: string; sources: Record<string, { license?: string | null }>; counts: Record<string, number> };
 	let data = await decodeDictionary(neural);
 	if (data.forms.length && !neural.sources.additionalForms?.license) {
-		await mkdir(new URL("Antidote/dictionnaires/", root), { recursive: true });
-		const backup = new URL("Antidote/dictionnaires/finition-dictionnaire-legacy.json", root);
+		await mkdir(new URL("Antidote/dictionnaires/archives/", root), { recursive: true });
+		const backup = new URL("Antidote/dictionnaires/archives/finition-dictionnaire-legacy.json", root);
 		try { await copyFile(neuralPath, backup, 1); }
 		catch (error) { if (!(error instanceof Error) || !("code" in error) || error.code !== "EEXIST") throw error; }
 		const personal = new URL(personalDictionaryPath, root);

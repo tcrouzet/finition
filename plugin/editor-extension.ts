@@ -9,7 +9,7 @@
  */
 
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
-import { RangeSetBuilder } from "@codemirror/state";
+import type { Range } from "@codemirror/state";
 import { Notice } from "obsidian";
 import { FinitionMode, FinitionRuntime, Highlight } from "./types";
 import { computeRepetitions } from "./modes/repetition";
@@ -23,12 +23,17 @@ import { computeHingeHighlights } from "./modes/hinges";
 import { analyzeTicIA } from "./modes/tic-ia";
 import { computeFormHighlights } from "./modes/formes";
 import { computeCopuleHighlights } from "./modes/copules";
+import { markdownExclusionRanges, maskMarkdownExclusions } from "./markdown-tags";
 
 /** Classe CSS appliquée aux occurrences du lemme actuellement sélectionné au clic. */
 const FOCUS_CLASS = "finition-focused";
 
 function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLemma: string | null): DecorationSet {
-	let text = view.state.doc.sliceString(0, Math.min(view.state.doc.length, runtime.settings.maxDocumentLength));
+	const limit = Math.min(view.state.doc.length, runtime.settings.maxDocumentLength);
+	// Un séparateur et un caractère Unicode suffisent à reconnaître un tag numérique tronqué.
+	const prefix = view.state.doc.sliceString(0, Math.min(view.state.doc.length, limit + 3));
+	const protectedRanges = markdownExclusionRanges(prefix);
+	let text = maskMarkdownExclusions(prefix, protectedRanges).slice(0, limit);
 	if (text.length < view.state.doc.length) {
 		text = text.replace(/[\uD800-\uDBFF]$/u, "");
 		if (/^[\p{L}\p{M}\p{N}_’'-]/u.test(view.state.doc.sliceString(text.length, Math.min(view.state.doc.length, text.length + 2)))) {
@@ -153,20 +158,26 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 
 	highlights.sort((a, b) => a.from - b.from);
 	runtime.updateAnalysisHighlights(view, focusedLemma === null ? highlights : highlights.filter(highlight => highlight.lemma === focusedLemma), pending);
-	const builder = new RangeSetBuilder<Decoration>();
+	const decorations: Range<Decoration>[] = [];
+	let firstProtected = 0;
 	for (const highlight of highlights) {
-		builder.add(
-			highlight.from,
-			highlight.to,
-			Decoration.mark({
-				class: cssClass(highlight),
-				// data-finition-lemma permet d'identifier, au clic, quel groupe
-				// de répétition sélectionner (voir handleClick ci-dessous).
-				attributes: { title: highlight.title ?? highlight.lemma, "data-finition-lemma": highlight.lemma },
-			})
-		);
+		while (firstProtected < protectedRanges.length && protectedRanges[firstProtected][1] <= highlight.from) firstProtected++;
+		const decoration = Decoration.mark({
+			class: cssClass(highlight),
+			// data-finition-lemma permet d'identifier, au clic, quel groupe
+			// de répétition sélectionner (voir handleClick ci-dessous).
+			attributes: { title: highlight.title ?? highlight.lemma, "data-finition-lemma": highlight.lemma },
+		});
+		let cursor = highlight.from;
+		for (let index = firstProtected; index < protectedRanges.length; index++) {
+			const [from, to] = protectedRanges[index];
+			if (from >= highlight.to) break;
+			if (from > cursor) decorations.push(decoration.range(cursor, from));
+			cursor = Math.max(cursor, to);
+		}
+		if (cursor < highlight.to) decorations.push(decoration.range(cursor, highlight.to));
 	}
-	return builder.finish();
+	return Decoration.set(decorations, true);
 }
 
 /** Construit l'extension CM6 à enregistrer via `plugin.registerEditorExtension(...)`. */

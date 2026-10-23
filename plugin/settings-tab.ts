@@ -7,7 +7,7 @@ import { finitionSynonymMetadata, isSynonymDocumentation, synonymDocumentation, 
 import type FinitionPlugin from "./main";
 import { neuralDocumentation, neuralFileLimit } from "./neural-models";
 import { DEFAULT_PALETTE, DEFAULT_SETTINGS, FORM_TYPES, parseGrammalecteDictionary, parseStopWords } from "./types";
-import { dictionaryDocumentation, dictionaryLabels, publicDictionaryMetadata, type DictionaryKind } from "./dictionaries";
+import { dictionaryDocumentation, dictionaryCommands, dictionaryLabels, isPublicDictionaryKind, publicDictionaryMetadata, type DictionaryKind } from "./dictionaries";
 import { lexiconDocumentation, publicLexiconMetadata } from "./lexicon/dictionaries";
 import AI_MODEL_PRESETS from "./ai/models.json";
 
@@ -170,14 +170,16 @@ export class FinitionSettingTab extends PluginSettingTab {
 				dropdown.setValue(this.plugin.settings.wordDictionaryPaths?.[kind] ?? "").setDisabled(busy || !options.length)
 					.onChange(path => update(async () => { await store?.select(kind, path); }));
 			});
-		const finition = new Setting(container).setName("Finition")
-			.addButton(button => button.setButtonText(this.plugin.isLinguisticEngineInstalled(kind) ? "Recharger" : "Charger").setDisabled(busy)
-				.onClick(() => update(async () => {
-					const notice = new Notice(loadingMessage("Téléchargement du dictionnaire…"), 0);
-					try { await this.plugin.downloadLinguisticResources(kind, text => notice.setMessage(loadingMessage(text))); }
-					finally { notice.hide(); }
-				})));
-		this.describeResource(finition, publicDictionaryMetadata);
+		if (isPublicDictionaryKind(kind)) {
+			const finition = new Setting(container).setName("Finition")
+				.addButton(button => button.setButtonText(this.plugin.isLinguisticEngineInstalled(kind) ? "Recharger" : "Charger").setDisabled(busy)
+					.onClick(() => update(async () => {
+						const notice = new Notice(loadingMessage("Téléchargement du dictionnaire…"), 0);
+						try { await this.plugin.downloadLinguisticResources(kind, text => notice.setMessage(loadingMessage(text))); }
+						finally { notice.hide(); }
+					})));
+			this.describeResource(finition, publicDictionaryMetadata);
+		}
 		for (const option of options.filter(option => option.path)) {
 			const row = new Setting(container).setName(option.name)
 				.addButton(button => button.setButtonText("Effacer").setDestructive().setDisabled(busy).onClick(() => {
@@ -785,6 +787,17 @@ export class FinitionSettingTab extends PluginSettingTab {
 	private generalDefinitions(): SettingDefinitionRender[] {
 		return [
 			{
+				name: "Barre latérale gauche",
+				desc: "Afficher le bouton pour masquer ou réafficher la barre latérale gauche dans la barre d’état.",
+				render: setting => {
+					setting.addToggle(toggle => toggle.setValue(this.plugin.settings.showLeftSidebarToggle).onChange(async value => {
+						this.plugin.settings.showLeftSidebarToggle = value;
+						await this.plugin.saveSettings();
+						this.plugin.updateStatusBarIcon();
+					}));
+				},
+			},
+			{
 				name: "Compteur du document",
 				desc: "À gauche de ♫. Signes : espaces compris.",
 				render: setting => {
@@ -1076,10 +1089,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 			this.sectionDefinition("Corrections", ["Lexique", "Charger un lexique", ...(this.plugin.lexiconDictionaries?.options.map(option => option.name) ?? []), "Dictionnaire Finition", "Moteur d’analyse", "Neuronal", "Structure", "Tricolons", "Grammalecte", "Correcteur neuronal par défaut", "CamemBERT", "Charger un modèle neuronal", "Dictionnaire personnel", ...this.plugin.neuralModelOptions.map(option => option.name)], container => this.displayCorrections(container)),
 			this.sectionDefinition("Corrections IA", ["Clé API Anthropic", "Clé API OpenAI", "Serveur local", "Modèle local", "Modèle par défaut", "Identifiant du modèle personnalisé", "Taille des tronçons (caractères)", "Prompt enregistré", "Prompt de révision", "Modèle pour ce prompt", "Identifiant du modèle pour ce prompt", "Enregistrer sous ce nom"], container => this.displayAICorrections(container)),
 			this.sectionDefinition("Synonymes", ["Dictionnaire", "Finition", "Charger un dictionnaire", ...this.plugin.synonymDictionaryOptions.map(option => option.name)], container => this.displaySynonyms(container)),
-			this.sectionDefinition("Définitions", ["Dictionnaire", "Charger un dictionnaire", ...(this.plugin.wordDictionaries?.options.filter(option => option.kind === "definitions").map(option => option.name) ?? [])], container => this.displayWordDictionary(container, "definitions")),
-			this.sectionDefinition("Antonymes", ["Dictionnaire", "Charger un dictionnaire", ...(this.plugin.wordDictionaries?.options.filter(option => option.kind === "antonymes").map(option => option.name) ?? [])], container => this.displayWordDictionary(container, "antonymes")),
-			this.sectionDefinition("Phonétique", ["Dictionnaire", "Charger un dictionnaire", ...(this.plugin.wordDictionaries?.options.filter(option => option.kind === "phonetique").map(option => option.name) ?? [])], container => this.displayWordDictionary(container, "phonetique")),
-			this.sectionDefinition("Rimes", ["Dictionnaire", "Charger un dictionnaire", ...(this.plugin.wordDictionaries?.options.filter(option => option.kind === "rimes").map(option => option.name) ?? [])], container => this.displayWordDictionary(container, "rimes")),
+			...dictionaryCommands.map(kind => this.sectionDefinition(dictionaryLabels[kind], ["Dictionnaire", "Charger un dictionnaire", ...(this.plugin.wordDictionaries?.options.filter(option => option.kind === kind).map(option => option.name) ?? [])], container => this.displayWordDictionary(container, kind))),
 			this.sectionDefinition("Répétitions", ["Empan de répétition (caractères)", "Longueur minimale d'un mot (caractères)", "Mots-outils"], container => this.displayRepetitions(container)),
 			this.sectionDefinition("Cadence", ["Empan de cadence (caractères)", "Moteur de cadence"], container => this.displayCadence(container)),
 			this.sectionDefinition("Monotonie", ["Longueur minimale d'une série (en phrases)", "Tolérance (% de la longueur de phrase)"], container => this.displayMonotony(container)),

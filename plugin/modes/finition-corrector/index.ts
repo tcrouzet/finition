@@ -6,8 +6,9 @@ import { maskMarkdown } from "./markdown";
 import { specializedFiles } from "./neural-assets";
 import { personalDictionaryFile } from "../../lexicon/shared";
 import type { CopuleLexicon } from "../copules";
+import type { DictionaryLemmas } from "../../synonyms";
 
-export interface LexicalData { lemmas: Map<string, string>; copules: CopuleLexicon }
+export interface LexicalData extends DictionaryLemmas { copules: CopuleLexicon }
 
 export class FinitionCorrectorEngine {
 	neuralEnabled = false;

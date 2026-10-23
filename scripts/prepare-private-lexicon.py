@@ -10,7 +10,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PRIVATE = ROOT / 'Antidote/dictionnaires'
+PRIVATE = ROOT / 'Antidote/dictionnaires/originaux'
+OUTPUT = PRIVATE.parent / 'finition'
+ARCHIVES = PRIVATE.parent / 'archives'
 
 
 def word_key(value):
@@ -173,19 +175,21 @@ def main():
              'payload': pack(lexical), 'grammalectePayload': pack(grammar)}
     encoded = (json.dumps(value, ensure_ascii=False, separators=(',', ':')) + '\n').encode('utf-8')
     assert len(encoded) <= 128 * 1024 * 1024
-    destination = PRIVATE / 'finition-lexique.json'
+    OUTPUT.mkdir(exist_ok=True)
+    destination = OUTPUT / 'lexique-antidote-finition.json'
     previous = destination.read_bytes() if destination.exists() else None
     if previous != encoded:
         if previous is not None:
             old = json.loads(previous)
             assert old.get('name') == 'Antidote' and old.get('inputs', {}).get('dictionnaire.json') == hashes['dictionnaire.json'], 'Lexique existant non reconnu'
-            backup = PRIVATE / f'finition-lexique-{hashlib.sha256(previous).hexdigest()[:16]}.json'
+            ARCHIVES.mkdir(exist_ok=True)
+            backup = ARCHIVES / f'lexique-antidote-finition-{hashlib.sha256(previous).hexdigest()[:16]}.json'
             if backup.exists():
                 assert backup.read_bytes() == previous, 'Sauvegarde différente'
             else:
                 with backup.open('xb') as stream:
                     stream.write(previous)
-        temporary = PRIVATE / 'finition-lexique.pending.json'
+        temporary = OUTPUT / 'lexique-antidote-finition.pending.json'
         with temporary.open('xb') as stream:
             stream.write(encoded)
         temporary.replace(destination)

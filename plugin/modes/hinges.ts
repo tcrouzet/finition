@@ -33,7 +33,7 @@ export function computeHingeHighlights(text: string, hinges: string[]): Highligh
 	let match: RegExpExecArray | null;
 	while ((match = regex.exec(text)) !== null) {
 		const from = match.index + match[1].length;
-		highlights.push({ from, to: from + match[2].length, lemma: "hinge", colorIndex: 0 });
+		highlights.push({ from, to: from + match[2].length, lemma: match[2].toLowerCase(), colorIndex: 0 });
 	}
 	return highlights;
 }

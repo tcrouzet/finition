@@ -5,7 +5,7 @@ import { maskMarkdown } from "./markdown";
 import { createNeuralCorrector } from "./neural";
 import { createElectraCorrector } from "./electra";
 import { decodeDictionary, dictionaryFile, personalDictionaryFile } from "../../lexicon/shared";
-import { adaptRepetitions } from "../../lexicon/repetition-adapter";
+import { adaptRepetitions, dictionaryLemmaVariants } from "../../lexicon/repetition-adapter";
 import { buildCopuleLexicon } from "../copules";
 
 let corrector: Promise<FinitionCorrector> | undefined;
@@ -33,7 +33,8 @@ self.onmessage = (event: MessageEvent<{ id: number; text: string; words?: string
 		if (event.data.lemmas) {
 			const value: unknown = JSON.parse(new TextDecoder().decode(await readAsset(dictionaryFile)));
 			const dictionary = await decodeDictionary(value, "neural");
-			return { lemmas: adaptRepetitions(dictionary), copules: buildCopuleLexicon(dictionary) };
+			const lemmas = adaptRepetitions(dictionary);
+			return { lemmas, variants: dictionaryLemmaVariants(dictionary, lemmas), copules: buildCopuleLexicon(dictionary) };
 		}
 		if (lexicalOnly) {
 			neural ??= createNeuralCorrector(readAsset).catch((error: unknown) => { neural = undefined; throw error; });

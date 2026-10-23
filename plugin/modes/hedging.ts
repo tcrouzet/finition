@@ -30,7 +30,7 @@ export function computeHedgingHighlights(text: string, phrases: string[]): Highl
 		const to = from + match[0].length;
 		if (occupied.some((range) => from < range.to && to > range.from)) continue;
 		occupied.push({ from, to });
-		highlights.push({ from, to, lemma: match[0], colorIndex: HEDGING_COLOR_INDEX });
+		highlights.push({ from, to, lemma: match[0].toLowerCase().replace(/'/g, "’"), colorIndex: HEDGING_COLOR_INDEX });
 	}
 	return highlights;
 }

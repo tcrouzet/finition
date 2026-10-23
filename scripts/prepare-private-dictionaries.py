@@ -9,7 +9,9 @@ from collections import defaultdict
 from pathlib import Path
 
 
-FOLDER = Path(__file__).resolve().parents[1] / 'Antidote/dictionnaires'
+FOLDER = Path(__file__).resolve().parents[1] / 'Antidote/dictionnaires/originaux'
+OUTPUT = FOLDER.parent / 'finition'
+FILENAMES = {'definitions': 'definition', 'antonymes': 'antonyme', 'phonetique': 'phonetique', 'rimes': 'rime'}
 MAX_BYTES = 128 * 1024 * 1024
 
 
@@ -164,7 +166,8 @@ def write(kind, entries, description, limitations, encoding=None):
     validate(document)
     encoded = (json.dumps(document, ensure_ascii=False, separators=(',', ':')) + '\n').encode('utf-8')
     assert len(encoded) <= MAX_BYTES, f'{kind} dépasse 128 Mio'
-    path = FOLDER / f'finition-{kind}.json'
+    OUTPUT.mkdir(exist_ok=True)
+    path = OUTPUT / f'{FILENAMES[kind]}-antidote-finition.json'
     if path.exists():
         assert path.read_bytes() == encoded, f'Refus de remplacer un fichier différent : {path}'
     else:

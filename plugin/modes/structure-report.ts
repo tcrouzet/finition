@@ -23,6 +23,7 @@
  */
 
 import { sentenceRanges, trimRange } from "./clause-split";
+import { maskMarkdownExclusions } from "../markdown-tags";
 import {
 	GetCategory,
 	analyzeSentenceStructure,
@@ -37,6 +38,7 @@ import {
  * main.ts) : ce module ne s'occupe pas d'aller chercher les catégories.
  */
 export function buildStructureReport(text: string, getCategory: GetCategory): string {
+	text = maskMarkdownExclusions(text);
 	const lines: string[] = [
 		"# Finition — Structure",
 		"",

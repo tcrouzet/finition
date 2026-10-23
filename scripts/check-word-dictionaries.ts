@@ -2,7 +2,7 @@ import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { MarkdownView, type App, type EditorPosition } from "obsidian";
 import type FinitionPlugin from "../main";
-import { dictionaryKinds, dictionaryLabels, parseWordDictionary, type DictionaryKind } from "../plugin/dictionaries";
+import { dictionaryKinds, dictionaryLabels, parseWordDictionary, publicDictionaryKinds, type DictionaryKind } from "../plugin/dictionaries";
 import { FinitionSettingTab } from "../plugin/settings-tab";
 import { resourceFixture } from "./check-linguistic-resources";
 
@@ -26,7 +26,7 @@ export async function checkWordDictionaries(Plugin: typeof FinitionPlugin, getMe
 	const menu = () => { (plugin as unknown as { showModeMenu: (event: MouseEvent) => void }).showModeMenu(new MouseEvent("click")); return getMenu(); };
 	check(dictionaryKinds.every(kind => menu().find(item => item.title === dictionaryLabels[kind])?.disabled), "Un dictionnaire absent est actif dans le menu");
 	const dictionary = (kind: DictionaryKind) => ({ format: "finition-dictionnaire", version: 1, language: "fr", kind, name: "Personnel", description: "<b>Lexique</b>", documentation: "https://example.org/doc", entries: {
-		chat: kind === "definitions" ? [{ label: "Animal", text: "Un <b>félin</b>.", examples: ["Le chat dort."] }] : kind === "antonymes" ? [{ label: "Opposés", words: ["chien"] }] : [{ text: "Sa" }],
+		chat: kind === "definitions" ? [{ label: "Animal", text: "Un <b>félin</b>.", examples: ["Le chat dort."] }] : kind === "antonymes" ? [{ label: "Opposés", words: ["chien"] }] : kind === "champ-lexical" ? [{ words: ["voisin", "<b>lié</b>"] }] : kind === "citations" ? [{ text: "Le chat dort." }] : [{ text: "Sa" }],
 		...(kind === "rimes" ? { rat: [{ text: "ra" }], achat: [{ text: "aSa" }], chien: [{ text: "Siâ" }], carte: [{ text: "kart" }], verte: [{ text: "vÈrt" }], tarte: [{ text: "tart" }] } : {}),
 	} });
 	const raw = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).buffer;
@@ -61,10 +61,10 @@ export async function checkWordDictionaries(Plugin: typeof FinitionPlugin, getMe
 	const chatRhymes = (await store.lookup("rimes", "chat")).rows.flatMap(row => row.words ?? []);
 	const carteRhymes = (await store.lookup("rimes", "carte")).rows.flatMap(row => row.words ?? []);
 	check(chatRhymes.includes("rat") && chatRhymes.includes("achat") && !chatRhymes.includes("chien") && carteRhymes.includes("tarte") && !carteRhymes.includes("verte"), "Les rimes ignorent une voyelle finale ou confondent deux voyelles différentes");
-	check(plugin.settings.wordDictionaries.length === 4, "Les dictionnaires sont mélangés ou perdus");
+	check(plugin.settings.wordDictionaries.length === dictionaryKinds.length, "Les dictionnaires sont mélangés ou perdus");
 	const sourcePath = plugin.settings.wordDictionaryPaths.definitions!;
 	await store.import("definitions", raw(valid));
-	check(plugin.settings.wordDictionaries.length === 4 && plugin.settings.wordDictionaryPaths.definitions === sourcePath, "Le même fichier ajoute un doublon");
+	check(plugin.settings.wordDictionaries.length === dictionaryKinds.length && plugin.settings.wordDictionaryPaths.definitions === sourcePath, "Le même fichier ajoute un doublon");
 	await fixture.adapter.writeBinary("source.json", raw({}));
 	await plugin.loadSettings();
 	await plugin.loadLinguisticResources();
@@ -73,17 +73,18 @@ export async function checkWordDictionaries(Plugin: typeof FinitionPlugin, getMe
 		const item = menu().find(item => item.title === dictionaryLabels[kind])!;
 		check(!item.disabled, "Dictionnaire installé encore grisé");
 		await item.click();
-		if (kind === "definitions" || kind === "phonetique") {
-			check(document.querySelector(".finition-word-information") && !document.querySelector(".finition-word-information b") && !document.querySelector(".finition-word-information .finition-synonym-replace"), "Définition/phonétique interprétée ou remplaçable");
+		if (kind !== "antonymes" && kind !== "rimes") {
+			check(document.querySelector(".finition-word-information") && !document.querySelector(".finition-word-information b") && !document.querySelector(".finition-word-information .finition-synonym-replace"), "Information de dictionnaire interprétée ou remplaçable");
+			if (kind === "champ-lexical") check(document.querySelector(".finition-word-information")?.textContent?.includes("voisin, <b>lié</b>"), "Les mots associés ne sont pas affichés");
 		} else check(document.querySelector(`[aria-label="Remplacer par ${kind === "antonymes" ? "chien" : "achat"}"]`), "Résultats locaux manquants");
 		modals.at(-1)!.close();
 		check(editor.getSelection() === "chat" && view.hasFocus, "La fermeture perd la sélection active");
 	}
-	for (const kind of ["definitions", "phonetique"] as const) {
+	for (const kind of dictionaryKinds.filter(kind => kind !== "antonymes" && kind !== "rimes")) {
 		await plugin.runWordDictionary(kind);
 		document.querySelector<HTMLButtonElement>(".finition-synonyms-insert")!.click();
-		const expected = kind === "definitions" ? "chat\n\nAnimal\nUn <b>félin</b>.\nLe chat dort." : "chat\n\nSa";
-		check(editor.getValue() === `Un chat.\n\n%%\n${expected}\n%%\n`, "Définition ou phonétique mal insérée en remarque");
+		const expected = kind === "definitions" ? "chat\n\nAnimal\nUn <b>félin</b>.\nLe chat dort." : kind === "champ-lexical" ? "chat\n\nvoisin\n<b>lié</b>" : kind === "citations" ? "chat\n\nLe chat dort." : "chat\n\nSa";
+		check(editor.getValue() === `Un chat.\n\n%%\n${expected}\n%%\n`, "Information de dictionnaire mal insérée en remarque");
 		check(editor.getSelection() === "chat" && view.hasFocus && !document.querySelector(".finition-word-information"), "L’insertion du dictionnaire perd le focus ou ne ferme pas la fenêtre");
 		view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "Un chat." }, selection: { anchor: 3, head: 7 } });
 	}
@@ -116,28 +117,43 @@ export async function checkWordDictionaries(Plugin: typeof FinitionPlugin, getMe
 		check(request.url.startsWith(prefix), "Téléchargement du dictionnaire hors de la release");
 		return { status: 200, arrayBuffer: await fixture.readSource(request.url.slice(prefix.length)) };
 	});
-	for (const kind of dictionaryKinds) {
+	const downloads: Promise<void>[] = [];
+	const downloadResources = plugin.downloadLinguisticResources.bind(plugin);
+	plugin.downloadLinguisticResources = (...args) => { const download = downloadResources(...args); downloads.push(download); return download; };
+	for (const kind of publicDictionaryKinds) {
 		tab.update();
 		const section = container.querySelector<HTMLDetailsElement>(`details[data-section="${dictionaryLabels[kind]}"]`)!;
-		const finition = () => Array.from(section.querySelectorAll(".setting-item")).find(row => row.querySelector(".setting-item-name")?.textContent === "Finition")!;
-		check(finition().querySelector("button")?.textContent === "Charger", "Le pack public absent ne peut pas être téléchargé");
-		await plugin.downloadLinguisticResources(kind, () => {});
+		section.open = true;
+		check(!section.querySelector("summary button"), "Le téléchargement doit rester dans la ligne du dictionnaire par défaut");
+		const rows = Array.from(section.querySelectorAll<HTMLElement>(".setting-item"));
+		const finition = rows.find(row => row.querySelector(".setting-item-name")?.textContent === "Finition")!;
+		const importer = rows.find(row => row.querySelector(".setting-item-name")?.textContent === "Charger un dictionnaire")!;
+		const button = finition.querySelector<HTMLButtonElement>("button")!;
+		check(button?.textContent === "Charger" && !button.disabled && !finition.querySelector("input"), "Le dictionnaire par défaut doit se télécharger sans fournir de fichier");
+		check(importer && rows.indexOf(importer) > rows.indexOf(finition) && importer.querySelector("input"), "La zone d’import doit rester séparée sous le dictionnaire par défaut");
+		check(getComputedStyle(section.parentElement!, "::before").display === "none", "Le séparateur natif double celui de la section");
+		const before = downloads.length;
+		button.click();
+		check(downloads.length === before + 1, "Le bouton de chargement doit appeler un seul téléchargement");
+		await downloads[before];
+		await new Promise(requestAnimationFrame);
 		check(store.has(kind) && plugin.settings.wordDictionaryPaths[kind] === "" && store.options.some(option => option.kind === kind && option.name === "Finition" && option.path === ""), "Le téléchargement ne sélectionne pas le dictionnaire public");
 		tab.update();
 		const current = container.querySelector<HTMLDetailsElement>(`details[data-section="${dictionaryLabels[kind]}"]`)!;
 		const row = Array.from(current.querySelectorAll(".setting-item")).find(row => row.querySelector(".setting-item-name")?.textContent === "Finition")!;
-		check(row.querySelector("button")?.textContent === "Recharger" && row.querySelectorAll("button").length === 1 && current.querySelector<HTMLSelectElement>("select")?.selectedOptions[0]?.text === "Finition", "Le pack public n’est pas rechargeable ou est effaçable");
-		const result = await store.lookup(kind, kind === "antonymes" ? "chaud" : "chat");
+		check(current.open && row.querySelector("button")?.textContent === "Recharger" && row.querySelectorAll("button").length === 1 && current.querySelector<HTMLSelectElement>("select")?.selectedOptions[0]?.text === "Finition", "Le dictionnaire public doit rester rechargeable sur sa propre ligne et la section ouverte");
+		const result = await store.lookup(kind, kind === "antonymes" ? "chaud" : kind === "conjugaisons" ? "aimer" : "chat");
 		check(result.dictionary.license?.name === "CC-BY-SA-4.0" && result.dictionary.license.source === "https://fr.wiktionary.org/" && result.rows.length > 0, "Licence, provenance ou résultat public absent");
 		if (kind === "antonymes") check(result.rows.some(row => row.words?.includes("froid")), "L’antonyme public attendu est absent");
 		if (kind === "phonetique") check(result.rows.some(row => row.text === "ʃa"), "La transcription API publique est absente");
 		if (kind === "rimes") check(result.rows.some(row => row.words?.includes("rat")), "La rime phonétique publique est absente");
 		check(await store.remove(kind, "").then(() => false, () => true), "Le dictionnaire public peut être effacé comme un import personnel");
 	}
+	plugin.downloadLinguisticResources = downloadResources;
 	check(plugin.settings.spellingEngine === spellingEngine && JSON.stringify(plugin.settings.wordDictionaries) === privateDictionaries, "Le téléchargement d’un dictionnaire change le correcteur ou les imports personnels");
 	await plugin.loadSettings();
 	await plugin.loadLinguisticResources();
-	check(dictionaryKinds.every(kind => store.has(kind) && plugin.settings.wordDictionaryPaths[kind] === ""), "Le choix public n’est pas conservé après rechargement");
+	check(publicDictionaryKinds.every(kind => store.has(kind) && plugin.settings.wordDictionaryPaths[kind] === ""), "Le choix public n’est pas conservé après rechargement");
 	const sample = (await store.lookup("antonymes", "chaud")).dictionary;
 	for (const license of [null, "CC-BY-SA-4.0", { ...sample.license, url: "javascript:alert(1)" }, { ...sample.license, source: "file:///tmp/source" }, { ...sample.license, attribution: "" }, { ...sample.license, sha256: "x" }, { ...sample.license, revision: "x\n" }]) {
 		let rejected = false;

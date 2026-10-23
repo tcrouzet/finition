@@ -17,6 +17,13 @@ export interface SynonymDictionary extends SynonymMetadata {
 
 export const synonymKey = (word: string): string => word.normalize("NFC").replace(/[’ʼ]/gu, "'").replace(/‑/gu, "-").toLocaleLowerCase("fr");
 export const isSynonymWord = (word: string): boolean => /^\p{L}[\p{L}\p{M}]*(?:['’ʼ\-‑][\p{L}\p{M}]+)*$/u.test(word);
+export interface DictionaryLemmas { lemmas: Map<string, string>; variants: Map<string, string[]> }
+export const emptyDictionaryLemmas: DictionaryLemmas = { lemmas: new Map(), variants: new Map() };
+export function dictionaryKeys(word: string, lexicon: DictionaryLemmas): string[] {
+	const key = synonymKey(word);
+	const lemmas = [lexicon.lemmas.get(key), ...(lexicon.variants.get(key) ?? [])].filter((value): value is string => Boolean(value));
+	return [...new Set(lemmas.length ? lemmas.map(synonymKey) : [key])];
+}
 export const synonymFileLimit = 128 * 1024 * 1024;
 function hasControl(text: string): boolean {
 	for (const char of text) if (char.charCodeAt(0) < 32) return true;
@@ -69,29 +76,30 @@ export function parseSynonymDictionary(text: string): SynonymDictionary {
 
 export class SynonymsDictionary {
 	private loading: Promise<SynonymDictionary> | null = null;
-	constructor(private read: () => Promise<ArrayBuffer>) {}
+	constructor(private read: () => Promise<ArrayBuffer>, private readLemmas?: () => Promise<DictionaryLemmas>) {}
 	async lookupGroups(word: string): Promise<SynonymGroup[]> {
 		if (!isSynonymWord(word)) throw new Error("Sélectionne un seul mot.");
+		const keys = dictionaryKeys(word, await this.readLemmas?.() ?? emptyDictionaryLemmas);
 		this.loading ??= this.read().then(raw => {
 			if (raw.byteLength > synonymFileLimit) throw new Error("Dictionnaire de synonymes trop volumineux.");
 			return parseSynonymDictionary(new TextDecoder("utf-8", { fatal: true }).decode(raw));
 		}).catch((error: unknown) => { this.loading = null; throw error; });
 		const dictionary = await this.loading;
-		const key = synonymKey(word);
-		if (!Object.prototype.hasOwnProperty.call(dictionary.index, key)) return [];
+		const indexes = [...new Set(keys.flatMap(key => Object.prototype.hasOwnProperty.call(dictionary.index, key) ? dictionary.index[key] : []))];
 		const priority = new Map(dictionary.sources.map((source, index) => [source.id, index]));
 		const rank = (group: SynonymGroup) => Math.min(...group.sources.map(source => priority.get(source)!));
-		const groups = dictionary.index[key].map(index => dictionary.groups[index]).sort((left, right) => rank(left) - rank(right));
+		const groups = indexes.map(index => dictionary.groups[index]).sort((left, right) => rank(left) - rank(right));
+		const excluded = new Set([...keys, synonymKey(word)]);
 		return groups.map(group => {
-			const seen = new Set([key]);
+			const seen = new Set(excluded);
 			const words = group.words.filter(candidate => {
 				const key = synonymKey(candidate);
 				if (seen.has(key)) return false;
 				seen.add(key);
 				return true;
 			});
-			const registers = group.registers?.map(row => ({ ...row, words: row.words.filter(word => synonymKey(word) !== key) })).filter(row => row.words.length);
-			const unmarked = group.unmarked?.filter(word => synonymKey(word) !== key);
+			const registers = group.registers?.map(row => ({ ...row, words: row.words.filter(word => !excluded.has(synonymKey(word))) })).filter(row => row.words.length);
+			const unmarked = group.unmarked?.filter(word => !excluded.has(synonymKey(word)));
 			return { ...group, words, ...(registers ? { registers } : {}), ...(unmarked ? { unmarked } : {}) };
 		}).filter(group => group.words.length);
 	}
