@@ -150,7 +150,7 @@ async function main() {
 			runStatisticsReport: () => Promise<void>;
 			runOrthoTypoIA: () => Promise<void>;
 			runGrammalecte: () => Promise<void>;
-			createDebugNote: (view: unknown, content: string, prefix: string) => Promise<{ path: string }>;
+			createDebugNote: (view: unknown, content: string, prefix: string) => Promise<{ path: string } | null>;
 		};
 	};
 	await checkSingleNote(api.registerSingleNote);
@@ -610,6 +610,20 @@ async function main() {
 	assert.equal(notes.size, 2);
 	assert.ok(notices.some(message => message.includes("Disque plein")), "L’échec d’écriture est masqué");
 	failWrite = false;
+	sourceText = "J’ai des mots.";
+	for (const model of ["gpt-test", "claude-test"]) {
+		aiPlugin.settings.aiModel = model;
+		aiPlugin.settings.debugMode = true;
+		const before: number = notes.size;
+		requestHandler = () => {
+			aiPlugin.settings.debugMode = false;
+			return { status: 200, json: { choices: [{ message: { content: raw } }], content: [{ type: "text", text: raw }] } };
+		};
+		await aiPlugin.runOrthoTypoIA();
+		assert.equal(notes.size, before, `Une réponse ${model} crée une note après désactivation du debug`);
+	}
+	assert.equal(await aiPlugin.createDebugNote(sourceView, raw, ""), null, "La création de notes Debug reste autorisée hors debug");
+	assert.equal(notes.size, 2, "Une note Debug est créée hors debug");
 	aiPlugin.settings.debugMode = false;
 	aiPlugin.settings.aiModel = "gpt-test";
 	aiPlugin.settings.aiChunkSize = 2000;
@@ -688,6 +702,7 @@ async function main() {
 	await assert.rejects(aiPlugin.createDebugNote(sourceView, " \n\u200b\u2060", ""), /aucun texte/i, "Une note vide peut encore être créée directement");
 	writeOverride = "";
 	const recovered = await aiPlugin.createDebugNote(sourceView, "Réponse IA reçue.", "");
+	assert.ok(recovered);
 	assert.equal(notes.get(recovered.path), "Réponse IA reçue.", "Une réponse non vide aboutit à une note vide sans vérification");
 	writeOverride = "Modification manuelle.";
 	await assert.rejects(aiPlugin.createDebugNote(sourceView, "Réponse IA reçue.", ""), /contenu/i, "Une écriture différente est annoncée comme réussie");

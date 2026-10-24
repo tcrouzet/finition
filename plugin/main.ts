@@ -1293,7 +1293,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		}
 	}
 
-	private async createDebugNote(view: Pick<MarkdownView, "file">, content: string, prefix: string | ((name: string, timestamp: string) => string)): Promise<TFile> {
+	private async createDebugNote(view: Pick<MarkdownView, "file">, content: string, prefix: string | ((name: string, timestamp: string) => string)): Promise<TFile | null> {
+		if (!this.settings.debugMode) return null;
 		if (!hasResponseText(content)) throw new Error("Aucun texte à enregistrer : note horodatée non créée.");
 		const source = view.file;
 		const folder = source?.parent?.path && source.parent.path !== "/" ? `${source.parent.path}/` : "";
@@ -1329,7 +1330,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			const categories = await engine.getCategories(words);
 			const content = await buildStatisticsReport(text, word => categories[word.toLowerCase()] ?? "", this.lexicon);
 			const file = await this.createDebugNote(source, content, (name, timestamp) => `${name}_stats_${timestamp.replace(" ", "_")}`);
-			await this.app.workspace.getLeaf(true).openFile(file);
+			if (file) await this.app.workspace.getLeaf(true).openFile(file);
 		} catch (error) {
 			new Notice(`Statistiques : ${error instanceof Error ? error.message : String(error)}`, 10000);
 			console.error("Finition — Statistiques :", error);
@@ -1372,7 +1373,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 			const file = await this.createDebugNote(view, content, "Structure — ");
 			notice.hide();
-			await this.app.workspace.getLeaf(true).openFile(file);
+			if (file) await this.app.workspace.getLeaf(true).openFile(file);
 		} catch (e) {
 			notice.hide();
 			new Notice(`Structure : erreur — ${e instanceof Error ? e.message : String(e)}`, 10000);
