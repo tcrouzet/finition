@@ -49,6 +49,13 @@ export async function checkPromptModels(Plugin: typeof FinitionPlugin): Promise<
 		field.dispatchEvent(new Event("change"));
 		await new Promise(resolve => window.setTimeout(resolve, 0));
 	};
+	check(!row("Codex : modèle"), "Le choix du modèle Codex ne doit pas apparaître sans Codex détecté");
+	Object.assign(tab, { codexAvailable: true, checkingCodex: true, codexModels: [{ value: "codex-a", label: "Modèle A" }, { value: "codex-b", label: "Modèle B" }] });
+	tab.update();
+	check(Array.from(select("Codex : modèle").options).some(option => option.value === "codex-b" && option.label === "Modèle B"), "Le champ Modèle Codex n’affiche pas les modèles retournés");
+	const previousModel = plugin.settings.aiModel;
+	await change("Codex : modèle", "codex-b");
+	check(plugin.settings.codexModel === "codex-b" && plugin.settings.aiModel === previousModel, "Choisir un modèle Codex doit mémoriser son choix sans changer le fournisseur actif");
 	await change("Prompt enregistré", first.name);
 	await change("Modèle pour ce prompt", firstModel);
 	await change("Prompt enregistré", second.name);
@@ -68,6 +75,7 @@ export async function checkPromptModels(Plugin: typeof FinitionPlugin): Promise<
 	tab.containerEl = container;
 	tab.update();
 	check(plugin.settings.formNegativeColorIndex === questionColor && colorSelects()[negativeColor].value === "formQuestionColorIndex", "Les couleurs de Formes ne persistent pas");
+	check(plugin.settings.codexModel === "codex-b", "Le modèle Codex est perdu après réouverture des réglages");
 	check(row("Serveur local").querySelector<HTMLInputElement>("input")!.value === "http://localhost:11434" && row("Modèle local").querySelector<HTMLInputElement>("input")!.value === "modele-local:test", "Connexion locale perdue après réouverture des réglages");
 	check(plugin.settings.savedPrompts.find(prompt => prompt.name === second.name)?.model === "modele-personnel" && row("Identifiant du modèle pour ce prompt").querySelector<HTMLInputElement>("input")!.value === "modele-personnel", "Le modèle personnalisé n’est pas persisté après réouverture des réglages");
 	await change("Prompt enregistré", first.name);

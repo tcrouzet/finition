@@ -36,8 +36,9 @@ import { hasResponseText } from "./ai/clean";
 import { markdownLinks } from "./markdown-links";
 import { reviseChunkWithRetryAnthropic } from "./ai/anthropic";
 import { reviseChunkWithRetryOpenAI } from "./ai/openai";
-import { getAIConnection } from "./ai/provider";
-import { runSynonyms } from "./ai/synonyms";
+import { cancelCodex, reviseChunkWithCodex } from "./ai/codex";
+import { aiModelName, getAIConnection } from "./ai/provider";
+import { cancelSynonyms, runSynonyms } from "./ai/synonyms";
 import { fixPunctuationSpacing, fixBlankLinesProtected } from "./modes/punctuation";
 import { GrammalecteEngine, GrammalecteError } from "./modes/grammalecte";
 import { FinitionCorrectorEngine } from "./modes/finition-corrector";
@@ -53,6 +54,7 @@ import { loadingMessage } from "./ui/loading-message";
 import { AnalysisNavigation, navigationFocus, setNavigationFocus } from "./ui/analysis-navigation";
 import { countDocument, formatDocumentCount } from "./ui/document-count";
 import { registerSingleNote } from "./ui/single-note";
+import { registerNoteReset } from "./ui/note-reset";
 import { addLeftSidebarToggle } from "./ui/left-sidebar-toggle";
 import { LinguisticResources, resourceHash } from "./linguistic-resources";
 import type { ResourceEngine, ResourcePack } from "./linguistic-files";
@@ -155,6 +157,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.registerEditorExtension(finitionAIExtension(this));
 		this.registerEditorExtension(finitionGrammalecteExtension(this));
 		this.addSettingTab(new FinitionSettingTab(this.app, this));
+		registerNoteReset(this, () => this.resetAnalysis());
 		this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
 			if (this.analysisProgress?.view !== this.app.workspace.getActiveViewOfType(MarkdownView)) this.finishAnalysisProgress();
 			this.updateStatusBarIcon();
@@ -227,6 +230,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	onunload(): void {
+		cancelSynonyms();
+		cancelCodex();
 		this.finishAnalysisProgress();
 		this.lexiconEngine?.destroy();
 		this.lexiconLoad = undefined;
@@ -244,6 +249,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	async loadSettings(): Promise<void> {
 		const saved = (await this.loadData()) as Partial<FinitionSettings> | null;
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, saved ?? {});
+		this.settings.codexModel = typeof this.settings.codexModel === "string" ? this.settings.codexModel.trim() : "";
 		this.settings.localAIServer = typeof this.settings.localAIServer === "string" ? this.settings.localAIServer.trim() : "";
 		this.settings.localAIModel = typeof this.settings.localAIModel === "string" ? this.settings.localAIModel.trim() : "";
 		if (!["none", "words", "characters", "both"].includes(this.settings.documentCountDisplay)) this.settings.documentCountDisplay = "none";
@@ -571,6 +577,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	private async resetAnalysis(): Promise<void> {
+		cancelSynonyms();
+		cancelCodex();
 		const request = ++this.spellingRequest;
 		this.finishAnalysisProgress();
 		this.pendingCorrectionRequest = null;
@@ -730,7 +738,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		// setMessage) plutôt qu'un message figé affiché une fois pour toutes
 		// au début — sinon rien ne permet de suivre ce qui se passe pendant
 		// l'attente des appels API, potentiellement longs.
-		const progress = this.startAnalysisProgress("Corrections IA", view);
+		let modelName = aiModelName(connection);
+		const progress = this.startAnalysisProgress(`Corrections IA · ${modelName}`, view);
 		const errors: string[] = [];
 
 		// try/finally : si quoi que ce soit plante de façon inattendue (pas
@@ -742,15 +751,17 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			for (let i = 0; i < chunks.length; i++) {
 				if (request !== this.spellingRequest || document !== editor.getValue() || this.app.workspace.getActiveViewOfType(MarkdownView) !== view) return;
 				const chunk = chunks[i];
-				progress.setMessage(loadingMessage(`Corrections IA : tronçon ${i + 1}/${chunks.length}…`));
+				const reportProgress = () => progress.setMessage(loadingMessage(`Corrections IA · ${modelName} : tronçon ${i + 1}/${chunks.length}…`));
+				reportProgress();
 				if (chunk.text.trim().length === 0) continue;
-				const reviseChunk = connection.provider === "openai" ? reviseChunkWithRetryOpenAI : reviseChunkWithRetryAnthropic;
+				const reviseChunk = connection.provider === "codex" ? reviseChunkWithCodex : connection.provider === "openai" ? reviseChunkWithRetryOpenAI : reviseChunkWithRetryAnthropic;
 				const start = selectionFrom + chunk.start;
 				const protectedText = protectLinks(document, start, start + chunk.text.length, links);
 				if (!protectedText.text.trim()) continue;
 				const { text: revisedRaw, error } = await reviseChunk(protectedText.text, this.settings.aiPrompt, {
 					...connection,
 					maxTokens: this.settings.aiMaxTokens,
+					onModel: model => { modelName = `Codex · ${model}`; if (request === this.spellingRequest) reportProgress(); },
 				});
 				if (request !== this.spellingRequest || document !== editor.getValue() || this.app.workspace.getActiveViewOfType(MarkdownView) !== view) return;
 				if (error) {
@@ -783,6 +794,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			this.finishAnalysisProgress(progress);
 		}
 
+		if (request !== this.spellingRequest) return;
 		if (errors.length > 0) {
 			new Notice(`Corrections IA : ${errors.length} erreur(s).\n${errors[0]}`, 12000);
 			console.error("Corrections IA : erreurs détaillées", errors);

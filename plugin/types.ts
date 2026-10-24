@@ -158,6 +158,7 @@ export interface FinitionSettings {
 	// chiffré natif disponible pour un plugin tiers).
 	aiApiKey: string;
 	aiModel: string;
+	codexModel: string;
 	localAIServer: string;
 	localAIModel: string;
 	// Taille maximale d'un tronçon envoyé à l'IA, en caractères (le texte est
@@ -269,6 +270,7 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	palette: DEFAULT_PALETTE,
 	aiApiKey: "",
 	aiModel: AI_MODEL_PRESETS[0].value,
+	codexModel: "",
 	localAIServer: "",
 	localAIModel: "",
 	aiChunkSize: 5000,

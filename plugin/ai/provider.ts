@@ -1,8 +1,15 @@
 import type { FinitionSettings } from "../types";
+import { CODEX_MODEL } from "./codex";
+import modelPresets from "./models.json";
 
-export type AIProvider = "anthropic" | "openai";
+export type AIProvider = "anthropic" | "openai" | "codex";
+
+export function aiModelName(connection: { provider: AIProvider; model: string }): string {
+	return connection.provider === "codex" ? connection.model ? `Codex · ${connection.model}` : "Codex" : modelPresets.find(preset => preset.value === connection.model)?.label ?? connection.model;
+}
 
 export function detectProvider(model: string): AIProvider {
+	if (model === CODEX_MODEL) return "codex";
 	const m = model.toLowerCase();
 	// "gpt-...", "o1-...", "o3-...", "o4-..." : familles de modèles OpenAI.
 	if (m.startsWith("gpt") || /^o\d/.test(m)) return "openai";
@@ -10,6 +17,7 @@ export function detectProvider(model: string): AIProvider {
 }
 
 export function getAIConnection(settings: FinitionSettings): { provider: AIProvider; apiKey: string; model: string; baseUrl?: string } {
+	if (settings.aiModel === CODEX_MODEL) return { provider: "codex", apiKey: "", model: settings.codexModel.trim() };
 	if (settings.localAIServer.trim()) {
 		let url: URL;
 		try { url = new URL(settings.localAIServer.trim()); }

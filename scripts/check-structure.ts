@@ -29,6 +29,8 @@ import { checkFamily } from "./check-family";
 import { checkExtraDictionaryFormat } from "./check-extra-dictionary-format";
 import { checkMarkdownExclusions } from "./check-markdown-exclusions";
 import { checkDictionaryLemmas } from "./check-dictionary-lemmas";
+import { checkCodex } from "./check-codex";
+import { checkNoteReset } from "./check-note-reset";
 
 async function main() {
 	assert.deepEqual(computeHingeHighlights("Et mais et OU où", ["et", "mais", "ou", "où"]).map(highlight => highlight.lemma), ["et", "mais", "et", "ou", "où"], "Chaque charnière doit garder son identité, sans distinguer les majuscules");
@@ -42,6 +44,8 @@ async function main() {
 	await checkExtraDictionaryFormat();
 	await checkMarkdownExclusions();
 	await checkDictionaryLemmas();
+	await checkCodex();
+	await checkNoteReset();
 	const dataSources = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "plugin/data"], { encoding: "utf8" }).split("\0").filter(file => file && existsSync(file));
 	assert.ok(dataSources.every(file => file.endsWith(".json")), "Les sources de plugin/data doivent être uniquement des JSON d’analyse");
 	const modules = await build({
@@ -92,7 +96,7 @@ async function main() {
 	const module = { exports: {} };
 	const sandbox = vm.createContext({ module, exports: module.exports, Buffer, TextEncoder, TextDecoder, CompressionStream, Response, Blob, URL, setTimeout, clearTimeout, Date: class extends Date { constructor() { super("2026-10-19T12:34:56"); } }, require: (name: string) => {
 		assert.equal(name, "obsidian");
-		return { Plugin, MarkdownView, PluginSettingTab: class {}, Modal: class {}, Component: class {}, Menu, Notice, setIcon(element: { setAttribute?: (name: string, value: string) => void }, icon: string) { element.setAttribute?.("data-icon", icon); }, requestUrl: (request: { url: string; body: string; headers: Record<string, string> }) => requestHandler(request) };
+		return { Platform: { isDesktop: false }, Plugin, MarkdownView, PluginSettingTab: class {}, Modal: class {}, Component: class {}, Menu, Notice, setIcon(element: { setAttribute?: (name: string, value: string) => void }, icon: string) { element.setAttribute?.("data-icon", icon); }, requestUrl: (request: { url: string; body: string; headers: Record<string, string> }) => requestHandler(request) };
 	} });
 	sandbox.window = sandbox;
 	sandbox.createFragment = () => ({ textContent: "", append(...nodes: Array<string | { textContent: string }>) { this.textContent += nodes.map(node => typeof node === "string" ? node : node.textContent).join(""); } });
@@ -272,13 +276,16 @@ async function main() {
 	assert.equal(plugin.settings.mode, "ternary");
 	assert.equal(plugin.saved.mode, "ternary");
 	assert.equal(plugin.settings.debugMode, false);
+	assert.equal(plugin.settings.codexModel, "", "Sans choix explicite, le modèle configuré dans Codex doit être conservé");
 	assert.equal(plugin.settings.singleNoteOpen, false, "Une seule note ouverte doit être désactivé par défaut");
 	assert.equal(plugin.settings.showLeftSidebarToggle, true, "Le bouton de barre latérale doit être proposé par défaut");
 	plugin.settings.showLeftSidebarToggle = false;
 	plugin.settings.singleNoteOpen = true;
+	plugin.settings.codexModel = " codex-choisi ";
 	await plugin.saveData(plugin.settings);
 	await plugin.loadSettings();
 	assert.equal(plugin.settings.singleNoteOpen, true, "Une seule note ouverte doit être conservé au rechargement");
+	assert.equal(plugin.settings.codexModel, "codex-choisi", "Le modèle Codex choisi doit être conservé et normalisé au rechargement");
 	assert.equal(plugin.settings.showLeftSidebarToggle, false, "Le choix de masquer le bouton doit être conservé");
 	assert.equal(plugin.settings.copuleColorIndex, 14, "Une nouvelle installation n’attribue pas la couleur 14 aux copules");
 	const colorPlugin = new api.FinitionPlugin();
@@ -647,8 +654,11 @@ async function main() {
 	for (const model of ["gpt-test", "claude-test"]) {
 		aiPlugin.settings.aiModel = model;
 		sourceText = "Voir [Finition](https://example.org/a?b=c) à propos de.";
+		const beforeProgress = noticeInstances.length;
 		requestHandler = () => ({ status: 200, json: { choices: [{ message: { content: "Voir Finition à propos ?" } }], content: [{ type: "text", text: "Voir Finition à propos ?" }] } });
 		await aiPlugin.runOrthoTypoIA();
+		const progressNotices = noticeInstances.slice(beforeProgress).filter(notice => notice.spinning);
+		assert.ok(progressNotices.length && progressNotices.every(notice => notice.message.includes(model)), "Corrections IA doit afficher une roue et le modèle pendant chaque tronçon");
 		assert.equal(apply(sourceText, aiPlugin.aiGroups), "Voir [Finition](https://example.org/a?b=c) à propos\u00a0?", `L’insécable est perdue dans les suggestions ${model}`);
 	}
 	aiPlugin.settings.debugMode = true;
@@ -811,6 +821,12 @@ async function main() {
 	sandbox.setTimeout = setTimeout; sandbox.clearTimeout = clearTimeout;
 	assert.equal(sourceText, "Une fote [Finition](https://example.org/article).");
 	process.stdout.write("IA locale : serveur HTTP simulé, formats Ollama, clés exclues, liens, erreurs, validation et délai limite vérifiés\n");
+	aiPlugin.settings.aiModel = "__codex__";
+	let unexpectedApiCalls = 0;
+	requestHandler = () => { unexpectedApiCalls++; throw new Error("Appel API inattendu pour Codex"); };
+	await aiPlugin.runOrthoTypoIA();
+	assert.equal(unexpectedApiCalls, 0, "Corrections IA ne doit pas appeler une API quand Codex est choisi");
+	assert.ok(notices.at(-1)?.includes("Codex") && notices.at(-1)?.includes("ordinateur"), "Corrections IA doit signaler l’indisponibilité de Codex sans exiger de clé API");
 	const lexicon = adaptRepetitions(await decodeDictionary(JSON.parse(readFileSync(new URL("../resources/lexique/finition-dictionnaire.json", import.meta.url), "utf8")) as unknown, "neural"));
 	const analyze = (text: string, category: GetCategory) => api.analyzeTicIA(text, category, lexicon);
 	const root = new URL("../plugin/vendor/grammalecte/", import.meta.url);

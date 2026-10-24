@@ -10,6 +10,7 @@ import { DEFAULT_PALETTE, DEFAULT_SETTINGS, FORM_TYPES, parseGrammalecteDictiona
 import { dictionaryDocumentation, dictionaryCommands, dictionaryLabels, isPublicDictionaryKind, publicDictionaryMetadata, type DictionaryKind } from "./dictionaries";
 import { lexiconDocumentation, publicLexiconMetadata } from "./lexicon/dictionaries";
 import AI_MODEL_PRESETS from "./ai/models.json";
+import { CODEX_MODEL, findCodex, listCodexModels, type CodexModel } from "./ai/codex";
 
 type ColorFunctionKey = "hedgingColorIndex" | "stereotypeColorIndex" | "hingeColorIndex" | "copuleColorIndex" | "grammalecteColorIndex" | typeof FORM_TYPES[number]["key"];
 
@@ -34,6 +35,11 @@ export class FinitionSettingTab extends PluginSettingTab {
 	private pendingPromptName: string | null = null;
 	private pendingPromptModel: string | null = null;
 	private promptModelCustom = false;
+	private codexAvailable = false;
+	private checkingCodex = false;
+	private codexModels: CodexModel[] | null = null;
+	private loadingCodexModels = false;
+	private codexModelError = "";
 	private downloadingEngine: ResourcePack | null = null;
 	private changingSynonyms = false;
 	private synonymError = "";
@@ -412,8 +418,30 @@ export class FinitionSettingTab extends PluginSettingTab {
 			});
 	}
 
+	private async loadCodexModels(): Promise<void> {
+		if (this.loadingCodexModels) return;
+		this.loadingCodexModels = true;
+		this.codexModelError = "";
+		this.update();
+		try { this.codexModels = await listCodexModels(); }
+		catch (error) { this.codexModels = []; this.codexModelError = error instanceof Error ? error.message : String(error); }
+		finally { this.loadingCodexModels = false; this.update(); }
+	}
+
 	private displayAICorrections(containerEl: HTMLElement): void {
 		containerEl = this.section(containerEl, "Corrections IA");
+		if (!this.checkingCodex) {
+			this.checkingCodex = true;
+			void findCodex().then(path => {
+				const changed = Boolean(path) !== this.codexAvailable;
+				this.codexAvailable = Boolean(path);
+				if (!path) this.codexModels = null;
+				if (path && this.codexModels === null) void this.loadCodexModels();
+				else if (changed && containerEl.isConnected) this.update();
+			}).catch(() => { this.codexAvailable = false; }).finally(() => { this.checkingCodex = false; });
+		}
+		const models = [...AI_MODEL_PRESETS];
+		if (this.codexAvailable || this.plugin.settings.aiModel === CODEX_MODEL || this.pendingPromptModel === CODEX_MODEL || this.plugin.settings.savedPrompts.some(prompt => prompt.model === CODEX_MODEL)) models.push({ value: CODEX_MODEL, label: this.codexAvailable ? "Codex" : "Codex (indisponible)" });
 
 		const apiKeyDesc = createFragment();
 		apiKeyDesc.appendChild(
@@ -481,11 +509,29 @@ export class FinitionSettingTab extends PluginSettingTab {
 				this.plugin.settings.localAIModel = value.trim();
 				await this.plugin.saveSettings();
 			}));
+		if (this.codexAvailable) {
+			new Setting(containerEl).setName("Codex : modèle")
+				.setDesc(this.codexModelError || (this.loadingCodexModels ? "Chargement des modèles Codex…" : "Pour corrections et synonymes quand Codex est choisi. Le réglage de Codex sur la machine reste inchangé."))
+				.addDropdown(dropdown => {
+					dropdown.addOption("", "Modèle configuré par défaut");
+					for (const model of this.codexModels ?? []) dropdown.addOption(model.value, model.label);
+					const selected = this.plugin.settings.codexModel;
+					if (selected && !this.codexModels?.some(model => model.value === selected)) {
+						dropdown.addOption(selected, `${selected} (indisponible)`);
+						dropdown.selectEl.lastElementChild?.setAttribute("disabled", "");
+					}
+					dropdown.setValue(selected).setDisabled(this.loadingCodexModels).onChange(async value => {
+						this.plugin.settings.codexModel = value;
+						await this.plugin.saveSettings();
+					});
+				})
+				.addButton(button => button.setButtonText("Recharger").setDisabled(this.loadingCodexModels).onClick(() => this.loadCodexModels()));
+		}
 
 		const modelDesc = createFragment();
 		modelDesc.appendChild(
 			document.createTextNode(
-				"Modèle Claude ou GPT utilisé lorsque Serveur local est vide. Le nom choisi détermine quelle clé API est utilisée. "
+				"Codex utilise la connexion de cet ordinateur, sans clé API dans Finition. Sinon, le serveur local est prioritaire lorsqu’il est renseigné ; Claude et GPT utilisent leur clé API. "
 			)
 		);
 		const modelLink = createEl("a");
@@ -503,14 +549,15 @@ export class FinitionSettingTab extends PluginSettingTab {
 		modelDesc.appendChild(openaiModelLink);
 
 		const CUSTOM_MODEL_VALUE = "__custom__";
-		const isPreset = AI_MODEL_PRESETS.some((p) => p.value === this.plugin.settings.aiModel);
+		const isPreset = models.some((p) => p.value === this.plugin.settings.aiModel);
 
 		new Setting(containerEl)
 			.setName("Modèle par défaut")
 			.setDesc(modelDesc)
 			.addDropdown((dropdown) => {
-				for (const preset of AI_MODEL_PRESETS) {
+				for (const preset of models) {
 					dropdown.addOption(preset.value, preset.label);
+					if (preset.value === CODEX_MODEL && !this.codexAvailable) dropdown.selectEl.lastElementChild?.setAttribute("disabled", "");
 				}
 				dropdown.addOption(CUSTOM_MODEL_VALUE, "Autre (saisir un identifiant)…");
 				dropdown
@@ -653,7 +700,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 		const PROMPT_MODEL_DEFAULT_VALUE = "__model_default__";
 		const PROMPT_MODEL_CUSTOM_VALUE = "__model_custom__";
 		const promptModelIsPreset =
-			this.pendingPromptModel === "" || AI_MODEL_PRESETS.some((p) => p.value === this.pendingPromptModel);
+			this.pendingPromptModel === "" || models.some((p) => p.value === this.pendingPromptModel);
 
 		new Setting(containerEl)
 			.setName("Modèle pour ce prompt")
@@ -662,8 +709,9 @@ export class FinitionSettingTab extends PluginSettingTab {
 			)
 			.addDropdown((dropdown) => {
 				dropdown.addOption(PROMPT_MODEL_DEFAULT_VALUE, "Modèle par défaut");
-				for (const preset of AI_MODEL_PRESETS) {
+				for (const preset of models) {
 					dropdown.addOption(preset.value, preset.label);
+					if (preset.value === CODEX_MODEL && !this.codexAvailable) dropdown.selectEl.lastElementChild?.setAttribute("disabled", "");
 				}
 				dropdown.addOption(PROMPT_MODEL_CUSTOM_VALUE, "Autre (saisir un identifiant)…");
 				dropdown
@@ -688,7 +736,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 			});
 
 		const promptModelShowCustomField =
-			this.promptModelCustom || (this.pendingPromptModel !== "" && !AI_MODEL_PRESETS.some((p) => p.value === this.pendingPromptModel));
+			this.promptModelCustom || (this.pendingPromptModel !== "" && !models.some((p) => p.value === this.pendingPromptModel));
 
 		if (promptModelShowCustomField) {
 			new Setting(containerEl)
@@ -1087,7 +1135,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 		return [
 			...this.generalDefinitions(),
 			this.sectionDefinition("Corrections", ["Lexique", "Charger un lexique", ...(this.plugin.lexiconDictionaries?.options.map(option => option.name) ?? []), "Dictionnaire Finition", "Moteur d’analyse", "Neuronal", "Structure", "Tricolons", "Grammalecte", "Correcteur neuronal par défaut", "CamemBERT", "Charger un modèle neuronal", "Dictionnaire personnel", ...this.plugin.neuralModelOptions.map(option => option.name)], container => this.displayCorrections(container)),
-			this.sectionDefinition("Corrections IA", ["Clé API Anthropic", "Clé API OpenAI", "Serveur local", "Modèle local", "Modèle par défaut", "Identifiant du modèle personnalisé", "Taille des tronçons (caractères)", "Prompt enregistré", "Prompt de révision", "Modèle pour ce prompt", "Identifiant du modèle pour ce prompt", "Enregistrer sous ce nom"], container => this.displayAICorrections(container)),
+			this.sectionDefinition("Corrections IA", ["Clé API Anthropic", "Clé API OpenAI", "Serveur local", "Modèle local", "Modèle Codex", "Modèle par défaut", "Identifiant du modèle personnalisé", "Taille des tronçons (caractères)", "Prompt enregistré", "Prompt de révision", "Modèle pour ce prompt", "Identifiant du modèle pour ce prompt", "Enregistrer sous ce nom"], container => this.displayAICorrections(container)),
 			this.sectionDefinition("Synonymes", ["Dictionnaire", "Finition", "Charger un dictionnaire", ...this.plugin.synonymDictionaryOptions.map(option => option.name)], container => this.displaySynonyms(container)),
 			...dictionaryCommands.map(kind => this.sectionDefinition(dictionaryLabels[kind], ["Dictionnaire", "Charger un dictionnaire", ...(this.plugin.wordDictionaries?.options.filter(option => option.kind === kind).map(option => option.name) ?? [])], container => this.displayWordDictionary(container, kind))),
 			this.sectionDefinition("Répétitions", ["Empan de répétition (caractères)", "Longueur minimale d'un mot (caractères)", "Mots-outils"], container => this.displayRepetitions(container)),

@@ -90,7 +90,9 @@ Les fonctions locales n’exigent aucune clé API. Pour utiliser une IA, renseig
 
 Les modèles proposés sont définis dans [`plugin/ai/models.json`](plugin/ai/models.json) : `value` contient l’identifiant du modèle, `label` son nom affiché. Le premier est le défaut des nouvelles installations. Après modification du JSON, reconstruire le plugin avec `npm run build` ; les choix déjà enregistrés sont conservés.
 
-Avec Ollama ou un autre serveur compatible OpenAI, renseigner **Serveur local** (par exemple `http://localhost:11434`, avec ou sans `/v1`) et **Modèle local**, sous les clés API. Le serveur doit déjà fonctionner et disposer du modèle indiqué. Ces champs remplacent le fournisseur et le modèle cloud pour les deux fonctions ci-dessous, sans transmettre les clés API. Vider **Serveur local** pour revenir à Claude/GPT. Finition ne télécharge aucun modèle et ne bascule jamais vers le cloud en cas d’erreur locale.
+Sur ordinateur, si **Codex CLI** est détecté, **Codex** apparaît dans **Modèle par défaut** et **Modèle pour ce prompt**. Codex doit déjà être connecté. Le champ **Codex : modèle** propose les modèles renvoyés par Codex pour les corrections et les synonymes ; **Modèle configuré par défaut** conserve le choix de la machine. **Recharger** actualise cette liste sans lancer de génération ni envoyer le texte d’une note. Le choix est mémorisé dans Finition et ne change pas la configuration de Codex. Aucune clé API supplémentaire n’est nécessaire. Codex est prioritaire sur le serveur local lorsqu’il est choisi. Une connexion absente ou une erreur est signalée, sans basculer vers un autre fournisseur. L’installation et la connexion à Codex restent à effectuer séparément.
+
+Avec Ollama ou un autre serveur compatible OpenAI, renseigner **Serveur local** (par exemple `http://localhost:11434`, avec ou sans `/v1`) et **Modèle local**, sous les clés API. Le serveur doit déjà fonctionner et disposer du modèle indiqué. Sauf si Codex est choisi, ces champs remplacent le fournisseur et le modèle cloud pour les deux fonctions ci-dessous, sans transmettre les clés API. Vider **Serveur local** pour revenir à Claude/GPT. Finition ne télécharge aucun modèle et ne bascule jamais vers le cloud en cas d’erreur locale.
 
 - **Corrections IA** relit le texte sélectionné. Les propositions apparaissent dans la note : cliquer sur le vert pour appliquer une correction, sur la coche pour valider une suppression, ou sur le rouge pour garder l’original.
 - **Synonymes IA**, dans le menu Dictionnaires, cherche des variantes adaptées au contexte de la sélection.
@@ -103,7 +105,9 @@ Après téléchargement des dictionnaires et modèles, les surlignages, les corr
 
 Les fonctions IA s’exécutent uniquement sur demande. **Corrections IA** envoie la sélection au fournisseur choisi ou au serveur configuré ; **Synonymes IA** envoie aussi les paragraphes voisins pour tenir compte du contexte. Avec un serveur et un modèle exécutés sur votre machine, le texte reste local. Si vous indiquez un serveur distant ou un modèle cloud via Ollama, le texte peut quitter votre machine. Les clés API sont conservées dans les réglages du plugin.
 
-Finition n’accède pas au presse-papiers. Les notes et les copies de dictionnaires sont gérées par l’API Obsidian. Les fichiers extérieurs ne sont lus que lors d’un import choisi par l’utilisateur ou du chargement d’un modèle depuis un chemin renseigné dans les réglages.
+Avec Codex, le texte fourni est transmis au service configuré dans Codex : ce choix n’est pas une IA hors ligne. Finition lance une conversation éphémère hors du coffre, avec les outils et intégrations désactivés et un environnement en lecture seule. Le plugin ne modifie ni la connexion ni la configuration enregistrée de Codex ; les propositions restent soumises à votre validation dans Finition.
+
+Finition n’accède pas au presse-papiers. Les notes et les copies de dictionnaires sont gérées par l’API Obsidian. Les accès extérieurs concernent les imports choisis, le chargement d’un modèle depuis un chemin renseigné dans les réglages et la détection de l’exécutable Codex. Codex gère lui-même l’accès à sa configuration et à sa connexion.
 
 ## Documentation
 

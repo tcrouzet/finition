@@ -106,11 +106,13 @@ async function main() {
 	  } catch (error) { document.querySelector("#result").textContent = "FAIL: " + error.message; }
 	});` },
 		bundle: true, outfile: path.join(directory, "check.js"), loader: { ".md": "text" }, nodePaths: [path.join(process.cwd(), "node_modules")],
+		external: ["fs/promises", "fs", "os", "path", "process", "child_process"],
 		plugins: [rawAssets, { name: "obsidian-notice", setup(plugin: PluginBuild) {
 			plugin.onResolve({ filter: /^release-plugin$/ }, () => ({ path: path.join(directory, "main.js") }));
 			plugin.onResolve({ filter: /^obsidian$/ }, () => ({ path: "obsidian", namespace: "test" }));
 			plugin.onLoad({ filter: /.*/, namespace: "test" }, () => ({ resolveDir: process.cwd(), contents: `
 				import { StateField } from "@codemirror/state";
+				export const Platform = { isDesktop: false };
 				export const editorInfoField = StateField.define({ create: () => ({ file: null }), update: value => value });
 				const configure = (element, options = {}) => {
 				  element.className = options.cls ?? "";

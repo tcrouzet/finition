@@ -4,11 +4,22 @@ import { SynonymsModal } from "../ui/synonyms-modal";
 import { createRemarkInsertion } from "../ui/insert-remark";
 import { callAnthropic } from "./anthropic";
 import { callOpenAI } from "./openai";
+import { callCodex } from "./codex";
 import { splitIntoChunks } from "./chunk";
-import { getAIConnection } from "./provider";
+import { aiModelName, getAIConnection } from "./provider";
 import { selectionTouchesLink } from "../markdown-links";
 import { markdownExclusionRanges, maskMarkdownExclusions } from "../markdown-tags";
 import systemPrompt from "./system-prompt-synonymes.md";
+import { loadingMessage } from "../ui/loading-message";
+
+let synonymRequest = 0;
+let synonymProgress: Notice | null = null;
+
+export function cancelSynonyms(): void {
+	synonymRequest++;
+	synonymProgress?.hide();
+	synonymProgress = null;
+}
 
 export function synonymContext(text: string, from: number, to: number): string {
 	if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to > text.length || from >= to || !text.slice(from, to).trim()) {
@@ -54,10 +65,14 @@ export async function runSynonyms(app: App, settings: FinitionSettings): Promise
 	const to = editor.posToOffset(editor.getCursor("to"));
 	if (selectionTouchesLink(document, from, to)) { new Notice("Synonymes IA : sélectionne un texte hors des liens et des adresses web."); return; }
 	const insertRemark = createRemarkInsertion(app, view);
-	const progress = new Notice("Synonymes IA : recherche en cours…", 0);
+	cancelSynonyms();
+	const requestId = synonymRequest;
+	const progressMessage = (model: string) => loadingMessage(`Synonymes IA · ${model} : recherche en cours…`);
+	const progress = synonymProgress = new Notice(progressMessage(aiModelName(connection)), 0);
 	try {
-		const request = connection.provider === "openai" ? callOpenAI : callAnthropic;
-		const result = await request({ ...connection, maxTokens: settings.aiMaxTokens, system: systemPrompt, userText: synonymContext(document, from, to) });
+		const request = connection.provider === "codex" ? callCodex : connection.provider === "openai" ? callOpenAI : callAnthropic;
+		const result = await request({ ...connection, maxTokens: settings.aiMaxTokens, system: systemPrompt, userText: synonymContext(document, from, to), onModel: model => { if (requestId === synonymRequest) progress.setMessage(progressMessage(`Codex · ${model}`)); } });
+		if (requestId !== synonymRequest) return;
 		if (result.error || typeof result.text !== "string") throw new Error(result.error ?? "Réponse vide.");
 		const synonyms = parseSynonyms(result.text);
 		if (!synonyms.length) throw new Error("Aucun synonyme dans la réponse.");
@@ -71,8 +86,9 @@ export async function runSynonyms(app: App, settings: FinitionSettings): Promise
 			return true;
 		}, insertRemark).open();
 	} catch (error) {
-		new Notice(`Synonymes IA : ${error instanceof Error ? error.message : String(error)}`, 10000);
+		if (requestId === synonymRequest) new Notice(`Synonymes IA : ${error instanceof Error ? error.message : String(error)}`, 10000);
 	} finally {
 		progress.hide();
+		if (synonymProgress === progress) synonymProgress = null;
 	}
 }
