@@ -459,22 +459,22 @@ body.is-mobile .finition-synonyms-insert {
 	margin-left: 0.15em;
 }
 
-.finition-ai-keep, .finition-ai-delete, .finition-ai-reject {
+.finition-ai-accept, .finition-ai-reject {
 	display: inline-flex;
 	vertical-align: middle;
 	margin-left: 0.2em;
 	padding: 2px;
 }
 
-.finition-ai-keep, .finition-ai-delete { color: var(--color-green, #1e8449); }
+.finition-ai-accept { color: var(--color-green, #1e8449); }
 .finition-ai-reject { color: var(--text-muted); }
 
-.finition-ai-keep:focus-visible, .finition-ai-delete:focus-visible, .finition-ai-reject:focus-visible, .finition-loading-cancel:focus-visible {
+.finition-ai-accept:focus-visible, .finition-ai-reject:focus-visible, .finition-loading-cancel:focus-visible {
 	outline: 2px solid var(--interactive-accent);
 	outline-offset: 2px;
 }
 
-body.is-mobile .finition-ai-keep, body.is-mobile .finition-ai-delete, body.is-mobile .finition-ai-reject, body.is-mobile .finition-loading-cancel {
+body.is-mobile .finition-ai-accept, body.is-mobile .finition-ai-reject, body.is-mobile .finition-loading-cancel {
 	min-width: 44px;
 	min-height: 44px;
 }

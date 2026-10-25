@@ -4,9 +4,9 @@
  * original barré en rouge, texte proposé inséré visuellement en vert à sa
  * suite (un widget, PAS du texte réel) — à la manière d'un commentaire.
  *
- * Le document n'est JAMAIS modifié automatiquement : un clic sur une
- * proposition verte l'applique. La poubelle refuse la proposition ; une
- * suppression seule se valide avec la coche. Tant que rien
+ * Le document n'est JAMAIS modifié automatiquement : un clic sur le
+ * rouge, le vert ou la coche applique la correction. La poubelle
+ * refuse la proposition. Tant que rien
  * n'est cliqué, le fichier reste identique à avant l'appel IA.
  *
  * L'état des suggestions en attente vit sur FinitionPlugin (`aiGroups`),
@@ -38,7 +38,7 @@ class CorrectionWidget extends WidgetType {
 	constructor(
 		private readonly text: string,
 		private readonly groupId: number,
-		private readonly action: "keep" | "reject" | "delete" | null = null
+		private readonly action: "accept" | "reject" | null = null
 	) {
 		super();
 	}
@@ -46,12 +46,12 @@ class CorrectionWidget extends WidgetType {
 	get lineBreaks(): number { return this.action ? 0 : this.text.split("\n").length - 1; }
 
 	toDOM(): HTMLElement {
-		const label = this.action === "keep" ? "Conserver le texte original" : this.action === "reject" ? "Refuser la correction" : "Valider la suppression";
+		const label = this.action === "reject" ? "Refuser la correction" : "Accepter la correction";
 		const span = this.action ? createEl("button", { cls: `clickable-icon finition-ai-${this.action}`, attr: { type: "button", "aria-label": label } }) : createSpan();
 		if (this.action) setIcon(span, this.action === "reject" ? "trash-2" : "check");
 		else { span.className = "finition-ai-ins"; span.textContent = this.text; }
 		span.dataset.finitionAiGroup = String(this.groupId);
-		span.dataset.finitionAiAction = this.action === "keep" || this.action === "reject" ? "reject" : "accept";
+		span.dataset.finitionAiAction = this.action ?? "accept";
 		span.setAttribute("title", this.action ? label : "Cliquer pour appliquer la correction");
 		return span;
 	}
@@ -73,17 +73,17 @@ function buildAIDecorations(groups: AIGroup[]): DecorationSet {
 					class: "finition-ai-del",
 					attributes: {
 						"data-finition-ai-group": String(g.id),
-						"data-finition-ai-action": "reject",
-						title: "Cliquer pour garder le texte original",
+						"data-finition-ai-action": "accept",
+						title: "Cliquer pour appliquer la correction",
 					},
 				})
 			);
-			builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget("", g.id, g.insText ? "keep" : "reject"), side: 1 }));
 		}
-		if (g.insText) {
-			builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget(g.insText, g.id), side: 2 }));
+		if (g.insText) builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget(g.insText, g.id), side: 1 }));
+		if (g.insText || g.delFrom < g.delTo) {
+			builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget("", g.id, "accept"), side: 2 }));
 			builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget("", g.id, "reject"), side: 3 }));
-		} else if (g.delFrom < g.delTo) builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget("", g.id, "delete"), side: 2 }));
+		}
 	}
 	return builder.finish();
 }
@@ -105,10 +105,6 @@ export function finitionAIExtension(host: AIGroupHost) {
 				this.sourceView = this.isSourceView();
 				this.decorations = this.sourceView ? buildAIDecorations(this.host.aiGroups) : Decoration.none;
 
-				// Clic sur le VERT (proposition) : applique la correction, seule
-				// vraie modification du document que fait cette extension. Clic
-				// sur le ROUGE (texte original) : garde l'original tel quel, le
-				// document n'est pas touché, la suggestion est juste écartée.
 				this.handleClick = (event: MouseEvent) => {
 					if (!this.isSourceView()) return;
 					const target = event.target as HTMLElement | null;

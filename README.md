@@ -96,7 +96,7 @@ Sur ordinateur, si **Codex CLI** est détecté, **Codex** apparaît dans **Modè
 
 Avec Ollama ou un autre serveur compatible OpenAI, renseigner **Serveur local** (par exemple `http://localhost:11434`, avec ou sans `/v1`) et **Modèle local**, sous les clés API. Le serveur doit déjà fonctionner et disposer du modèle indiqué. Sauf si Codex est choisi, ces champs remplacent le fournisseur et le modèle cloud pour les deux fonctions ci-dessous, sans transmettre les clés API. Vider **Serveur local** pour revenir à Claude/GPT. Finition ne télécharge aucun modèle et ne bascule jamais vers le cloud en cas d’erreur locale.
 
-- **Corrections IA** relit la sélection, ou toute la note si rien n’est sélectionné, et marque les mots ou signes modifiés. Cliquer sur le vert applique la correction. La poubelle après le vert refuse la proposition ; la coche après un rouge associé à un vert conserve l’original. Pour une suppression seule, la poubelle conserve le texte et la coche confirme sa suppression.
+- **Corrections IA** relit la sélection, ou toute la note si rien n’est sélectionné, et marque les mots ou signes modifiés. Cliquer sur le rouge, le vert ou la coche accepte la correction. La poubelle refuse la suggestion et conserve le texte original. La coche précède toujours la poubelle.
 - **Synonymes IA**, dans le menu Dictionnaires, cherche des variantes adaptées au contexte de la sélection.
 
 Les consignes de relecture sont personnalisables et peuvent être enregistrées avec leur modèle. Les liens restent intacts dans la note.

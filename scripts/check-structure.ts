@@ -395,7 +395,7 @@ async function main() {
 	assert.equal(sequenceGroups[0].delText, "Suite à ");
 	assert.equal(sequenceGroups[0].insText, "A la suite d’");
 	assert.equal(apply(sequence, sequenceGroups), "A la suite d’un collègue, je réponds.");
-	for (const action of ["accept", "reject", "keep"]) for (const [source, revised, accepted] of [
+	for (const action of ["accept", "reject", "red"]) for (const [source, revised, accepted] of [
 		[sequence, "À la suite d'un collègue, je réponds.", "À la suite d’un collègue, je réponds."],
 		["Il dit bonjour.", "Il dit : bonjour.", "Il dit\u00a0: bonjour."],
 		["Il dit bonjour. Une fote.", "Il dit : bonjour. Une faute.", "Il dit\u00a0: bonjour. Une faute."],
@@ -419,34 +419,39 @@ async function main() {
 		view.dispatch({ changes: { from: 0, to: state.doc.length, insert: source } });
 		assert.equal(JSON.stringify(host.aiGroups), before, "Revenir à la note source déplace les suggestions");
 		let removed = "", inserted = "";
+		const redMarkers = new Map<number, { dataset: { finitionAiGroup: string; finitionAiAction: string } }>();
 		const buttonsBefore = buttons.length;
 		sandbox.createSpan = () => ({ dataset: {}, setAttribute() {}, textContent: "" });
 		instance.decorations.between(0, source.length, (from, to, decoration) => {
-			const spec = decoration.spec as { class?: string; widget?: { toDOM: () => { textContent: string } } };
-			if (spec.class === "finition-ai-del") removed += source.slice(from, to);
+			const spec = decoration.spec as { class?: string; attributes?: Record<string, string>; widget?: { toDOM: () => { textContent: string } } };
+			if (spec.class === "finition-ai-del") {
+				removed += source.slice(from, to);
+				const id = spec.attributes!["data-finition-ai-group"];
+				redMarkers.set(Number(id), { dataset: { finitionAiGroup: id, finitionAiAction: spec.attributes!["data-finition-ai-action"] } });
+			}
 			if (spec.widget) inserted += spec.widget.toDOM().textContent;
 		});
 		assert.equal(removed, host.aiGroups.map(group => group.delText).join(""), "La séquence n’est pas barrée en entier");
 		assert.equal(inserted, host.aiGroups.map(group => group.insText ?? "").join(""), "Le widget altère le remplacement ou son insécable");
 		const controls = buttons.slice(buttonsBefore);
 		const rejects = controls.filter(button => button.className.includes("finition-ai-reject"));
-		const keeps = controls.filter(button => button.className.includes("finition-ai-keep"));
+		const accepts = controls.filter(button => button.className.includes("finition-ai-accept"));
 		assert.equal(rejects.length, host.aiGroups.length, "Chaque correction doit proposer une poubelle pour la refuser");
-		assert.equal(keeps.length, host.aiGroups.filter(group => group.insText && group.delFrom < group.delTo).length, "Chaque remplacement doit proposer une coche pour garder l’original");
-		for (const group of host.aiGroups.filter(group => !group.insText)) {
+		assert.equal(accepts.length, host.aiGroups.length, "Chaque correction doit proposer une coche pour la valider");
+		for (const group of host.aiGroups) {
 			const refuse = rejects.find(button => button.dataset.finitionAiGroup === String(group.id));
-			const confirm = controls.find(button => button.className.includes("finition-ai-delete") && button.dataset.finitionAiGroup === String(group.id));
-			assert.equal(refuse?.attributes["data-icon"], "trash-2", "La poubelle doit refuser la suppression");
-			assert.equal(confirm?.attributes["data-icon"], "check", "La coche doit valider la suppression");
+			const confirm = accepts.find(button => button.dataset.finitionAiGroup === String(group.id));
+			assert.ok(confirm && refuse);
+			assert.equal(refuse.attributes["data-icon"], "trash-2", "La poubelle doit refuser la correction");
+			assert.equal(confirm.attributes["data-icon"], "check", "La coche doit valider la correction");
+			assert.ok(controls.indexOf(confirm) < controls.indexOf(refuse), "La coche doit précéder la poubelle");
 		}
 		for (const group of [...host.aiGroups]) {
-			const keepOriginal = action === "keep" && group.insText && group.delFrom < group.delTo;
-			const kind = action === "accept" ? group.insText ? null : "delete" : keepOriginal ? "keep" : "reject";
-			const marker = kind ? controls.find(button => button.className.includes(`finition-ai-${kind}`) && button.dataset.finitionAiGroup === String(group.id)) : { dataset: { finitionAiGroup: String(group.id), finitionAiAction: "accept" } };
-			assert.ok(marker, `Bouton ${kind} absent`);
+			const marker = action === "red" && redMarkers.has(group.id) ? redMarkers.get(group.id) : (action === "reject" ? rejects : accepts).find(button => button.dataset.finitionAiGroup === String(group.id));
+			assert.ok(marker, `Contrôle ${action} absent`);
 			listeners.get("click")!({ target: { closest: () => marker }, preventDefault() {} } as unknown as MouseEvent);
 		}
-		assert.equal(state.doc.toString(), action === "accept" ? accepted : source, "Le clic applique une mauvaise correction ou modifie le texte après refus");
+		assert.equal(state.doc.toString(), action === "reject" ? source : accepted, "Le clic applique une mauvaise correction ou modifie le texte après refus");
 		assert.equal(host.aiGroups.length, 0);
 		instance.destroy();
 	}

@@ -45,8 +45,8 @@ export function checkAICorrections(): void {
 		["insertion", 3, "joli ", "Un joli inutile texte. Une fote."],
 		["replacement", 11, "joli ", "Un joli texte. Une fote."],
 		["deletion", 11, null, "Un texte. Une fote."],
-	] as const) for (const action of ["apply", "keep", "reject"]) {
-		if (kind === "insertion" && action === "keep") continue;
+	] as const) for (const action of ["accept", "reject", "red", "green"]) {
+		if (kind === "insertion" && action === "red" || kind === "deletion" && action === "green") continue;
 		const groups: AIGroup[] = [
 			{ id: 0, delFrom: 3, delTo: end, delText: source.slice(3, end), insText: insertion },
 			{ id: 1, delFrom: source.indexOf("fote"), delTo: source.indexOf("fote") + 4, delText: "fote", insText: "faute" },
@@ -58,33 +58,22 @@ export function checkAICorrections(): void {
 		try {
 			check(view.state.doc.toString() === source, "L’affichage modifie le document");
 			const find = <T extends HTMLElement>(cls: string) => view.dom.querySelector<T>(`.${cls}[data-finition-ai-group="0"]`);
-			const keep = find<HTMLButtonElement>("finition-ai-keep"), reject = find<HTMLButtonElement>("finition-ai-reject");
-			const confirmDeletion = find<HTMLButtonElement>("finition-ai-delete");
+			const accept = find<HTMLButtonElement>("finition-ai-accept"), reject = find<HTMLButtonElement>("finition-ai-reject");
 			const green = find<HTMLElement>("finition-ai-ins"), red = find<HTMLElement>("finition-ai-del");
-			check(!!reject && !!keep === !!(insertion && end > 3), "La poubelle de refus ou la coche du remplacement est absente");
-			check(!!confirmDeletion === (kind === "deletion"), "La validation explicite de suppression est absente");
-			if (confirmDeletion) {
-				check(confirmDeletion.dataset.icon === "check" && confirmDeletion.getAttribute("aria-label") === "Valider la suppression", "La suppression doit se valider avec une coche");
-				const rgb = getComputedStyle(confirmDeletion).color.match(/\d+/gu)!.map(Number);
-				check(rgb[1] > rgb[0] && rgb[1] > rgb[2], "La coche de validation d’une suppression n’est pas verte");
-			}
-			if (keep) {
-				check(keep.tagName === "BUTTON" && keep.getAttribute("aria-label") === "Conserver le texte original" && keep.dataset.icon === "check", "La coche ne permet pas de conserver l’original");
-				const rgb = getComputedStyle(keep).color.match(/\d+/gu)!.map(Number);
-				check(rgb[1] > rgb[0] && rgb[1] > rgb[2], "La coche n’est pas verte");
-				check(red!.compareDocumentPosition(keep) & Node.DOCUMENT_POSITION_FOLLOWING, "La coche doit suivre le rouge");
-			}
-			if (reject) {
-				check(reject.tagName === "BUTTON" && reject.getAttribute("aria-label") === "Refuser la correction" && reject.dataset.icon === "trash-2", "Le refus du vert n’a pas de poubelle accessible");
-				check((green ?? red)!.compareDocumentPosition(reject) & Node.DOCUMENT_POSITION_FOLLOWING, "La poubelle doit suivre le passage concerné");
-			}
-			const control = action === "keep" ? keep ?? red! : action === "reject" ? reject! : green ?? confirmDeletion!;
+			check(!!accept && !!reject && view.dom.querySelectorAll('button[data-finition-ai-group="0"]').length === 2, "Chaque suggestion doit avoir une coche et une poubelle");
+			check(accept!.tagName === "BUTTON" && accept!.getAttribute("aria-label") === "Accepter la correction" && accept!.dataset.icon === "check", "La coche ne permet pas d’accepter la correction");
+			check(reject!.tagName === "BUTTON" && reject!.getAttribute("aria-label") === "Refuser la correction" && reject!.dataset.icon === "trash-2", "Le refus n’a pas de poubelle accessible");
+			const rgb = getComputedStyle(accept!).color.match(/\d+/gu)!.map(Number);
+			check(rgb[1] > rgb[0] && rgb[1] > rgb[2], "La coche n’est pas verte");
+			check(accept!.compareDocumentPosition(reject!) & Node.DOCUMENT_POSITION_FOLLOWING, "La coche doit toujours précéder la poubelle");
+			check((green ?? red)!.compareDocumentPosition(accept!) & Node.DOCUMENT_POSITION_FOLLOWING, "Les contrôles doivent suivre le passage concerné");
+			const control = action === "accept" ? accept! : action === "reject" ? reject! : action === "red" ? red! : green!;
 			if (control.tagName === "BUTTON") {
 				control.focus();
 				check(document.activeElement === control, "Action IA inaccessible au clavier");
 			}
 			control.click();
-			const expected = action === "apply" ? applied : source;
+			const expected = action === "reject" ? source : applied;
 			check(view.state.doc.toString() === expected, `Mauvaise action ${action} pour ${kind}`);
 			check(host.aiGroups.length === 1 && !view.dom.querySelector('[data-finition-ai-group="0"]'), "La correction traitée reste affichée");
 			view.dom.querySelector<HTMLElement>('.finition-ai-ins[data-finition-ai-group="1"]')!.click();
@@ -101,7 +90,7 @@ export function checkAICorrections(): void {
 	const view = new EditorView({ parent: document.body.createDiv(), state });
 	try {
 		view.dispatch({ changes: { from: 11, to: source.indexOf("fote"), insert: "" } });
-		check(view.dom.querySelectorAll(".finition-ai-reject").length === 2 && view.dom.querySelectorAll(".finition-ai-keep").length === 2, "Deux corrections devenues adjacentes perdent leurs boutons");
+		check(view.dom.querySelectorAll(".finition-ai-reject").length === 2 && view.dom.querySelectorAll(".finition-ai-accept").length === 2, "Deux corrections devenues adjacentes perdent leurs boutons");
 		view.dom.querySelector<HTMLElement>('.finition-ai-ins[data-finition-ai-group="0"]')!.click();
 		view.dom.querySelector<HTMLElement>('.finition-ai-ins[data-finition-ai-group="1"]')!.click();
 		check(view.state.doc.toString() === "Un joli faute." && host.aiGroups.length === 0, "Les actions perdent leur position après rapprochement des corrections");
@@ -116,7 +105,7 @@ export function checkAICorrections(): void {
 		try {
 			for (const span of Array.from(view.dom.querySelectorAll(".finition-ai-del, .finition-ai-ins"))) check(!/\p{L}/u.test(span.textContent ?? ""), "Une correction de ponctuation recolore le mot voisin");
 			for (const group of [...host.aiGroups]) {
-				const cls = apply ? group.insText ? "finition-ai-ins" : "finition-ai-delete" : "finition-ai-reject";
+				const cls = apply ? group.insText ? "finition-ai-ins" : "finition-ai-accept" : "finition-ai-reject";
 				view.dom.querySelector<HTMLElement>(`.${cls}[data-finition-ai-group="${group.id}"]`)!.click();
 			}
 			check(view.state.doc.toString() === (apply ? cleanTypography(revised) : source), "La validation ou le refus de ponctuation modifie le texte voisin");
