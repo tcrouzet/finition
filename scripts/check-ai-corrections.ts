@@ -5,6 +5,39 @@ import { finitionAIExtension, type AIGroup } from "../plugin/ai/ai-extension";
 import { protectLinks } from "../plugin/ai/protected-links";
 import { cleanTypography } from "../plugin/ai/clean";
 
+export async function checkAICorrectionLayout(): Promise<void> {
+	const paragraph = "Cette demande est légitime. Je ne cesse de m’y plier, quand je renonce à publier le modèle neuronal et les dictionnaires. ".repeat(4);
+	const source = Array.from({ length: 15 }, () => paragraph).join("\n\n");
+	const host = { aiSourcePath: "source.md", aiGroups: [] as AIGroup[], aiGroupsVersion: 0 };
+	const state = EditorState.create({ doc: source, extensions: [editorInfoField, EditorView.lineWrapping, finitionAIExtension(host)] });
+	Object.assign(state.field(editorInfoField), { file: { path: "source.md" } });
+	const parent = document.body.createDiv();
+	parent.className = "markdown-source-view mod-cm6 is-live-preview finition-test-ai-layout";
+	const view = new EditorView({ parent, state });
+	parent.scrollIntoView();
+	const settle = async () => { for (let i = 0; i < 4; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); };
+	try {
+		await settle();
+		host.aiGroups = [
+			{ id: 0, delFrom: 10, delTo: 17, delText: source.slice(10, 17), insText: "Une proposition de correction bien plus longue, qui occupe plusieurs lignes.\n\nUn nouveau paragraphe. " },
+			{ id: 1, delFrom: paragraph.length + 30, delTo: paragraph.length + 38, delText: source.slice(paragraph.length + 30, paragraph.length + 38), insText: "Une seconde proposition très longue. ".repeat(15) },
+			{ id: 2, delFrom: paragraph.length - 1, delTo: paragraph.length, delText: " ", insText: "." },
+		];
+		host.aiGroupsVersion++;
+		view.dispatch({});
+		await settle();
+		if (!view.dom.querySelector(".finition-ai-ins")) throw new Error("La correction longue n’est pas rendue dans le scénario de mise en page");
+		for (const line of Array.from(view.contentDOM.querySelectorAll<HTMLElement>(".cm-line"))) {
+			const position = view.posAtDOM(line), block = view.lineBlockAt(position), rect = line.getBoundingClientRect();
+			if (line.querySelector(".finition-ai-ins") && rect.height < 30) throw new Error("Une ligne de correction est traitée comme un paragraphe vide par le thème");
+			if (Math.abs(rect.height - block.height) > 2) throw new Error(`Hauteur IA incohérente : DOM=${rect.height}, CodeMirror=${block.height}, position=${position}`);
+		}
+		const lines = Array.from(view.contentDOM.querySelectorAll<HTMLElement>(".cm-line"));
+		for (let i = 1; i < lines.length; i++) if (lines[i - 1].getBoundingClientRect().bottom > lines[i].getBoundingClientRect().top + 1) throw new Error("Les paragraphes de correction IA se chevauchent");
+		if (view.state.doc.toString() !== source) throw new Error("La prévisualisation multilignes modifie la note");
+	} finally { view.destroy(); parent.remove(); }
+}
+
 export function checkAICorrections(): void {
 	const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
 	const source = "Un inutile texte. Une fote.";

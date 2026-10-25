@@ -176,6 +176,20 @@ async function main() {
 	const synonymContext = api.synonymContext(synonymDocument, synonymFrom, synonymFrom + 6);
 	assert.ok(synonymContext.includes("**rapide**") && !synonymContext.includes("confidentiel") && !synonymContext.includes("secret"), "Synonymes IA ne doit envoyer ni YAML ni tags voisins");
 	for (const from of [synonymDocument.indexOf("title"), synonymDocument.indexOf("secret")]) assert.throws(() => api.synonymContext(synonymDocument, from, from + 3), /YAML et des tags/);
+	const annotationContext = "La 2<sup>e</sup> note.\n\nUn pas rapide.\n\nH<sub>2</sub>O.";
+	const annotationFrom = annotationContext.indexOf("rapide");
+	assert.equal(api.synonymContext(annotationContext, annotationFrom, annotationFrom + 6), "La 2e note.\n\nUn pas **rapide**.\n\nH2O.");
+	for (const selected of ["<sup>", "e</sup>", "2</sub>"]) {
+		const from = annotationContext.indexOf(selected);
+		assert.throws(() => api.synonymContext(annotationContext, from, from + 1), /exposants et indices/);
+	}
+	const htmlContext = "Avant <b>texte</b>.\n\nUn <span title='privé > suite'>pas rapide</span>.\n\nAprès <!--secret-->suite.";
+	const htmlFrom = htmlContext.indexOf("rapide");
+	assert.equal(api.synonymContext(htmlContext, htmlFrom, htmlFrom + 6), "Avant texte.\n\nUn pas **rapide**.\n\nAprès suite.");
+	for (const selected of ["title", "</span>", "secret"]) {
+		const from = htmlContext.indexOf(selected);
+		assert.throws(() => api.synonymContext(htmlContext, from, from + 3), /balises HTML/);
+	}
 	await checkDocumentNavigation(api.AnalysisNavigation, api.EditorState, api.DEFAULT_SETTINGS, api.navigationFocus, api.addLeftSidebarToggle);
 	const focusedState = api.EditorState.create({ doc: "😀 texte", extensions: [api.navigationFocus] }).update({ effects: api.setNavigationFocus.of({ from: 3, to: 8 }) }).state;
 	const navigationSpec = focusedState.field(api.navigationFocus).iter().value?.spec as { class?: string } | undefined;

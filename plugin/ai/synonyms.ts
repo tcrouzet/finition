@@ -11,6 +11,7 @@ import { selectionTouchesLink } from "../markdown-links";
 import { markdownExclusionRanges, maskMarkdownExclusions } from "../markdown-tags";
 import systemPrompt from "./system-prompt-synonymes.md";
 import { LoadingNotice } from "../ui/loading-message";
+import { annotationRanges, htmlTagRanges, stripHTMLTags } from "./annotations";
 
 let synonymRequest = 0;
 let synonymProgress: Notice | null = null;
@@ -26,18 +27,20 @@ export function synonymContext(text: string, from: number, to: number): string {
 		throw new Error("Sélectionne d’abord un texte.");
 	}
 	if (markdownExclusionRanges(text).some(([start, end]) => from < end && to > start)) throw new Error("Sélectionne un texte hors du YAML et des tags.");
+	if (annotationRanges(text).some(span => from < span.to && to > span.from)) throw new Error("Sélectionne un texte hors des exposants et indices.");
+	if (htmlTagRanges(text).some(span => from < span.to && to > span.from)) throw new Error("Sélectionne un texte hors des balises HTML.");
 	text = maskMarkdownExclusions(text);
 	const paragraphs = splitIntoChunks(text, 0).filter((paragraph) => paragraph.text.trim());
 	const first = paragraphs.findIndex(({ end }) => from < end);
 	const last = paragraphs.findIndex(({ end }) => to <= end);
 	const start = paragraphs[Math.max(0, first - 1)].start;
 	const end = paragraphs[Math.min(paragraphs.length - 1, last + 1)].end;
-	return `${text.slice(start, from)}**${text.slice(from, to)}**${text.slice(to, end)}`;
+	return stripHTMLTags(`${text.slice(start, from)}**${text.slice(from, to)}**${text.slice(to, end)}`);
 }
 
 export function parseSynonyms(text: string): string[] {
 	const seen = new Set<string>();
-	return text.split(/\r?\n/).flatMap((line) => {
+	return stripHTMLTags(text).split(/\r?\n/).flatMap((line) => {
 		const synonym = line.match(/^\s*[-*+•]\s+(.+?)\s*$/u)?.[1];
 		if (!synonym || seen.has(synonym.toLocaleLowerCase("fr"))) return [];
 		seen.add(synonym.toLocaleLowerCase("fr"));

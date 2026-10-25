@@ -2,15 +2,30 @@ import { cleanTypography } from "./clean";
 import { diffToGroups, type DiffGroup } from "./diff";
 import { markdownLinks, linkRanges, mergeRanges, type MarkdownLink } from "../markdown-links";
 import { frontmatterRanges, hashtagRanges } from "../markdown-tags";
+import { annotationRanges, htmlTagRanges, stripHTMLTags } from "./annotations";
+
+function preserveNumberSpaces(source: string, revised: string): string {
+	const numbers = /(\d+(?:[.,]\d+)?)([\u00a0\u202f \t]+)/gu;
+	const originals = Array.from(source.matchAll(numbers));
+	const sameCount = originals.length === Array.from(revised.matchAll(numbers)).length;
+	const unique = new Map<string, string | null>();
+	for (const match of originals) unique.set(match[1], unique.has(match[1]) ? null : match[2]);
+	let index = 0;
+	return revised.replace(numbers, (match: string, number: string) => {
+		const spaces = sameCount ? originals[index++][2] : unique.get(number);
+		const nonbreaking = spaces?.match(/[\u00a0\u202f]/u)?.[0];
+		return nonbreaking ? number + nonbreaking : match;
+	});
+}
 
 export function protectLinks(original: string, from = 0, to = original.length, links: readonly MarkdownLink[] = markdownLinks(original)): { text: string; diff: (revised: string) => DiffGroup[] } {
 	const tags = hashtagRanges(original);
-	const spans: MarkdownLink[] = [...frontmatterRanges(original).map(([from, to]) => ({ from, to })), ...links, ...tags.map(([start, stop]) => {
+	const spans: MarkdownLink[] = [...frontmatterRanges(original).map(([from, to]) => ({ from, to })), ...links, ...annotationRanges(original), ...htmlTagRanges(original), ...tags.map(([start, stop]) => {
 		let end = stop;
 		while (/[ \t\u00a0\u202f]/u.test(original[end] ?? "")) end++;
 		if (end === original.length || /[\r\n]/u.test(original[end])) while (start > 0 && /[ \t\u00a0\u202f]/u.test(original[start - 1])) start--;
 		return { from: start, to: end };
-	})].sort((left, right) => left.from - right.from);
+	})].sort((left, right) => left.from - right.from || right.to - left.to);
 	let text = "", cursor = from;
 	const parts: Array<{ from: number; to: number; source: number }> = [];
 	const append = (end: number) => {
@@ -23,7 +38,7 @@ export function protectLinks(original: string, from = 0, to = original.length, l
 		append(Math.max(from, link.from));
 		if (link.label) {
 			let label = original.slice(Math.max(from, cursor, link.label[0]), Math.min(to, link.label[1]));
-			label = label.replace(/<[^>]*>/g, "");
+			label = stripHTMLTags(label);
 			for (const [start, end] of mergeRanges([...linkRanges(label), ...hashtagRanges(label)]).reverse()) label = label.slice(0, start) + label.slice(end);
 			text += label;
 		}
@@ -32,7 +47,7 @@ export function protectLinks(original: string, from = 0, to = original.length, l
 	append(to);
 	return { text, diff(revised) {
 		const groups: DiffGroup[] = [];
-		for (const group of diffToGroups(text, cleanTypography(revised))) {
+		for (const group of diffToGroups(text, preserveNumberSpaces(text, cleanTypography(stripHTMLTags(revised))))) {
 			let start = group.delFrom, end = group.delTo, replacement = group.insText ?? "";
 			if (!parts.some(part => start >= part.from && end <= part.to)) {
 				while (start < end && replacement && text[start] === replacement[0]) { start++; replacement = replacement.slice(1); }

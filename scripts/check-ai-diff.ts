@@ -3,10 +3,56 @@ import { diffToGroups, type DiffGroup } from "../plugin/ai/diff";
 import { protectLinks } from "../plugin/ai/protected-links";
 import { cleanTypography } from "../plugin/ai/clean";
 import { fixPunctuationSpacing } from "../plugin/modes/punctuation";
+import { stripHTMLTags } from "../plugin/ai/annotations";
 
 const apply = (source: string, groups: DiffGroup[]) => [...groups].reverse().reduce((text, group) => text.slice(0, group.delFrom) + (group.insText ?? "") + text.slice(group.delTo), source);
 
 export function checkAIDiff(): void {
+	for (const [source, revised, expected] of [
+		["25\u00a0tonnes", "25 tonnes", "25\u00a0tonnes"],
+		["25\u00a0bidules", "25 bidules", "25\u00a0bidules"],
+		["25\u202fpages", "25 pages", "25\u202fpages"],
+		["25\u00a0%", "25 %", "25\u00a0%"],
+		["25\u00a0bidules", "26 bidules", "26\u00a0bidules"],
+		["25\u00a0bidules", "25 bidule", "25\u00a0bidule"],
+		["25\u00a0bidules", "26 bidule", "26\u00a0bidule"],
+		["25\u00a0bidules et 3 trucs", "26 machins et 4 choses", "26\u00a0machins et 4 choses"],
+		["25\u00a0bidules", "25 bidules en 2026 environ", "25\u00a0bidules en 2026 environ"],
+	] as const) assert.equal(apply(source, protectLinks(source).diff(revised)), expected, "Une révision retire une insécable numérique existante");
+	assert.equal(fixPunctuationSpacing("25 tonnes"), "25\u00a0tonnes");
+	for (const [source, sent] of [
+		["Une <strong>fote</strong>.", "Une fote."],
+		["<p><em>Une fote</em>.</p>", "Une fote."],
+		["Une <SPAN title='a > b' data-secret=\"privé\">fote</SPAN>.", "Une fote."],
+		["Une fote<br /> puis une suite<hr>.", "Une fote puis une suite."],
+		["Une <!-- commentaire privé -->fote.", "Une fote."],
+		["<note-custom>Une fote.</note-custom>", "Une fote."],
+		["<svg:text>Une fote.</svg:text>", "Une fote."],
+		["<!DOCTYPE html><?xml version='1.0'?><p>Une fote.</p>", "Une fote."],
+	] as const) {
+		const guarded = protectLinks(source);
+		assert.equal(guarded.text, sent, "Des balises HTML ou leurs attributs sont envoyés à l’IA");
+		assert.equal(guarded.diff(sent).length, 0, "Le retrait des balises dans l’envoi modifie la note");
+		assert.equal(apply(source, guarded.diff(sent.replace("fote", "faute"))), source.replace("fote", "faute"), "Une correction perd les balises HTML ou ses positions");
+		assert.equal(apply(source, guarded.diff(sent.replace("fote", "<b>faute</b>"))), source.replace("fote", "faute"), "Des balises ajoutées par l’IA entrent dans la note");
+	}
+	for (const literal of ["1 < 2 et 3 > 2", "<https://example.org>", "<nom@example.org>"]) assert.equal(stripHTMLTags(literal), literal, "Un texte entre chevrons est confondu avec une balise HTML");
+	const withAttributes = "Un <span title='texte privé'>mot</span>.";
+	for (const selected of ["texte privé", "</span>"]) {
+		const from = withAttributes.indexOf(selected);
+		assert.equal(protectLinks(withAttributes, from, from + selected.length).text, "", "Une sélection partielle expose une balise ou ses attributs");
+	}
+	const annotated = "La 2<sup>e</sup> note contient une fote et H<sub>2</sub>O.";
+	const guardedAnnotations = protectLinks(annotated);
+	assert.equal(guardedAnnotations.text, "La 2e note contient une fote et H2O.", "Les balises sup/sub sont envoyées à l’IA");
+	assert.equal(apply(annotated, guardedAnnotations.diff("La 2e note contient une faute et H2O.")), annotated.replace("fote", "faute"), "Une correction altère un exposant ou un indice");
+	assert.equal(apply(annotated, guardedAnnotations.diff("La 2ème note contient une fote et H3O.")), annotated, "L’IA modifie le contenu d’un exposant ou indice");
+	for (const source of ["Un <SUP class=\"a>b\">mot</SUP> et une fote.", "Un <sup><sub>mot</sub></sup> et une fote.", "Un <sup>mot</sup> puis <sub>mot</sub> et une fote."]) {
+		const guarded = protectLinks(source);
+		assert.ok(!/[<>]/u.test(guarded.text), "Des attributs ou balises imbriquées sont envoyés à l’IA");
+		assert.equal(apply(source, guarded.diff(guarded.text.replace("fote", "faute"))), source.replace("fote", "faute"));
+		assert.equal(protectLinks(source, source.indexOf("mot"), source.indexOf("mot") + 2).diff("autre").length, 0, "Une sélection partielle modifie un exposant ou indice");
+	}
 	assert.equal(protectLinks("J’ai 27\u00a0ans.").diff("J’ai 27 ans.").length, 0, "L’IA propose de supprimer l’insécable après le nombre");
 	assert.equal(fixPunctuationSpacing("27 ans, 2 mois et 3 jours."), "27\u00a0ans, 2\u00a0mois et 3\u00a0jours.");
 	assert.equal(apply("27\u00a0ans", protectLinks("27\u00a0ans").diff("28 ans")), "28\u00a0ans", "Changer le nombre retire l’insécable de la durée");

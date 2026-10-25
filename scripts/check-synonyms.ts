@@ -28,6 +28,8 @@ export async function checkSynonyms(setHandler: (handler: (request: Request) => 
 		for (const size of [0, 10, 1000]) equal(splitIntoChunks(source, size).map((chunk) => chunk.text).join(""), source, "Découpage sans perte");
 	}
 	equal(parseSynonyms("Introduction\n- vif\n* véloce\n• prompt\n- VIF\n- \n"), ["vif", "véloce", "prompt"], "Liste et dédoublonnage");
+	equal(parseSynonyms("- vif<sup>e</sup>\n- H<sub>2</sub>O"), ["vife", "H2O"], "Balises d’exposant ou d’indice retirées des propositions");
+	equal(parseSynonyms("- <strong>vif</strong>\n- <span title='privé'>prompt</span>"), ["vif", "prompt"], "Balises HTML retirées des propositions");
 	let rejected = false;
 	try { synonymContext(text, 3, 3); } catch { rejected = true; }
 	check(rejected, "Une sélection vide est acceptée");

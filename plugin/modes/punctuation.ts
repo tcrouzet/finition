@@ -126,7 +126,7 @@ function fixApostrophes(text: string): string {
 
 function fixUnitSpacing(text: string): string {
 	const spaced = text.replace(/(\d)[\u00a0\u202f \t]*([kKMGTPE]?o|[kmcdµμn]?m[²³]?|[kmcµμn]?g|[mcdµμ]?[lL]|[kMG]?Hz|[kMG]?Wh?|[kMG]?J|[hkM]?Pa|ms|min|s|h|K|°[CF])(?![\p{L}\p{M}\p{N}_])/gu, "$1\u00a0$2");
-	return spaced.replace(/(^|[^\p{L}\p{M}\p{N}_])(\d+(?:[.,]\d+)?)[\u00a0\u202f \t]*(millisecondes?|secondes?|minutes?|heures?|jours?|semaines?|mois|trimestres?|semestres?|ans?|années?|décennies?|siècles?|millénaires?)(?![\p{L}\p{M}\p{N}_])/giu, "$1$2\u00a0$3");
+	return spaced.replace(/(^|[^\p{L}\p{M}\p{N}_])(\d+(?:[.,]\d+)?)[\u00a0\u202f \t]*(millisecondes?|secondes?|minutes?|heures?|jours?|semaines?|mois|trimestres?|semestres?|ans?|années?|décennies?|siècles?|millénaires?|(?:micro|milli|centi|déci|déca|hecto|kilo)?(?:grammes?|mètres?|litres?)|tonnes?)(?![\p{L}\p{M}\p{N}_])/giu, "$1$2\u00a0$3");
 }
 
 const LIST_ITEM_START_RE = /[ \t]*(?:[-*+]|\d+[.)])[ \t]+/;

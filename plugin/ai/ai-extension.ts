@@ -43,6 +43,8 @@ class CorrectionWidget extends WidgetType {
 		super();
 	}
 
+	get lineBreaks(): number { return this.action ? 0 : this.text.split("\n").length - 1; }
+
 	toDOM(): HTMLElement {
 		const label = this.action === "keep" ? "Conserver le texte original" : this.action === "reject" ? "Refuser la correction" : "Valider la suppression";
 		const span = this.action ? createEl("button", { cls: `clickable-icon finition-ai-${this.action}`, attr: { type: "button", "aria-label": label } }) : createSpan();
