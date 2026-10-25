@@ -5,8 +5,8 @@
  * suite (un widget, PAS du texte réel) — à la manière d'un commentaire.
  *
  * Le document n'est JAMAIS modifié automatiquement : un clic sur une
- * proposition verte l'applique. La coche conserve l'original et la
- * poubelle refuse le vert ou valide une suppression seule. Tant que rien
+ * proposition verte l'applique. La poubelle refuse la proposition ; une
+ * suppression seule se valide avec la coche. Tant que rien
  * n'est cliqué, le fichier reste identique à avant l'appel IA.
  *
  * L'état des suggestions en attente vit sur FinitionPlugin (`aiGroups`),
@@ -48,7 +48,7 @@ class CorrectionWidget extends WidgetType {
 	toDOM(): HTMLElement {
 		const label = this.action === "keep" ? "Conserver le texte original" : this.action === "reject" ? "Refuser la correction" : "Valider la suppression";
 		const span = this.action ? createEl("button", { cls: `clickable-icon finition-ai-${this.action}`, attr: { type: "button", "aria-label": label } }) : createSpan();
-		if (this.action) setIcon(span, this.action === "keep" ? "check" : "trash-2");
+		if (this.action) setIcon(span, this.action === "reject" ? "trash-2" : "check");
 		else { span.className = "finition-ai-ins"; span.textContent = this.text; }
 		span.dataset.finitionAiGroup = String(this.groupId);
 		span.dataset.finitionAiAction = this.action === "keep" || this.action === "reject" ? "reject" : "accept";
@@ -78,7 +78,7 @@ function buildAIDecorations(groups: AIGroup[]): DecorationSet {
 					},
 				})
 			);
-			builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget("", g.id, "keep"), side: 1 }));
+			builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget("", g.id, g.insText ? "keep" : "reject"), side: 1 }));
 		}
 		if (g.insText) {
 			builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget(g.insText, g.id), side: 2 }));

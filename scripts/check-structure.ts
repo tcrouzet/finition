@@ -431,10 +431,16 @@ async function main() {
 		const controls = buttons.slice(buttonsBefore);
 		const rejects = controls.filter(button => button.className.includes("finition-ai-reject"));
 		const keeps = controls.filter(button => button.className.includes("finition-ai-keep"));
-		assert.equal(rejects.length, host.aiGroups.filter(group => group.insText).length, "Chaque proposition verte doit proposer une poubelle");
-		assert.equal(keeps.length, host.aiGroups.filter(group => group.delFrom < group.delTo).length, "Chaque passage rouge doit proposer une coche pour garder l’original");
+		assert.equal(rejects.length, host.aiGroups.length, "Chaque correction doit proposer une poubelle pour la refuser");
+		assert.equal(keeps.length, host.aiGroups.filter(group => group.insText && group.delFrom < group.delTo).length, "Chaque remplacement doit proposer une coche pour garder l’original");
+		for (const group of host.aiGroups.filter(group => !group.insText)) {
+			const refuse = rejects.find(button => button.dataset.finitionAiGroup === String(group.id));
+			const confirm = controls.find(button => button.className.includes("finition-ai-delete") && button.dataset.finitionAiGroup === String(group.id));
+			assert.equal(refuse?.attributes["data-icon"], "trash-2", "La poubelle doit refuser la suppression");
+			assert.equal(confirm?.attributes["data-icon"], "check", "La coche doit valider la suppression");
+		}
 		for (const group of [...host.aiGroups]) {
-			const keepOriginal = (action === "keep" && group.delFrom < group.delTo) || !group.insText;
+			const keepOriginal = action === "keep" && group.insText && group.delFrom < group.delTo;
 			const kind = action === "accept" ? group.insText ? null : "delete" : keepOriginal ? "keep" : "reject";
 			const marker = kind ? controls.find(button => button.className.includes(`finition-ai-${kind}`) && button.dataset.finitionAiGroup === String(group.id)) : { dataset: { finitionAiGroup: String(group.id), finitionAiAction: "accept" } };
 			assert.ok(marker, `Bouton ${kind} absent`);
@@ -611,7 +617,7 @@ async function main() {
 	const notes = new Map<string, string>();
 	const opened: string[] = [];
 	const sourceView = { file: { path: "Dossier/Article.md", basename: "Article", parent: { path: "Dossier" } }, editor: {
-		getValue: () => sourceText, getSelection: () => sourceText.slice(aiFrom, aiTo), somethingSelected: () => true,
+		getValue: () => sourceText, getSelection: () => sourceText.slice(aiFrom, aiTo), somethingSelected: () => aiFrom !== (aiTo ?? sourceText.length),
 		getCursor: () => ({ line: 0, ch: aiFrom }), posToOffset: (position: { ch: number }) => position.ch,
 	} };
 	Object.assign(aiPlugin.app, { vault: {
@@ -632,6 +638,41 @@ async function main() {
 		getActiveViewOfType: () => sourceView, iterateAllLeaves() {},
 		getLeaf: () => ({ async openFile(file: { path: string }) { opened.push(file.path); } }),
 	} });
+	const scopeSource = "Avant 😀 une fote.\n\nMilieu une fote.\n\nAprès une fote.";
+	for (const model of ["gpt-test", "claude-test"]) for (const scope of ["cursor-middle", "cursor-end", "selection"] as const) {
+		aiPlugin.settings.aiModel = model;
+		aiPlugin.settings.aiChunkSize = 10;
+		sourceText = scopeSource;
+		aiFrom = scope === "cursor-end" ? sourceText.length : sourceText.indexOf("Milieu");
+		aiTo = scope === "selection" ? sourceText.indexOf("\n\nAprès") : aiFrom;
+		const sent: string[] = [];
+		requestHandler = request => {
+			const body = JSON.parse(request.body) as { messages: Array<{ content: string }> };
+			const text = body.messages.at(-1)!.content;
+			sent.push(text);
+			const revised = text.replace("fote", "faute");
+			return { status: 200, json: { choices: [{ message: { content: revised } }], content: [{ type: "text", text: revised }] } };
+		};
+		await aiPlugin.runOrthoTypoIA();
+		assert.equal(sent.join(""), scope === "selection" ? sourceText.slice(aiFrom, aiTo) : sourceText, `Portée IA incorrecte : ${model}, ${scope}`);
+		assert.equal(sent.length, scope === "selection" ? 1 : 3, "La portée IA perd le découpage par paragraphes");
+		const expected = scope === "selection" ? sourceText.slice(0, aiFrom) + sourceText.slice(aiFrom, aiTo).replace("fote", "faute") + sourceText.slice(aiTo) : sourceText.replaceAll("fote", "faute");
+		assert.equal(apply(sourceText, aiPlugin.aiGroups), expected, "Les corrections IA perdent leurs positions dans la note");
+		assert.equal(sourceText, scopeSource, "L’analyse IA modifie le texte source");
+		assert.equal(sourceView.editor.getCursor().ch, aiFrom, "L’analyse IA déplace le curseur");
+	}
+	for (const blank of ["", " \n\n "]) {
+		sourceText = blank; aiFrom = aiTo = 0;
+		let calls = 0;
+		requestHandler = () => { calls++; throw new Error("Une note vide est envoyée à l’IA"); };
+		await aiPlugin.runOrthoTypoIA();
+		assert.equal(calls, 0, "Une note vide est envoyée à l’IA");
+		assert.equal(aiPlugin.aiGroups.length, 0);
+	}
+	sourceText = "J’ai des mots."; aiFrom = 0; aiTo = undefined;
+	aiPlugin.settings.aiModel = "gpt-test";
+	aiPlugin.settings.aiChunkSize = 1000;
+	process.stdout.write("Portée IA : sélection ou note entière, curseur, Unicode, paragraphes et note vide vérifiés\n");
 	const raw = `"J'ai des mots."`;
 	aiPlugin.settings.mode = "hinges";
 	requestHandler = request => {

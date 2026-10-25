@@ -466,8 +466,8 @@ body.is-mobile .finition-synonyms-insert {
 	padding: 2px;
 }
 
-.finition-ai-keep { color: var(--color-green, #1e8449); }
-.finition-ai-delete, .finition-ai-reject { color: var(--text-muted); }
+.finition-ai-keep, .finition-ai-delete { color: var(--color-green, #1e8449); }
+.finition-ai-reject { color: var(--text-muted); }
 
 .finition-ai-keep:focus-visible, .finition-ai-delete:focus-visible, .finition-ai-reject:focus-visible, .finition-loading-cancel:focus-visible {
 	outline: 2px solid var(--interactive-accent);

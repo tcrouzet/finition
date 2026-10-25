@@ -591,7 +591,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Taille des tronçons (caractères)")
-			.setDesc("Le texte sélectionné est découpé par paragraphe entier (jamais coupé au milieu) en tronçons d'environ cette taille avant d'être envoyé à l'IA.")
+			.setDesc("La sélection, ou toute la note sans sélection, est découpée par paragraphes entiers en tronçons d’environ cette taille avant l’envoi à l’IA.")
 			.addText((text) => {
 				text.inputEl.type = "number";
 				text.inputEl.min = "500";

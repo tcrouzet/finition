@@ -96,7 +96,7 @@ Sur ordinateur, si **Codex CLI** est détecté, **Codex** apparaît dans **Modè
 
 Avec Ollama ou un autre serveur compatible OpenAI, renseigner **Serveur local** (par exemple `http://localhost:11434`, avec ou sans `/v1`) et **Modèle local**, sous les clés API. Le serveur doit déjà fonctionner et disposer du modèle indiqué. Sauf si Codex est choisi, ces champs remplacent le fournisseur et le modèle cloud pour les deux fonctions ci-dessous, sans transmettre les clés API. Vider **Serveur local** pour revenir à Claude/GPT. Finition ne télécharge aucun modèle et ne bascule jamais vers le cloud en cas d’erreur locale.
 
-- **Corrections IA** relit le texte sélectionné et marque les mots ou signes modifiés. Cliquer sur le vert applique la correction. La poubelle après le vert refuse la proposition ; la coche après le rouge conserve l’original. Pour une suppression seule, la poubelle retire le texte.
+- **Corrections IA** relit la sélection, ou toute la note si rien n’est sélectionné, et marque les mots ou signes modifiés. Cliquer sur le vert applique la correction. La poubelle après le vert refuse la proposition ; la coche après un rouge associé à un vert conserve l’original. Pour une suppression seule, la poubelle conserve le texte et la coche confirme sa suppression.
 - **Synonymes IA**, dans le menu Dictionnaires, cherche des variantes adaptées au contexte de la sélection.
 
 Les consignes de relecture sont personnalisables et peuvent être enregistrées avec leur modèle. Les liens restent intacts dans la note.
@@ -105,7 +105,7 @@ Les consignes de relecture sont personnalisables et peuvent être enregistrées 
 
 Après téléchargement des dictionnaires et modèles, les surlignages, les correcteurs locaux et les dictionnaires fonctionnent hors ligne. Les ressources viennent de GitHub ; aucune note n’y est envoyée.
 
-Les fonctions IA s’exécutent uniquement sur demande. **Corrections IA** envoie la sélection au fournisseur choisi ou au serveur configuré ; **Synonymes IA** envoie aussi les paragraphes voisins pour tenir compte du contexte. Avec un serveur et un modèle exécutés sur votre machine, le texte reste local. Si vous indiquez un serveur distant ou un modèle cloud via Ollama, le texte peut quitter votre machine. Les clés API sont conservées dans les réglages du plugin.
+Les fonctions IA s’exécutent uniquement sur demande. **Corrections IA** envoie la sélection, ou toute la note sans sélection, au fournisseur choisi ou au serveur configuré ; **Synonymes IA** envoie aussi les paragraphes voisins pour tenir compte du contexte. Avec un serveur et un modèle exécutés sur votre machine, le texte reste local. Si vous indiquez un serveur distant ou un modèle cloud via Ollama, le texte peut quitter votre machine. Les clés API sont conservées dans les réglages du plugin.
 
 Avec Codex, le texte fourni est transmis au service configuré dans Codex : ce choix n’est pas une IA hors ligne. Finition lance une conversation éphémère hors du coffre, avec les outils et intégrations désactivés et un environnement en lecture seule. Le plugin ne modifie ni la connexion ni la configuration enregistrée de Codex ; les propositions restent soumises à votre validation dans Finition.
 

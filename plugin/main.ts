@@ -722,8 +722,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	/**
-	 * Lance une révision IA de la SÉLECTION actuelle (jamais du document
-	 * entier automatiquement). Ne modifie rien tout de suite : les
+	 * Lance une révision IA de la sélection, ou de toute la note sans
+	 * sélection. Ne modifie rien tout de suite : les
 	 * suggestions calculées sont stockées dans `aiGroups` et affichées en
 	 * couleur par ai-extension.ts ; seul un clic sur une suggestion
 	 * applique réellement un changement au document.
@@ -746,10 +746,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		if (!view) return;
 		const editor = view.editor;
 
-		if (!editor.somethingSelected()) {
-			new Notice("Sélectionner d'abord un texte.");
-			return;
-		}
+		const selected = editor.somethingSelected();
 		let connection: ReturnType<typeof getAIConnection>;
 		try { connection = getAIConnection(this.settings); }
 		catch (error) {
@@ -762,8 +759,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		const document = editor.getValue();
 
 		this.aiSourcePath = view.file?.path ?? null;
-		const selectionFrom = editor.posToOffset(editor.getCursor("from"));
-		const original = editor.getSelection();
+		const selectionFrom = selected ? editor.posToOffset(editor.getCursor("from")) : 0;
+		const original = selected ? editor.getSelection() : document;
 		const chunks = splitIntoChunks(original, this.settings.aiChunkSize);
 		const links = markdownLinks(document);
 		const debugMode = this.settings.debugMode;
