@@ -12,6 +12,7 @@ import { markdownExclusionRanges, maskMarkdownExclusions } from "../markdown-tag
 import systemPrompt from "./system-prompt-synonymes.md";
 import { LoadingNotice } from "../ui/loading-message";
 import { annotationRanges, htmlTagRanges, stripHTMLTags } from "./annotations";
+import { cleanParagraphStarts } from "./clean";
 
 let synonymRequest = 0;
 let synonymProgress: Notice | null = null;
@@ -40,8 +41,9 @@ export function synonymContext(text: string, from: number, to: number): string {
 
 export function parseSynonyms(text: string): string[] {
 	const seen = new Set<string>();
-	return stripHTMLTags(text).split(/\r?\n/).flatMap((line) => {
-		const synonym = line.match(/^\s*[-*+•]\s+(.+?)\s*$/u)?.[1];
+	return cleanParagraphStarts(stripHTMLTags(text)).split(/\r?\n/).flatMap((line) => {
+		const item = line.match(/^\s*[-*+•]\s+(.+?)\s*$/u)?.[1];
+		const synonym = item ? cleanParagraphStarts(item) : undefined;
 		if (!synonym || seen.has(synonym.toLocaleLowerCase("fr"))) return [];
 		seen.add(synonym.toLocaleLowerCase("fr"));
 		return [synonym];

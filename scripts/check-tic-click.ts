@@ -43,6 +43,7 @@ async function main() {
 	import { notices, menuOpenCount, setRequestHandler, requests, modals, lastMenu } from "obsidian";
 	import { checkAnalysisNavigation } from "./scripts/check-analysis-navigation";
 	import { checkAICorrections, checkAICorrectionLayout } from "./scripts/check-ai-corrections";
+	import { checkAIHistory } from "./scripts/check-ai-history";
 	import { checkCorrectionGutter } from "./scripts/check-correction-gutter";
 	import { checkSynonyms } from "./scripts/check-synonyms";
 	import { checkLocalSynonyms } from "./scripts/check-local-synonyms";
@@ -90,6 +91,7 @@ async function main() {
 	    const neuralChecks = checkFinitionNeural(ReleasedPlugin).then(() => console.error("finition-test-step", "neural", Math.round(performance.now())));
 	    const lexiconChecks = checkLexiconDictionaries(ReleasedPlugin);
 	    checkAICorrections();
+	    checkAIHistory();
 	    await checkAICorrectionLayout();
 	    await checkCorrectionGutter();
 	    await checkPromptModels(ReleasedPlugin);
@@ -115,7 +117,7 @@ async function main() {
 			plugin.onResolve({ filter: /^obsidian$/ }, () => ({ path: "obsidian", namespace: "test" }));
 			plugin.onLoad({ filter: /.*/, namespace: "test" }, () => ({ resolveDir: process.cwd(), contents: `
 				import { StateField } from "@codemirror/state";
-				export const Platform = { isDesktop: false };
+				export const Platform = { isDesktop: false, isMacOS: ${process.platform === "darwin"} };
 				export const editorInfoField = StateField.define({ create: () => ({ file: null }), update: value => value });
 				const configure = (element, options = {}) => {
 				  element.className = options.cls ?? "";

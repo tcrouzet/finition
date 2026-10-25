@@ -8,6 +8,18 @@ import { stripHTMLTags } from "../plugin/ai/annotations";
 const apply = (source: string, groups: DiffGroup[]) => [...groups].reverse().reduce((text, group) => text.slice(0, group.delFrom) + (group.insText ?? "") + text.slice(group.delTo), source);
 
 export function checkAIDiff(): void {
+	for (const invisible of ["\u2060", "\u200e", "\u200f", "\u200b", "\ufeff", "\u00a0", "\u202f", "\u2009"]) {
+		const source = "Premier paragraphe.\n\nDeuxième paragraphe.";
+		const revised = `${invisible} Premier paragraphe.\n\n${invisible} Deuxième paragraphe.`;
+		assert.equal(cleanTypography(revised), source, "Un invisible reste en début de paragraphe après le retour IA");
+		assert.equal(protectLinks(source).diff(revised).length, 0, "Une réponse identique ajoute des caractères invisibles à la note");
+	}
+	assert.equal(cleanTypography("Premier.\n\n\u2060 \n\nSuite."), "Premier.\n\nSuite.", "Une ligne invisible crée un faux paragraphe");
+	assert.equal(cleanTypography("» Suite."), "» Suite.", "La normalisation typographique réintroduit une insécable en tête de paragraphe");
+	assert.equal(cleanTypography("\u2060\u00a0– Bonjour."), "—\u00a0Bonjour.", "Un invisible empêche de reconnaître le tiret de dialogue");
+	for (const preserved of ["25\u00a0tonnes.", "—\u00a0Bonjour.", "Une famille 👨‍👩‍👧‍👦.", "Un porte\u2060monnaie.", "  - élément\n    - enfant", "    const valeur = 1", "```\n\u2060 code\n```", "`\u2060 code`", "[\u2060 lien](https://example.org)"]) {
+		assert.equal(cleanTypography(preserved), preserved, "Le nettoyage altère une insécable, une séquence Unicode ou une zone protégée");
+	}
 	for (const [source, revised, expected] of [
 		["25\u00a0tonnes", "25 tonnes", "25\u00a0tonnes"],
 		["25\u00a0bidules", "25 bidules", "25\u00a0bidules"],

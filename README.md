@@ -99,6 +99,8 @@ Avec Ollama ou un autre serveur compatible OpenAI, renseigner **Serveur local** 
 - **Corrections IA** relit la sélection, ou toute la note si rien n’est sélectionné, et marque les mots ou signes modifiés. Cliquer sur le rouge, le vert ou la coche accepte la correction. La poubelle refuse la suggestion et conserve le texte original. La coche précède toujours la poubelle.
 - **Synonymes IA**, dans le menu Dictionnaires, cherche des variantes adaptées au contexte de la sélection.
 
+Les validations et refus de corrections IA utilisent **Annuler/Rétablir** : `⌘Z` et `⌘⇧Z` sur Mac, `Ctrl+Z` et `Ctrl+Y` sur Windows. Annuler fait réapparaître la suggestion et restaure le texte. L’historique natif conserve au moins dix opérations, sans réduire l’historique habituel de la note.
+
 Les consignes de relecture sont personnalisables et peuvent être enregistrées avec leur modèle. Les liens restent intacts dans la note.
 
 ## Confidentialité

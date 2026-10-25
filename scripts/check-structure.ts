@@ -51,7 +51,7 @@ async function main() {
 	const dataSources = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "plugin/data"], { encoding: "utf8" }).split("\0").filter(file => file && existsSync(file));
 	assert.ok(dataSources.every(file => file.endsWith(".json")), "Les sources de plugin/data doivent être uniquement des JSON d’analyse");
 	const modules = await build({
-		stdin: { contents: "export { synonymContext } from \"./plugin/ai/synonyms\"; export * from \"./plugin/ui/left-sidebar-toggle\"; export * from \"./plugin/ui/analysis-navigation\"; export * from \"./plugin/ui/single-note\"; export * from \"./plugin/modes/formes\"; export { DEFAULT_SETTINGS, FORM_TYPES } from \"./plugin/types\"; export { default as gzipData } from \"./plugin/vendor/grammalecte/gc_rules_graph.js?gzip\"; export { EditorState } from \"@codemirror/state\"; export * from \"./plugin/ai/ai-extension\"; export * from \"./plugin/ai/protected-links\"; export * from \"./plugin/markdown-links\"; export * from \"./plugin/ai/clean\"; export * from \"./plugin/modes/punctuation\"; export * from \"./plugin/modes/repetition\"; export * from \"./plugin/modes/stereotype\"; export * from \"./plugin/modes/clause-split\"; export * from \"./plugin/modes/structure-report\"; export * from \"./plugin/modes/statistics\"; export * from \"./plugin/modes/structure-signature\"; export * from \"./plugin/modes/ternary\"; export * from \"./plugin/modes/tic-ia\"; export { engineScripts } from \"./plugin/modes/grammalecte-resources\"; export { default as FinitionPlugin } from \"./main\";", resolveDir: process.cwd() },
+		stdin: { contents: "export { undo, redo } from \"@codemirror/commands\"; export { synonymContext, parseSynonyms } from \"./plugin/ai/synonyms\"; export * from \"./plugin/ui/left-sidebar-toggle\"; export * from \"./plugin/ui/analysis-navigation\"; export * from \"./plugin/ui/single-note\"; export * from \"./plugin/modes/formes\"; export { DEFAULT_SETTINGS, FORM_TYPES } from \"./plugin/types\"; export { default as gzipData } from \"./plugin/vendor/grammalecte/gc_rules_graph.js?gzip\"; export { EditorState } from \"@codemirror/state\"; export * from \"./plugin/ai/ai-extension\"; export * from \"./plugin/ai/protected-links\"; export * from \"./plugin/markdown-links\"; export * from \"./plugin/ai/clean\"; export * from \"./plugin/modes/punctuation\"; export * from \"./plugin/modes/repetition\"; export * from \"./plugin/modes/stereotype\"; export * from \"./plugin/modes/clause-split\"; export * from \"./plugin/modes/structure-report\"; export * from \"./plugin/modes/statistics\"; export * from \"./plugin/modes/structure-signature\"; export * from \"./plugin/modes/ternary\"; export * from \"./plugin/modes/tic-ia\"; export { engineScripts } from \"./plugin/modes/grammalecte-resources\"; export { default as FinitionPlugin } from \"./main\";", resolveDir: process.cwd() },
 		bundle: true, platform: "node", format: "cjs", write: false, loader: { ".md": "text" }, external: ["obsidian"], plugins: [rawAssets],
 	});
 	const notices: string[] = [];
@@ -118,6 +118,7 @@ async function main() {
 	sandbox.document = { body: { classList: { toggle() {} }, style: { setProperty() {} } } };
 	const api = module.exports as {
 		synonymContext: typeof import("../plugin/ai/synonyms").synonymContext;
+		parseSynonyms: typeof import("../plugin/ai/synonyms").parseSynonyms;
 		AnalysisNavigation: typeof import("../plugin/ui/analysis-navigation").AnalysisNavigation;
 		navigationFocus: typeof import("../plugin/ui/analysis-navigation").navigationFocus;
 		setNavigationFocus: typeof import("../plugin/ui/analysis-navigation").setNavigationFocus;
@@ -133,6 +134,8 @@ async function main() {
 		statisticsWords: typeof import("../plugin/modes/statistics").statisticsWords;
 		EditorState: typeof EditorState;
 		finitionAIExtension: (host: AIGroupHost) => unknown;
+		undo: typeof import("@codemirror/commands").undo;
+		redo: typeof import("@codemirror/commands").redo;
 		cleanTypography: (text: string) => string;
 		fixPunctuationSpacing: (text: string) => string;
 		fixBlankLinesProtected: (text: string) => string;
@@ -171,6 +174,7 @@ async function main() {
 		};
 	};
 	await checkSingleNote(api.registerSingleNote);
+	assert.deepEqual(Array.from(api.parseSynonyms("\u2060- \u2060 vif\n\u200b- \u00a0prompt\n- vif")), ["vif", "prompt"], "Synonymes IA conserve des invisibles ou perd une proposition");
 	const synonymDocument = "---\ntitle: confidentiel\n---\n\nUn pas rapide #secret/privé.\n\nSuite.";
 	const synonymFrom = synonymDocument.indexOf("rapide");
 	const synonymContext = api.synonymContext(synonymDocument, synonymFrom, synonymFrom + 6);
@@ -400,14 +404,22 @@ async function main() {
 		["Il dit bonjour.", "Il dit : bonjour.", "Il dit\u00a0: bonjour."],
 		["Il dit bonjour. Une fote.", "Il dit : bonjour. Une faute.", "Il dit\u00a0: bonjour. Une faute."],
 		["Un inutile texte.", "Un texte.", "Un texte."],
+		["Une fote ici. ".repeat(10).trim(), "Une faute ici. ".repeat(10).trim(), "Une faute ici. ".repeat(10).trim()],
 	] as const) {
 		const host = { aiSourcePath: "source.md", aiGroups: api.protectLinks(source).diff(revised).map((group, id) => ({ ...group, id })), aiGroupsVersion: 0 };
-		let state = api.EditorState.create({ doc: source }), filePath = "source.md";
+		if (source.startsWith("Une fote ici.")) assert.equal(host.aiGroups.length, 10, "Le scénario doit contenir dix décisions indépendantes");
 		const listeners = new Map<string, (event: MouseEvent) => void>();
-		const factory = api.finitionAIExtension(host) as { create: (view: EditorView) => { decorations: DecorationSet; update: (update: ViewUpdate) => void; destroy: () => void } };
+		const extension = api.finitionAIExtension(host);
+		let state = api.EditorState.create({ doc: source, extensions: [extension as import("@codemirror/state").Extension] }), filePath = "source.md";
+		const factory = extension as { create: (view: EditorView) => { decorations: DecorationSet; update: (update: ViewUpdate) => void; destroy: () => void } };
+		const dispatch = (transaction: import("@codemirror/state").Transaction) => {
+			state = transaction.state;
+			instance.update({ view, state, startState: transaction.startState, docChanged: transaction.docChanged, changes: transaction.changes, transactions: [transaction], viewportChanged: false, viewportMoved: false, heightChanged: false, geometryChanged: transaction.docChanged, focusChanged: false, selectionSet: !!transaction.selection });
+		};
 		const view = { get state() { return { doc: state.doc, field: () => ({ file: { path: filePath } }) }; },
 			dom: { addEventListener: (name: string, handler: (event: MouseEvent) => void) => listeners.set(name, handler), removeEventListener: (name: string) => listeners.delete(name) },
-			dispatch(spec: TransactionSpec) { const transaction = state.update(spec); state = transaction.state; instance.update({ docChanged: transaction.docChanged, changes: transaction.changes } as ViewUpdate); },
+			focus() {},
+			dispatch(spec: TransactionSpec) { dispatch(state.update(spec)); },
 		} as unknown as EditorView;
 		const instance = factory.create(view);
 		const before = JSON.stringify(host.aiGroups);
@@ -453,9 +465,16 @@ async function main() {
 		}
 		assert.equal(state.doc.toString(), action === "reject" ? source : accepted, "Le clic applique une mauvaise correction ou modifie le texte après refus");
 		assert.equal(host.aiGroups.length, 0);
+		const appliedText = state.doc.toString(), operations = accepts.length;
+		for (let operation = 0; operation < operations; operation++) assert.ok(api.undo({ state, dispatch }), "Annuler ne retrouve pas une décision IA");
+		assert.equal(state.doc.toString(), source, "Annuler ne restaure pas le texte original");
+		assert.equal(JSON.stringify(host.aiGroups), before, "Annuler ne restaure pas les suggestions et leurs positions");
+		for (let operation = 0; operation < operations; operation++) assert.ok(api.redo({ state, dispatch }), "Rétablir ne retrouve pas une décision IA");
+		assert.equal(state.doc.toString(), appliedText);
+		assert.equal(host.aiGroups.length, 0, "Rétablir conserve une correction déjà traitée");
 		instance.destroy();
 	}
-	process.stdout.write("Suggestions IA : séquences entières, insécable au clic et isolation de la note de debug vérifiées\n");
+	process.stdout.write("Suggestions IA : séquences, insécable au clic, isolation et Annuler/Rétablir de dix décisions vérifiés\n");
 	for (const [source, revised, expected] of [
 		["Il dit bonjour.", "Il dit : bonjour.", "Il dit\u00a0: bonjour."],
 		["À propos de.", "À propos ?", "À propos\u00a0?"],

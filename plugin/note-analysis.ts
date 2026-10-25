@@ -4,6 +4,7 @@ import { editorInfoField, type TFile } from "obsidian";
 import type { AIGroup } from "./ai/ai-extension";
 import type { GrammalecteError } from "./modes/grammalecte";
 import type { FinitionMode } from "./types";
+import { resetCorrectionHistory } from "./ai/correction-history";
 
 export interface NoteAnalysis {
 	mode: FinitionMode;
@@ -50,6 +51,7 @@ export class NoteAnalyses {
 				state.grammalecteErrors = state.grammalecteErrors.map(error => ({ ...error, nStart: update.changes.mapPos(error.nStart, 1), nEnd: update.changes.mapPos(error.nEnd, -1) })).filter(error => error.nStart < error.nEnd);
 			} else {
 				// Un texte modifié hors de l’éditeur invalide les positions sauvegardées.
+				resetCorrectionHistory(state);
 				state.aiGroups = [];
 				state.aiSourcePath = null;
 				state.grammalecteErrors = [];

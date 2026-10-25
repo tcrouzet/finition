@@ -30,6 +30,7 @@ import {
 import { finitionEditorExtension } from "./editor-extension";
 import { FinitionSettingTab } from "./settings-tab";
 import { finitionAIExtension, AIGroup } from "./ai/ai-extension";
+import { resetCorrectionHistory } from "./ai/correction-history";
 import { splitIntoChunks } from "./ai/chunk";
 import { protectLinks } from "./ai/protected-links";
 import { hasResponseText } from "./ai/clean";
@@ -1450,6 +1451,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 	/** Efface toutes les suggestions IA en attente, sans rien modifier au document. */
 	clearAISuggestions(): void {
+		resetCorrectionHistory(this.noteAnalyses.current);
 		this.aiGroups = [];
 		this.aiSourcePath = null;
 		this.aiGroupsVersion++;

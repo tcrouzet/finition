@@ -17,6 +17,7 @@
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
 import { editorInfoField, setIcon } from "obsidian";
+import { applyCorrectionHistory, correctionHistory, resolveCorrection } from "./correction-history";
 
 export interface AIGroup {
 	id: number;
@@ -114,11 +115,8 @@ export function finitionAIExtension(host: AIGroupHost) {
 					const action = marker.dataset.finitionAiAction;
 					const group = this.host.aiGroups.find((g) => g.id === id);
 					if (!group) return;
-					this.host.aiGroups = this.host.aiGroups.filter((g) => g.id !== id);
-					this.host.aiGroupsVersion++;
-					if (action === "accept") {
-						this.view.dispatch({ changes: { from: group.delFrom, to: group.delTo, insert: group.insText ?? "" } });
-					} else this.view.dispatch({});
+					this.view.dispatch(resolveCorrection(this.host, group, action === "accept"));
+					this.view.focus();
 					event.preventDefault();
 				};
 				view.dom.addEventListener("click", this.handleClick);
@@ -154,12 +152,13 @@ export function finitionAIExtension(host: AIGroupHost) {
 						}))
 						.filter((g) => g.delFrom <= g.delTo);
 				}
+				applyCorrectionHistory(this.host, update.transactions ?? [], this.view.state.doc);
 				if (update.docChanged || previousHost !== this.host || this.lastVersion !== this.host.aiGroupsVersion) {
 					this.lastVersion = this.host.aiGroupsVersion;
 					this.decorations = buildAIDecorations(this.host.aiGroups);
 				}
 			}
 		},
-		{ decorations: (instance) => instance.decorations }
+		{ decorations: (instance) => instance.decorations, provide: () => correctionHistory }
 	);
 }
