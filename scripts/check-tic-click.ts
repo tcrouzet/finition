@@ -43,6 +43,7 @@ async function main() {
 	import { notices, menuOpenCount, setRequestHandler, requests, modals, lastMenu } from "obsidian";
 	import { checkAnalysisNavigation } from "./scripts/check-analysis-navigation";
 	import { checkAICorrections } from "./scripts/check-ai-corrections";
+	import { checkCorrectionGutter } from "./scripts/check-correction-gutter";
 	import { checkSynonyms } from "./scripts/check-synonyms";
 	import { checkLocalSynonyms } from "./scripts/check-local-synonyms";
 	import { checkWordDictionaries } from "./scripts/check-word-dictionaries";
@@ -89,6 +90,7 @@ async function main() {
 	    const neuralChecks = checkFinitionNeural(ReleasedPlugin).then(() => console.error("finition-test-step", "neural", Math.round(performance.now())));
 	    const lexiconChecks = checkLexiconDictionaries(ReleasedPlugin);
 	    checkAICorrections();
+	    await checkCorrectionGutter();
 	    await checkPromptModels(ReleasedPlugin);
 	    await checkSynonyms(setRequestHandler, requests, notices, modals);
 	    await checkLinguisticInstallation(ReleasedPlugin, () => lastMenu.items, setRequestHandler);

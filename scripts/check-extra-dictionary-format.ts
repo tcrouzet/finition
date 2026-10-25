@@ -19,13 +19,14 @@ export async function checkExtraDictionaryFormat(): Promise<void> {
 		appendText(text: string) { this.createEl("#text", { text }); }
 		append(...parts: Array<Element | string>) { for (const part of parts) typeof part === "string" ? this.appendText(part) : this.children.push(part); }
 		get textContent(): string { return this.text + this.children.map(child => child.textContent).join(""); }
-		addEventListener(_event: string, callback: () => void) { this.click = callback; }
+		addEventListener(_event: string, callback: (event: MouseEvent) => void) { this.click = () => callback({ preventDefault() {}, stopPropagation() {} } as MouseEvent); }
 		empty() { this.text = ""; this.children.length = 0; }
 		querySelector() { return undefined; }
 		focus(options?: FocusOptions) { focused.push(this); focusOptions = options; }
 	}
 	let opened: { contentEl: Element; modalEl: Element } | undefined;
 	const downloads = new Map<string, ArrayBuffer>(), requests: string[] = [];
+	let onDownload: (url: string) => void | Promise<void> = () => {};
 	class Modal {
 		contentEl = new Element(); modalEl = new Element();
 		setTitle() {}
@@ -41,10 +42,11 @@ export async function checkExtraDictionaryFormat(): Promise<void> {
 		assert.equal(name, "obsidian");
 		return { Modal, MarkdownView: class {}, Component: class {}, Notice: class {
 			hidden = false;
-			constructor(readonly message: string | Element, duration?: number) { notices.push(typeof message === "string" ? message : message.textContent); if (duration === 0) progress.push(this); }
+			constructor(public message: string | Element, duration?: number) { this.setMessage(message); if (duration === 0) progress.push(this); }
+			setMessage(message: string | Element) { this.message = message; notices.push(typeof message === "string" ? message : message.textContent); }
 			hide() { this.hidden = true; }
-		}, setIcon() {}, requestUrl({ url }: { url: string }) { const data = downloads.get(url); assert.ok(data, `Requête inattendue : ${url}`); requests.push(url); return Promise.resolve({ status: 200, arrayBuffer: data.slice(0) }); } };
-	}, TextEncoder, TextDecoder, crypto: webcrypto, URL, window: { setTimeout }, createFragment: () => new Element("#fragment"), createSpan: (options: { cls?: string }) => new Element("span", options) });
+		}, setIcon() {}, requestUrl({ url }: { url: string }) { const data = downloads.get(url); assert.ok(data, `Requête inattendue : ${url}`); requests.push(url); return Promise.resolve(onDownload(url)).then(() => ({ status: 200, arrayBuffer: data.slice(0) })); } };
+	}, TextEncoder, TextDecoder, DOMException, crypto: webcrypto, URL, window: { setTimeout }, createFragment: () => new Element("#fragment"), createSpan: (options: { cls?: string }) => new Element("span", options), createEl: (tag: string, options = {}) => new Element(tag, options) });
 	const api = module.exports as typeof import("../plugin/dictionaries") & typeof import("../plugin/ui/local-synonyms") & typeof import("../plugin/linguistic-files") & typeof import("../plugin/linguistic-resources");
 	assert.deepEqual(Array.from(api.publicDictionaryKinds), ["definitions", "antonymes", "phonetique", "rimes", "conjugaisons", "historique", "citations", "champ-lexical"]);
 	const extra = ["conjugaisons", "historique", "citations", "champ-lexical"] as const;
@@ -117,6 +119,27 @@ export async function checkExtraDictionaryFormat(): Promise<void> {
 		assert.ok(requests.includes(base + `${kind}-resources.json`));
 		assert.equal(settings.wordDictionaries.length, 0, "Un pack public est enregistré comme import personnel");
 	}
+	const cancelledResources = new api.LinguisticResources(adapter, "cancelled-plugin", "0.4.16");
+	for (const stage of ["before", "catalogue", "file"]) {
+		const controller = new AbortController();
+		const beforeRequests = requests.length;
+		if (stage === "before") controller.abort();
+		onDownload = url => { if ((stage === "catalogue" && url.endsWith("-resources.json")) || (stage === "file" && !url.endsWith("-resources.json"))) controller.abort(); };
+		await assert.rejects(cancelledResources.install("citations", () => {}, controller.signal), { name: "AbortError" });
+		assert.equal(requests.length - beforeRequests, stage === "before" ? 0 : stage === "catalogue" ? 1 : 2, "Un téléchargement arrêté continue à charger les fichiers");
+		assert.ok(![...files.keys()].some(path => path.startsWith("cancelled-plugin/")), "Un téléchargement arrêté écrit ou active des ressources");
+	}
+	const controller = new AbortController();
+	let releaseDownload!: () => void;
+	onDownload = () => new Promise(resolve => { releaseDownload = resolve; });
+	const waitingDownload = cancelledResources.install("citations", () => {}, controller.signal);
+	controller.abort();
+	await assert.rejects(waitingDownload, { name: "AbortError" });
+	releaseDownload();
+	onDownload = () => {};
+	const retried = await cancelledResources.install("citations", () => {});
+	await cancelledResources.refresh({ citations: retried });
+	assert.equal(cancelledResources.available("citations"), true, "Un téléchargement arrêté empêche la relance");
 	const reloaded = new api.LinguisticResources(adapter, "plugin", "0.4.16");
 	await reloaded.refresh(revisions);
 	const restored = new api.WordDictionaries(adapter, "plugin", () => settings, async () => {}, reloaded);
@@ -158,7 +181,7 @@ export async function checkExtraDictionaryFormat(): Promise<void> {
 		assert.ok(paragraphs.filter(element => element.textContent === `Source : ${word}`).every(element => !descendants(element).some(child => child.tag === "strong")), "Les références bibliographiques ne sont pas des citations");
 	}
 	document = "chat"; selectionFrom = 0; selectionTo = 4;
-	for (const outcome of ["success", "empty", "error"]) {
+	for (const cancel of [false, true]) for (const outcome of ["success", "empty", "error"]) {
 		let release!: () => void;
 		const waiting = new Promise<void>(resolve => { release = resolve; });
 		const pending = api.runLocalWordLookup({ workspace: { getActiveViewOfType: () => view } } as unknown as import("obsidian").App, "Citations", async () => {
@@ -170,8 +193,20 @@ export async function checkExtraDictionaryFormat(): Promise<void> {
 		const message = notice.message;
 		assert.ok(message instanceof Element && descendants(message).some(element => element.options.cls === "finition-correction-spinner"), "La recherche doit afficher une roue pendant l’attente");
 		assert.equal(notice.hidden, false);
+		const beforeOpen: { contentEl: Element; modalEl: Element } | undefined = opened;
+		const beforeNotices = notices.length;
+		if (cancel) {
+			const stop = descendants(message).find(element => element.options.cls?.includes("finition-loading-cancel"));
+			assert.ok(stop?.click, "La recherche doit proposer une croix d’arrêt");
+			stop.click();
+			assert.equal(notice.hidden, true, "La croix doit fermer immédiatement la progression");
+		}
 		release(); await pending;
 		assert.equal(notice.hidden, true, `La roue doit disparaître après ${outcome}`);
+		if (cancel) {
+			assert.equal(opened, beforeOpen, "Une recherche arrêtée ouvre une fenêtre");
+			assert.equal(notices.length, beforeNotices, "Une recherche arrêtée affiche un message tardif");
+		}
 	}
 	for (const source of ["---\nchat: privé\n---\nUn texte.", "Un #chat/privé."]) {
 		document = source;

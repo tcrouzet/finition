@@ -12,6 +12,7 @@ import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from "@
 import type { Range } from "@codemirror/state";
 import { Notice } from "obsidian";
 import { FinitionMode, FinitionRuntime, Highlight } from "./types";
+import type { NoteAnalysis } from "./note-analysis";
 import { computeRepetitions } from "./modes/repetition";
 import { computeHedgingHighlights } from "./modes/hedging";
 import { computeStereotypeHighlights } from "./modes/stereotype";
@@ -28,7 +29,12 @@ import { markdownExclusionRanges, maskMarkdownExclusions } from "./markdown-tags
 /** Classe CSS appliquée aux occurrences du lemme actuellement sélectionné au clic. */
 const FOCUS_CLASS = "finition-focused";
 
+function analysisMode(view: EditorView, runtime: FinitionRuntime): FinitionMode {
+	return runtime.getNoteAnalysis?.(view).mode ?? runtime.settings.mode;
+}
+
 function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLemma: string | null): DecorationSet {
+	const mode = analysisMode(view, runtime);
 	const limit = Math.min(view.state.doc.length, runtime.settings.maxDocumentLength);
 	// Un séparateur et un caractère Unicode suffisent à reconnaître un tag numérique tronqué.
 	const prefix = view.state.doc.sliceString(0, Math.min(view.state.doc.length, limit + 3));
@@ -40,7 +46,7 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 			text = text.replace(/[\p{L}\p{M}\p{N}_’'-]+$/u, "");
 		}
 	}
-	if (["repetition", "stereotype", "copules"].includes(runtime.settings.mode) && !runtime.lexicon.size) {
+	if (["repetition", "stereotype", "copules"].includes(mode) && !runtime.lexicon.size) {
 		runtime.updateAnalysisHighlights(view, [], false);
 		return Decoration.none;
 	}
@@ -49,7 +55,7 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 	let pending = false;
 	let cssClass: (highlight: Highlight) => string;
 
-	if (runtime.settings.mode === "repetition") {
+	if (mode === "repetition") {
 		highlights = computeRepetitions(
 			text,
 			runtime.lexicon,
@@ -61,25 +67,25 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 			const base = `finition-repeat finition-color-${highlight.colorIndex}`;
 			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
 		};
-	} else if (runtime.settings.mode === "hedging") {
+	} else if (mode === "hedging") {
 		highlights = computeHedgingHighlights(text, runtime.hedgingPhrases);
 		cssClass = (highlight) => {
 			const base = `finition-hedging finition-color-${runtime.settings.hedgingColorIndex}`;
 			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
 		};
-	} else if (runtime.settings.mode === "stereotype") {
+	} else if (mode === "stereotype") {
 		highlights = computeStereotypeHighlights(text, runtime.lexicon, runtime.functionWords, runtime.stereotypePatterns);
 		cssClass = (highlight) => {
 			const base = `finition-stereotype finition-color-${runtime.settings.stereotypeColorIndex}`;
 			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
 		};
-	} else if (runtime.settings.mode === "burstiness") {
+	} else if (mode === "burstiness") {
 		highlights = computeBurstinessHighlights(text, runtime.settings.burstThreshold, runtime.settings.burstTolerancePercent);
 		cssClass = (highlight) => {
 			const base = `finition-burst finition-color-${highlight.colorIndex}`;
 			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
 		};
-	} else if (runtime.settings.mode === "ternary") {
+	} else if (mode === "ternary") {
 		// Même mécanisme que Cadence (moteur "Grammalecte") : les catégories
 		// manquantes sont résolues de façon asynchrone par le Worker
 		// Grammalecte (voir FinitionRuntime.ensureWordCategories dans
@@ -101,7 +107,7 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 			const base = `finition-ternary finition-color-${highlight.colorIndex}`;
 			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
 		};
-	} else if (runtime.settings.mode === "cadence") {
+	} else if (mode === "cadence") {
 		if (runtime.settings.cadenceEngine === "grammalecte") {
 			// Les catégories manquantes sont résolues de façon asynchrone par
 			// le Worker Grammalecte (voir FinitionRuntime.ensureWordCategories
@@ -122,7 +128,7 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 			const base = `finition-cadence finition-color-${highlight.colorIndex}`;
 			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
 		};
-	} else if (runtime.settings.mode === "tic-ia") {
+	} else if (mode === "tic-ia") {
 		const categoryWords = structureCategoryWords(text);
 		const pending = categoryWords.some((word) => !runtime.wordCategoryCache.has(word));
 		const analysis = pending ? null : analyzeTicIA(text, (word) => runtime.wordCategoryCache.get(word.toLowerCase()) ?? "", runtime.lexicon);
@@ -133,19 +139,19 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 			const base = `finition-tic-ia finition-color-${highlight.colorIndex}`;
 			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
 		};
-	} else if (runtime.settings.mode === "copules") {
+	} else if (mode === "copules") {
 		highlights = computeCopuleHighlights(text, runtime.copuleLexicon);
 		cssClass = highlight => {
 			const base = `finition-copule finition-color-${runtime.settings.copuleColorIndex}`;
 			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
 		};
-	} else if (runtime.settings.mode === "formes") {
+	} else if (mode === "formes") {
 		highlights = computeFormHighlights(text, runtime.settings);
 		cssClass = highlight => {
 			const base = `finition-forme finition-color-${highlight.colorIndex}`;
 			return highlight.lemma === focusedLemma ? `${base} ${FOCUS_CLASS}` : base;
 		};
-	} else if (runtime.settings.mode === "hinges") {
+	} else if (mode === "hinges") {
 		highlights = computeHingeHighlights(text, runtime.syntaxHinges);
 		cssClass = (highlight) => {
 			const base = `finition-hinge finition-color-${runtime.settings.hingeColorIndex}`;
@@ -184,6 +190,7 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 export function finitionEditorExtension(runtime: FinitionRuntime) {
 	return ViewPlugin.fromClass(
 		class {
+			private analysis: NoteAnalysis | undefined;
 			decorations: DecorationSet;
 			private timer: number | null = null;
 			// Permet de détecter un changement de réglages (mode, empan,
@@ -207,8 +214,9 @@ export function finitionEditorExtension(runtime: FinitionRuntime) {
 
 			constructor(view: EditorView) {
 				this.view = view;
+				this.analysis = runtime.getNoteAnalysis?.(view);
 				this.lastSettingsVersion = runtime.settingsVersion;
-				this.lastMode = runtime.settings.mode;
+				this.lastMode = analysisMode(view, runtime);
 				this.lastWordCategoryCacheVersion = runtime.wordCategoryCacheVersion;
 				this.decorations = buildDecorations(view, runtime, this.focusedLemma);
 
@@ -239,17 +247,21 @@ export function finitionEditorExtension(runtime: FinitionRuntime) {
 			}
 
 			update(update: ViewUpdate) {
-				const settingsChanged = this.lastSettingsVersion !== runtime.settingsVersion || this.lastMode !== runtime.settings.mode;
+				const view = update.view;
+				const analysis = runtime.getNoteAnalysis?.(view, update);
+				const changedNote = this.analysis !== analysis;
+				this.analysis = analysis;
+				const mode = analysisMode(view, runtime);
+				const settingsChanged = changedNote || this.lastSettingsVersion !== runtime.settingsVersion || this.lastMode !== mode;
 				const categoryCacheChanged = this.lastWordCategoryCacheVersion !== runtime.wordCategoryCacheVersion;
 				if (!update.docChanged && !settingsChanged && !categoryCacheChanged) return;
-				if (this.lastMode !== runtime.settings.mode) this.focusedLemma = null;
-				this.lastMode = runtime.settings.mode;
+				if (changedNote || this.lastMode !== mode) this.focusedLemma = null;
+				this.lastMode = mode;
 				this.lastSettingsVersion = runtime.settingsVersion;
 				this.lastWordCategoryCacheVersion = runtime.wordCategoryCacheVersion;
-				const view = update.view;
 				if (update.docChanged) runtime.updateAnalysisHighlights(view, [], true);
 				if (this.timer !== null) window.clearTimeout(this.timer);
-				if (runtime.settings.mode === "none") {
+				if (mode === "none") {
 					this.timer = null;
 					this.decorations = Decoration.none;
 					runtime.updateAnalysisHighlights(view, [], false);
@@ -271,7 +283,7 @@ export function finitionEditorExtension(runtime: FinitionRuntime) {
 			decorations: (instance) => instance.decorations,
 			eventHandlers: {
 				mousedown(event: MouseEvent, view: EditorView) {
-					if (runtime.settings.mode !== "tic-ia" || event.button !== 0) return;
+					if (analysisMode(view, runtime) !== "tic-ia" || event.button !== 0) return;
 					const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
 					if (position === null) return;
 					// Le DOM peut être remplacé au placement du curseur en Live Preview.

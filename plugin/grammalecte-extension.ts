@@ -16,7 +16,7 @@ import type { GrammalecteError } from "./modes/grammalecte";
 let activePopup: HTMLElement | null = null;
 let activeOutsideClickHandler: ((evt: MouseEvent) => void) | null = null;
 
-function closePopup(): void {
+export function closeGrammalectePopup(): void {
 	activePopup?.remove();
 	activePopup = null;
 	// Indispensable : sans ça, l'écouteur "clic en dehors" du popup précédent
@@ -37,7 +37,7 @@ function openPopup(
 	onResolved: (err: GrammalecteError) => void,
 	onAddToDictionary: (word: string) => void
 ): void {
-	closePopup();
+	closeGrammalectePopup();
 
 	const popup = createDiv();
 	popup.className = "finition-grammalecte-popup";
@@ -62,7 +62,7 @@ function openPopup(
 				// marche plus").
 				onResolved(err);
 				view.dispatch({ changes: { from: err.nStart, to: err.nEnd, insert: suggestion } });
-				closePopup();
+				closeGrammalectePopup();
 			});
 			list.appendChild(btn);
 		}
@@ -82,7 +82,7 @@ function openPopup(
 		dictBtn.textContent = "Ajouter au dictionnaire";
 		dictBtn.addEventListener("click", () => {
 			onAddToDictionary(err.sValue as string);
-			closePopup();
+			closeGrammalectePopup();
 		});
 		actions.appendChild(dictBtn);
 	}
@@ -96,7 +96,7 @@ function openPopup(
 		// pouvoir s'en débarrasser visuellement. Contrairement à "Ajouter au
 		// dictionnaire", ça ne concerne QUE cette occurrence précise.
 		onResolved(err);
-		closePopup();
+		closeGrammalectePopup();
 	});
 	actions.appendChild(ignoreBtn);
 	popup.appendChild(actions);
@@ -107,7 +107,7 @@ function openPopup(
 	// Ferme le popup si on clique ailleurs.
 	const onDocClick = (evt: MouseEvent) => {
 		if (!popup.contains(evt.target as Node)) {
-			closePopup();
+			closeGrammalectePopup();
 		}
 	};
 	activeOutsideClickHandler = onDocClick;
@@ -122,7 +122,7 @@ function openPopup(
  * correction qu'on vient d'appliquer) s'effondre à une position unique et
  * est supprimée.
  */
-function remapAndPruneErrors(plugin: FinitionPlugin, changes: ChangeDesc): void {
+function remapAndPruneErrors(plugin: Pick<FinitionPlugin, "grammalecteErrors">, changes: ChangeDesc): void {
 	plugin.grammalecteErrors = plugin.grammalecteErrors
 		.map((err) => ({
 			...err,
@@ -132,10 +132,10 @@ function remapAndPruneErrors(plugin: FinitionPlugin, changes: ChangeDesc): void 
 		.filter((err) => err.nEnd > err.nStart);
 }
 
-function buildDecorations(view: EditorView, plugin: FinitionPlugin): DecorationSet {
+function buildDecorations(view: EditorView, plugin: FinitionPlugin, analysis: Pick<FinitionPlugin, "grammalecteErrors"> = plugin.getNoteAnalysis?.(view) ?? plugin): DecorationSet {
 	const builder = new RangeSetBuilder<Decoration>();
 	const docLength = view.state.doc.length;
-	const errors = [...plugin.grammalecteErrors].sort((a, b) => a.nStart - b.nStart);
+	const errors = [...analysis.grammalecteErrors].sort((a, b) => a.nStart - b.nStart);
 	const highlights: { from: number; to: number }[] = [];
 
 	const colorClass = `finition-color-${plugin.settings.grammalecteColorIndex}`;
@@ -149,7 +149,7 @@ function buildDecorations(view: EditorView, plugin: FinitionPlugin): DecorationS
 			err.nEnd,
 			Decoration.mark({
 				class: `${underlineClass} ${colorClass}`,
-				attributes: { "data-finition-grammalecte-id": String(plugin.grammalecteErrors.indexOf(err)) },
+				attributes: { "data-finition-grammalecte-id": String(analysis.grammalecteErrors.indexOf(err)) },
 			})
 		);
 	}
@@ -160,32 +160,36 @@ function buildDecorations(view: EditorView, plugin: FinitionPlugin): DecorationS
 export function finitionGrammalecteExtension(plugin: FinitionPlugin) {
 	return ViewPlugin.fromClass(
 		class {
+			analysis: Pick<FinitionPlugin, "grammalecteErrors" | "grammalecteErrorsVersion">;
 			decorations: DecorationSet;
 			lastVersion = -1;
 			lastSettingsVersion = -1;
 
 			constructor(view: EditorView) {
-				this.decorations = buildDecorations(view, plugin);
-				this.lastVersion = plugin.grammalecteErrorsVersion;
+				this.analysis = plugin.getNoteAnalysis?.(view) ?? plugin;
+				this.decorations = buildDecorations(view, plugin, this.analysis);
+				this.lastVersion = this.analysis.grammalecteErrorsVersion;
 				this.lastSettingsVersion = plugin.settingsVersion;
 			}
 
 			update(update: ViewUpdate): void {
+				const previous = this.analysis;
+				this.analysis = plugin.getNoteAnalysis?.(update.view, update) ?? plugin;
 				if (update.docChanged) {
-					remapAndPruneErrors(plugin, update.changes);
-					this.decorations = buildDecorations(update.view, plugin);
-					this.lastVersion = plugin.grammalecteErrorsVersion;
+					if (!plugin.getNoteAnalysis) remapAndPruneErrors(this.analysis, update.changes);
+					this.decorations = buildDecorations(update.view, plugin, this.analysis);
+					this.lastVersion = this.analysis.grammalecteErrorsVersion;
 				} else if (
-					plugin.grammalecteErrorsVersion !== this.lastVersion ||
+					previous !== this.analysis || this.analysis.grammalecteErrorsVersion !== this.lastVersion ||
 					plugin.settingsVersion !== this.lastSettingsVersion
 				) {
 					// settingsVersion change notamment quand on modifie la couleur
 					// de fond de Grammalecte dans les réglages (Palette) : sans ce
 					// deuxième déclencheur, il aurait fallu taper un caractère pour
 					// voir la nouvelle couleur s'appliquer.
-					this.lastVersion = plugin.grammalecteErrorsVersion;
+					this.lastVersion = this.analysis.grammalecteErrorsVersion;
 					this.lastSettingsVersion = plugin.settingsVersion;
-					this.decorations = buildDecorations(update.view, plugin);
+					this.decorations = buildDecorations(update.view, plugin, this.analysis);
 				}
 			}
 		},
@@ -196,7 +200,8 @@ export function finitionGrammalecteExtension(plugin: FinitionPlugin) {
 					const target = evt.target as HTMLElement;
 					const idAttr = target.getAttribute?.("data-finition-grammalecte-id");
 					if (idAttr === null || idAttr === undefined) return;
-					const err = plugin.grammalecteErrors[Number(idAttr)];
+					const analysis = plugin.getNoteAnalysis?.(view) ?? plugin;
+					const err = analysis.grammalecteErrors[Number(idAttr)];
 					if (!err) return;
 					evt.preventDefault();
 					const rect = target.getBoundingClientRect();
@@ -205,13 +210,13 @@ export function finitionGrammalecteExtension(plugin: FinitionPlugin) {
 						err,
 						{ left: rect.left, bottom: rect.bottom },
 						(resolvedErr) => {
-							const idx = plugin.grammalecteErrors.indexOf(resolvedErr);
-							if (idx !== -1) plugin.grammalecteErrors.splice(idx, 1);
-							plugin.grammalecteErrorsVersion++;
+							const idx = analysis.grammalecteErrors.indexOf(resolvedErr);
+							if (idx !== -1) analysis.grammalecteErrors.splice(idx, 1);
+							analysis.grammalecteErrorsVersion++;
 							plugin.refreshAllEditors();
 						},
 						(word) => {
-							void plugin.addWordToGrammalecteDictionary(word);
+							void plugin.addWordToGrammalecteDictionary(word, view);
 						}
 					);
 				},

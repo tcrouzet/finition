@@ -85,10 +85,11 @@ export interface ReviseResult {
 export async function reviseChunkWithRetryAnthropic(
 	chunk: string,
 	system: string,
-	opts: { apiKey: string; model: string; maxTokens: number }
+	opts: { apiKey: string; model: string; maxTokens: number; isCancelled?: () => boolean }
 ): Promise<ReviseResult> {
 	let lastError: string | null = null;
 	for (let attempt = 1; attempt <= 3; attempt++) {
+		if (opts.isCancelled?.()) return { text: chunk, error: null };
 		const result = await callAnthropic({
 			apiKey: opts.apiKey,
 			model: opts.model,

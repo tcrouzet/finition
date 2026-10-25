@@ -53,6 +53,7 @@ export async function checkCodex(): Promise<void> {
 	let modalAttempts = 0;
 	let replyHttp: () => Promise<{ status: number; text: string; json: unknown }> = async () => ({ status: 503, text: "Indisponible", json: { error: { message: "Indisponible" } } });
 	const progressNotices: Array<{ message: string; spinning: boolean; hidden: boolean }> = [];
+	const stopButtons: Array<() => void> = [];
 	class Notice {
 		message = ""; spinning = false; hidden = false;
 		constructor(message: string | { textContent: string }, duration?: number) { this.setMessage(message); if (duration === 0) progressNotices.push(this); }
@@ -80,7 +81,7 @@ export async function checkCodex(): Promise<void> {
 	const module = { exports: {} };
 	runInNewContext(compiled.outputFiles[0].text, { module, URL, require: (name: string) => { assert.ok(name in modules, `Module inattendu : ${name}`); return modules[name]; }, window: {
 		setTimeout: (callback: () => void, delay: number) => { timers.set(++timerId, { callback, delay }); return timerId; }, clearTimeout: (id: number) => timers.delete(id),
-	}, createFragment: () => ({ textContent: "", append(...nodes: Array<string | { textContent: string }>) { this.textContent += nodes.map(node => typeof node === "string" ? node : node.textContent).join(""); } }), createSpan: () => ({ textContent: "" }) });
+	}, createFragment: () => ({ textContent: "", append(...nodes: Array<string | { textContent: string }>) { this.textContent += nodes.map(node => typeof node === "string" ? node : node.textContent).join(""); } }), createSpan: () => ({ textContent: "" }), createEl: () => ({ textContent: "", addEventListener(_event: string, callback: (event: MouseEvent) => void) { stopButtons.push(() => callback({ preventDefault() {}, stopPropagation() {} } as MouseEvent)); } }) });
 	const api = module.exports as typeof import("../plugin/ai/codex") & typeof import("../plugin/ai/provider") & typeof import("../plugin/ai/synonyms") & Pick<typeof import("../plugin/types"), "DEFAULT_SETTINGS">;
 	const options = { system: "Corrige seulement le texte.", userText: "Une fote, un œil." };
 	const connection = api.getAIConnection({ ...api.DEFAULT_SETTINGS, aiModel: api.CODEX_MODEL, localAIServer: "http://localhost:11434", aiApiKey: "secret-anthropic", openaiApiKey: "secret-openai" });
@@ -165,16 +166,30 @@ export async function checkCodex(): Promise<void> {
 	}
 	let releaseHttp!: () => void;
 	replyHttp = () => new Promise(resolve => { releaseHttp = () => resolve({ status: 200, text: "", json: { choices: [{ message: { content: "- vif" } }] } }); });
-	const delayed = api.runSynonyms(app, { ...api.DEFAULT_SETTINGS, aiModel: "gpt-test", openaiApiKey: "test" });
-	const delayedProgress = progressNotices.at(-1)!;
-	assert.equal(delayedProgress.hidden, false);
-	api.cancelSynonyms();
-	assert.equal(delayedProgress.hidden, true, "Reset doit fermer immédiatement la roue des synonymes");
-	const beforeReply = notices.length;
-	const beforeModal = modalAttempts;
-	releaseHttp(); await delayed;
-	assert.equal(notices.length, beforeReply, "Un résultat de synonymes arrivé après Reset doit être ignoré");
-	assert.equal(modalAttempts, beforeModal, "Un résultat arrivé après Reset ne doit pas ouvrir de fenêtre");
+	let outdatedStop: (() => void) | undefined;
+	for (const cancel of [() => api.cancelSynonyms(), () => stopButtons.at(-1)!()]) {
+		const delayed = api.runSynonyms(app, { ...api.DEFAULT_SETTINGS, aiModel: "gpt-test", openaiApiKey: "test" });
+		const delayedProgress = progressNotices.at(-1)!;
+		assert.equal(delayedProgress.hidden, false);
+		outdatedStop?.();
+		assert.equal(delayedProgress.hidden, false, "Une ancienne croix arrête la nouvelle recherche");
+		outdatedStop = stopButtons.at(-1)!;
+		cancel();
+		assert.equal(delayedProgress.hidden, true, "Reset ou la croix doit fermer immédiatement la roue des synonymes");
+		const beforeReply = notices.length;
+		const beforeModal = modalAttempts;
+		releaseHttp(); await delayed;
+		assert.equal(notices.length, beforeReply, "Un résultat de synonymes arrivé après arrêt doit être ignoré");
+		assert.equal(modalAttempts, beforeModal, "Un résultat arrivé après arrêt ne doit pas ouvrir de fenêtre");
+	}
+	scenario = "wait";
+	requests.length = 0;
+	const stoppedCodex = api.runSynonyms(app, { ...api.DEFAULT_SETTINGS, aiModel: api.CODEX_MODEL });
+	for (let round = 0; round < 100 && !requests.some(request => request.method === "turn/start"); round++) await new Promise(resolve => setImmediate(resolve));
+	assert.ok(requests.some(request => request.method === "turn/start"));
+	stopButtons.at(-1)!();
+	await stoppedCodex;
+	assert.ok(children.at(-1)!.closed, "La croix des synonymes doit arrêter le processus Codex");
 	available = false;
 	const before = launches;
 	assert.equal(await api.findCodex(), null);

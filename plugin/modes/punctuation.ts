@@ -23,7 +23,7 @@ import { SENTENCE_SEPARATOR_RE } from "./clause-split";
  *    paragraphe, un pour le séparer du suivant) — SAUF entre deux entrées
  *    d'une liste (-, *, +, ou numérotée), où un seul saut de ligne est
  *    conservé (pas de ligne vide entre les entrées).
- * 7. Espace insécable entre un nombre et une unité (Mo, kg, km…).
+ * 7. Espace insécable entre un nombre et une unité ou une durée (Mo, kg, ans…).
  *
  * Les zones suivantes sont protégées (jamais modifiées) : blocs de code
  * (```...```), code inline (`...`), liens Markdown [texte](url), liens
@@ -125,7 +125,8 @@ function fixApostrophes(text: string): string {
 }
 
 function fixUnitSpacing(text: string): string {
-	return text.replace(/(\d)[\u00a0\u202f \t]*([kKMGTPE]?o|[kmcdµμn]?m[²³]?|[kmcµμn]?g|[mcdµμ]?[lL]|[kMG]?Hz|[kMG]?Wh?|[kMG]?J|[hkM]?Pa|ms|min|s|h|K|°[CF])(?![\p{L}\p{M}\p{N}_])/gu, "$1\u00a0$2");
+	const spaced = text.replace(/(\d)[\u00a0\u202f \t]*([kKMGTPE]?o|[kmcdµμn]?m[²³]?|[kmcµμn]?g|[mcdµμ]?[lL]|[kMG]?Hz|[kMG]?Wh?|[kMG]?J|[hkM]?Pa|ms|min|s|h|K|°[CF])(?![\p{L}\p{M}\p{N}_])/gu, "$1\u00a0$2");
+	return spaced.replace(/(^|[^\p{L}\p{M}\p{N}_])(\d+(?:[.,]\d+)?)[\u00a0\u202f \t]*(millisecondes?|secondes?|minutes?|heures?|jours?|semaines?|mois|trimestres?|semestres?|ans?|années?|décennies?|siècles?|millénaires?)(?![\p{L}\p{M}\p{N}_])/giu, "$1$2\u00a0$3");
 }
 
 const LIST_ITEM_START_RE = /[ \t]*(?:[-*+]|\d+[.)])[ \t]+/;

@@ -5,9 +5,9 @@
  * suite (un widget, PAS du texte réel) — à la manière d'un commentaire.
  *
  * Le document n'est JAMAIS modifié automatiquement : un clic sur une
- * proposition verte ou sur la coche l'applique. Le rouge conserve
- * l'original et écarte la suggestion. Tant que rien n'est cliqué, le
- * fichier reste identique à avant l'appel IA.
+ * proposition verte l'applique. La coche conserve l'original et la
+ * poubelle refuse le vert ou valide une suppression seule. Tant que rien
+ * n'est cliqué, le fichier reste identique à avant l'appel IA.
  *
  * L'état des suggestions en attente vit sur FinitionPlugin (`aiGroups`),
  * pas ici : cette extension se contente de le lire et d'y réagir, comme
@@ -28,31 +28,34 @@ export interface AIGroup {
 
 /** Interface minimale requise de FinitionPlugin, pour éviter un import circulaire. */
 export interface AIGroupHost {
+	getNoteAnalysis?: (view: EditorView, update?: ViewUpdate) => AIGroupHost;
 	aiGroups: AIGroup[];
 	aiGroupsVersion: number;
 	aiSourcePath: string | null;
 }
 
-class InsertionWidget extends WidgetType {
+class CorrectionWidget extends WidgetType {
 	constructor(
-		private readonly text: string | null,
-		private readonly groupId: number
+		private readonly text: string,
+		private readonly groupId: number,
+		private readonly action: "keep" | "reject" | "delete" | null = null
 	) {
 		super();
 	}
 
 	toDOM(): HTMLElement {
-		const span = this.text === null ? createEl("button", { cls: "clickable-icon finition-ai-delete", attr: { type: "button", "aria-label": "Valider la suppression" } }) : createSpan();
-		if (this.text === null) setIcon(span, "check");
+		const label = this.action === "keep" ? "Conserver le texte original" : this.action === "reject" ? "Refuser la correction" : "Valider la suppression";
+		const span = this.action ? createEl("button", { cls: `clickable-icon finition-ai-${this.action}`, attr: { type: "button", "aria-label": label } }) : createSpan();
+		if (this.action) setIcon(span, this.action === "keep" ? "check" : "trash-2");
 		else { span.className = "finition-ai-ins"; span.textContent = this.text; }
 		span.dataset.finitionAiGroup = String(this.groupId);
-		span.dataset.finitionAiAction = "accept";
-		span.setAttribute("title", this.text === null ? "Valider la suppression" : "Cliquer pour appliquer la correction");
+		span.dataset.finitionAiAction = this.action === "keep" || this.action === "reject" ? "reject" : "accept";
+		span.setAttribute("title", this.action ? label : "Cliquer pour appliquer la correction");
 		return span;
 	}
 
-	eq(other: InsertionWidget): boolean {
-		return other.text === this.text && other.groupId === this.groupId;
+	eq(other: CorrectionWidget): boolean {
+		return other.text === this.text && other.groupId === this.groupId && other.action === this.action;
 	}
 }
 
@@ -73,14 +76,12 @@ function buildAIDecorations(groups: AIGroup[]): DecorationSet {
 					},
 				})
 			);
+			builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget("", g.id, "keep"), side: 1 }));
 		}
-		if (g.insText || g.delFrom < g.delTo) {
-			builder.add(
-				g.delTo,
-				g.delTo,
-				Decoration.widget({ widget: new InsertionWidget(g.insText || null, g.id), side: 1 })
-			);
-		}
+		if (g.insText) {
+			builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget(g.insText, g.id), side: 2 }));
+			builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget("", g.id, "reject"), side: 3 }));
+		} else if (g.delFrom < g.delTo) builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget("", g.id, "delete"), side: 2 }));
 	}
 	return builder.finish();
 }
@@ -88,6 +89,7 @@ function buildAIDecorations(groups: AIGroup[]): DecorationSet {
 export function finitionAIExtension(host: AIGroupHost) {
 	return ViewPlugin.fromClass(
 		class {
+			private host: AIGroupHost;
 			decorations: DecorationSet;
 			private lastVersion: number;
 			private sourceView: boolean;
@@ -96,9 +98,10 @@ export function finitionAIExtension(host: AIGroupHost) {
 
 			constructor(view: EditorView) {
 				this.view = view;
-				this.lastVersion = host.aiGroupsVersion;
+				this.host = host.getNoteAnalysis?.(view) ?? host;
+				this.lastVersion = this.host.aiGroupsVersion;
 				this.sourceView = this.isSourceView();
-				this.decorations = this.sourceView ? buildAIDecorations(host.aiGroups) : Decoration.none;
+				this.decorations = this.sourceView ? buildAIDecorations(this.host.aiGroups) : Decoration.none;
 
 				// Clic sur le VERT (proposition) : applique la correction, seule
 				// vraie modification du document que fait cette extension. Clic
@@ -111,10 +114,10 @@ export function finitionAIExtension(host: AIGroupHost) {
 					if (!marker) return;
 					const id = Number(marker.dataset.finitionAiGroup);
 					const action = marker.dataset.finitionAiAction;
-					const group = host.aiGroups.find((g) => g.id === id);
+					const group = this.host.aiGroups.find((g) => g.id === id);
 					if (!group) return;
-					host.aiGroups = host.aiGroups.filter((g) => g.id !== id);
-					host.aiGroupsVersion++;
+					this.host.aiGroups = this.host.aiGroups.filter((g) => g.id !== id);
+					this.host.aiGroupsVersion++;
 					if (action === "accept") {
 						this.view.dispatch({ changes: { from: group.delFrom, to: group.delTo, insert: group.insText ?? "" } });
 					} else this.view.dispatch({});
@@ -128,22 +131,24 @@ export function finitionAIExtension(host: AIGroupHost) {
 			}
 
 			private isSourceView(): boolean {
-				return host.aiSourcePath !== null && this.view.state.field(editorInfoField, false)?.file?.path === host.aiSourcePath;
+				return this.host.aiSourcePath !== null && this.view.state.field(editorInfoField, false)?.file?.path === this.host.aiSourcePath;
 			}
 
 			update(update: ViewUpdate): void {
 				const wasSource = this.sourceView;
+				const previousHost = this.host;
+				this.host = host.getNoteAnalysis?.(this.view, update) ?? host;
 				this.sourceView = this.isSourceView();
 				if (!this.sourceView) {
 					this.decorations = Decoration.none;
 					this.lastVersion = -1;
 					return;
 				}
-				if (update.docChanged && wasSource) {
+				if (update.docChanged && wasSource && !host.getNoteAnalysis) {
 					// Remappe les suggestions restantes après une édition
 					// (validation d'une autre suggestion, frappe manuelle...) :
 					// sans ça leurs positions deviendraient fausses.
-					host.aiGroups = host.aiGroups
+					this.host.aiGroups = this.host.aiGroups
 						.map((g) => ({
 							...g,
 							delFrom: update.changes.mapPos(g.delFrom, 1),
@@ -151,9 +156,9 @@ export function finitionAIExtension(host: AIGroupHost) {
 						}))
 						.filter((g) => g.delFrom <= g.delTo);
 				}
-				if (update.docChanged || this.lastVersion !== host.aiGroupsVersion) {
-					this.lastVersion = host.aiGroupsVersion;
-					this.decorations = buildAIDecorations(host.aiGroups);
+				if (update.docChanged || previousHost !== this.host || this.lastVersion !== this.host.aiGroupsVersion) {
+					this.lastVersion = this.host.aiGroupsVersion;
+					this.decorations = buildAIDecorations(this.host.aiGroups);
 				}
 			}
 		},

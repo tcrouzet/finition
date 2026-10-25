@@ -45,16 +45,18 @@ import { FinitionCorrectorEngine } from "./modes/finition-corrector";
 import type { LexicalData } from "./modes/finition-corrector";
 import { emptyCopuleLexicon } from "./modes/copules";
 import { analyzeCorrections } from "./modes/corrections";
-import { finitionGrammalecteExtension } from "./grammalecte-extension";
+import { closeGrammalectePopup, finitionGrammalecteExtension } from "./grammalecte-extension";
 import { buildStructureReport } from "./modes/structure-report";
 import { buildStatisticsReport, statisticsWords } from "./modes/statistics";
 import { dictionaryFile, personalDictionaryFile, personalDictionaryPath } from "./lexicon/shared";
 import { structureCategoryWords } from "./modes/structure-signature";
-import { loadingMessage } from "./ui/loading-message";
+import { LoadingNotice } from "./ui/loading-message";
 import { AnalysisNavigation, navigationFocus, setNavigationFocus } from "./ui/analysis-navigation";
 import { countDocument, formatDocumentCount } from "./ui/document-count";
 import { registerSingleNote } from "./ui/single-note";
 import { registerNoteReset } from "./ui/note-reset";
+import { NoteAnalyses, type NoteAnalysis } from "./note-analysis";
+import { correctionGutter } from "./ui/correction-gutter";
 import { addLeftSidebarToggle } from "./ui/left-sidebar-toggle";
 import { LinguisticResources, resourceHash } from "./linguistic-resources";
 import type { ResourceEngine, ResourcePack } from "./linguistic-files";
@@ -111,16 +113,22 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	// Suggestions "Corrections IA" en attente de validation (clic). Vivent
 	// uniquement en mémoire, jamais persistées : elles ne modifient le
 	// document que lorsque l'utilisateur clique dessus (voir ai-extension.ts).
-	aiGroups: AIGroup[] = [];
-	aiGroupsVersion = 0;
-	aiSourcePath: string | null = null;
+	private noteAnalyses = new NoteAnalyses();
+	get aiGroups(): AIGroup[] { return this.noteAnalyses.current.aiGroups; }
+	set aiGroups(value: AIGroup[]) { this.noteAnalyses.current.aiGroups = value; }
+	get aiGroupsVersion(): number { return this.noteAnalyses.current.aiGroupsVersion; }
+	set aiGroupsVersion(value: number) { this.noteAnalyses.current.aiGroupsVersion = value; }
+	get aiSourcePath(): string | null { return this.noteAnalyses.current.aiSourcePath; }
+	set aiSourcePath(value: string | null) { this.noteAnalyses.current.aiSourcePath = value; }
 	private nextAiGroupId = 0;
 
 	// Erreurs Grammalecte de la dernière analyse (toute la note). Comme pour
 	// Corrections IA, vit uniquement en mémoire : la correction n'est
 	// appliquée qu'au clic sur une suggestion (voir grammalecte-extension.ts).
-	grammalecteErrors: GrammalecteError[] = [];
-	grammalecteErrorsVersion = 0;
+	get grammalecteErrors(): GrammalecteError[] { return this.noteAnalyses.current.grammalecteErrors; }
+	set grammalecteErrors(value: GrammalecteError[]) { this.noteAnalyses.current.grammalecteErrors = value; }
+	get grammalecteErrorsVersion(): number { return this.noteAnalyses.current.grammalecteErrorsVersion; }
+	set grammalecteErrorsVersion(value: number) { this.noteAnalyses.current.grammalecteErrorsVersion = value; }
 	private grammalecteEngine: GrammalecteEngine | null = null;
 	private finitionCorrectorEngine: FinitionCorrectorEngine | null = null;
 	private spellingRequest = 0;
@@ -152,12 +160,14 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		await this.loadLexiconData(["repetition", "stereotype", "copules"].includes(this.settings.mode));
 		this.applyPalette();
 		this.setupStatusBarItem();
+		this.noteAnalyses.activate(this.app.workspace.getActiveFile()).mode = this.settings.mode;
 		this.registerEditorExtension(finitionEditorExtension(this));
 		this.registerEditorExtension(navigationFocus);
 		this.registerEditorExtension(finitionAIExtension(this));
 		this.registerEditorExtension(finitionGrammalecteExtension(this));
+		this.registerEditorExtension(correctionGutter(this));
 		this.addSettingTab(new FinitionSettingTab(this.app, this));
-		registerNoteReset(this, () => this.resetAnalysis());
+		registerNoteReset(this, file => this.changeAnalysisNote(file));
 		this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
 			if (this.analysisProgress?.view !== this.app.workspace.getActiveViewOfType(MarkdownView)) this.finishAnalysisProgress();
 			this.updateStatusBarIcon();
@@ -230,6 +240,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	onunload(): void {
+		closeGrammalectePopup();
 		cancelSynonyms();
 		cancelCodex();
 		this.finishAnalysisProgress();
@@ -555,9 +566,12 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		}
 	}
 
-	private startAnalysisProgress(label: string, view: MarkdownView | null, mode?: FinitionMode): Notice {
+	private startAnalysisProgress(label: string, view: MarkdownView | null, mode?: FinitionMode): LoadingNotice {
 		this.finishAnalysisProgress();
-		const notice = new Notice(loadingMessage(`${label} : analyse en cours…`), 0);
+		const notice: LoadingNotice = new LoadingNotice(`${label} : analyse en cours…`, () => {
+			if (this.analysisProgress?.notice !== notice) return;
+			void this.resetAnalysis().catch(error => new Notice(`Arrêt : ${error instanceof Error ? error.message : String(error)}`));
+		});
 		this.analysisProgress = { notice, view, mode };
 		return notice;
 	}
@@ -576,12 +590,33 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		return this.analysisProgress !== null || this.settings.mode !== "none" || this.pendingCorrectionRequest === this.spellingRequest || this.grammalecteErrors.length > 0 || this.aiGroups.length > 0;
 	}
 
-	private async resetAnalysis(): Promise<void> {
+	getNoteAnalysis(view: EditorView, update?: import("@codemirror/view").ViewUpdate): NoteAnalysis {
+		this.noteAnalyses.current.mode = this.settings.mode;
+		return this.noteAnalyses.forView(view, update);
+	}
+
+	private cancelPendingAnalysis(): number {
+		closeGrammalectePopup();
 		cancelSynonyms();
 		cancelCodex();
 		const request = ++this.spellingRequest;
 		this.finishAnalysisProgress();
 		this.pendingCorrectionRequest = null;
+		return request;
+	}
+
+	private async changeAnalysisNote(file: TFile | null): Promise<void> {
+		this.noteAnalyses.current.mode = this.settings.mode;
+		const request = this.cancelPendingAnalysis();
+		this.settings.mode = this.noteAnalyses.activate(file).mode;
+		await this.saveSettings();
+		if (request !== this.spellingRequest) return;
+		this.updateStatusBarIcon();
+		this.refreshAllEditors(false);
+	}
+
+	private async resetAnalysis(): Promise<void> {
+		const request = this.cancelPendingAnalysis();
 		this.settings.mode = "none";
 		this.grammalecteErrors = [];
 		this.grammalecteErrorsVersion++;
@@ -751,7 +786,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			for (let i = 0; i < chunks.length; i++) {
 				if (request !== this.spellingRequest || document !== editor.getValue() || this.app.workspace.getActiveViewOfType(MarkdownView) !== view) return;
 				const chunk = chunks[i];
-				const reportProgress = () => progress.setMessage(loadingMessage(`Corrections IA · ${modelName} : tronçon ${i + 1}/${chunks.length}…`));
+				const reportProgress = () => progress.setMessage(`Corrections IA · ${modelName} : tronçon ${i + 1}/${chunks.length}…`);
 				reportProgress();
 				if (chunk.text.trim().length === 0) continue;
 				const reviseChunk = connection.provider === "codex" ? reviseChunkWithCodex : connection.provider === "openai" ? reviseChunkWithRetryOpenAI : reviseChunkWithRetryAnthropic;
@@ -761,6 +796,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				const { text: revisedRaw, error } = await reviseChunk(protectedText.text, this.settings.aiPrompt, {
 					...connection,
 					maxTokens: this.settings.aiMaxTokens,
+					isCancelled: () => request !== this.spellingRequest,
 					onModel: model => { modelName = `Codex · ${model}`; if (request === this.spellingRequest) reportProgress(); },
 				});
 				if (request !== this.spellingRequest || document !== editor.getValue() || this.app.workspace.getActiveViewOfType(MarkdownView) !== view) return;
@@ -1190,10 +1226,12 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		if (!this.linguisticResources) throw new Error("Dossier du plugin introuvable.");
 		return this.linguisticResources.read(engine, file);
 	}
-	async downloadLinguisticResources(engine: ResourcePack, progress: (text: string) => void): Promise<void> {
+	async downloadLinguisticResources(engine: ResourcePack, progress: (text: string) => void, signal?: AbortSignal): Promise<void> {
 		await this.loadLinguisticResources();
+		signal?.throwIfAborted();
 		if (!this.linguisticResources) throw new Error("Dossier du plugin introuvable.");
-		const revision = await this.linguisticResources.install(engine, progress);
+		const revision = await this.linguisticResources.install(engine, progress, signal);
+		signal?.throwIfAborted();
 		const previous = this.settings.resourcePacks;
 		this.settings.resourcePacks = { ...previous, [engine]: revision };
 		try { await this.saveSettings(); }
@@ -1321,17 +1359,22 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		if (!this.hasLexicon) { new Notice("Chargez le dictionnaire Finition dans les paramètres."); return; }
 		const text = view.editor.getValue();
 		const source = { file: view.file };
-		const notice = new Notice(loadingMessage("Statistiques"), 0);
+		const notice = new LoadingNotice("Statistiques");
 		try {
 			await this.loadLexiconData(true);
+			if (notice.cancelled) return;
 			if (!this.lexicon.size) throw new Error("Lexique indisponible.");
 			const engine = await this.ensureGrammalecteEngine();
+			if (notice.cancelled) return;
 			const words = [...new Set([...structureCategoryWords(text), ...statisticsWords(text)])];
 			const categories = await engine.getCategories(words);
+			if (notice.cancelled) return;
 			const content = await buildStatisticsReport(text, word => categories[word.toLowerCase()] ?? "", this.lexicon);
+			if (notice.cancelled) return;
 			const file = await this.createDebugNote(source, content, (name, timestamp) => `${name}_stats_${timestamp.replace(" ", "_")}`);
-			if (file) await this.app.workspace.getLeaf(true).openFile(file);
+			if (file && !notice.cancelled) await this.app.workspace.getLeaf(true).openFile(file);
 		} catch (error) {
+			if (notice.cancelled) return;
 			new Notice(`Statistiques : ${error instanceof Error ? error.message : String(error)}`, 10000);
 			console.error("Finition — Statistiques :", error);
 		} finally { notice.hide(); }
@@ -1361,24 +1404,26 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		}
 		const text = view.editor.getValue();
 
-		const notice = new Notice("Structure : chargement du moteur linguistique...", 0);
+		const notice = new LoadingNotice("Structure : chargement du moteur linguistique…");
 		try {
 			const engine = await this.ensureSpellingEngine(this.settings.analysisEngine);
-			notice.setMessage("Structure : analyse en cours...");
+			if (notice.cancelled) return;
+			notice.setMessage("Structure : analyse en cours…");
 
 			const categories = await engine.getCategories(structureCategoryWords(text));
+			if (notice.cancelled) return;
 			const getCategory = (word: string) => categories[word.toLowerCase()] ?? "";
 
 			const content = buildStructureReport(text, getCategory);
 
 			const file = await this.createDebugNote(view, content, "Structure — ");
 			notice.hide();
-			if (file) await this.app.workspace.getLeaf(true).openFile(file);
+			if (file && !notice.cancelled) await this.app.workspace.getLeaf(true).openFile(file);
 		} catch (e) {
-			notice.hide();
+			if (notice.cancelled) return;
 			new Notice(`Structure : erreur — ${e instanceof Error ? e.message : String(e)}`, 10000);
 			console.error("Finition — Structure :", e);
-		}
+		} finally { notice.hide(); }
 	}
 
 	/**
@@ -1389,7 +1434,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	 * un nom propre répété plusieurs fois serait sinon toujours souligné
 	 * ailleurs dans le texte après l'avoir "accepté" une fois.
 	 */
-	async addWordToGrammalecteDictionary(word: string): Promise<void> {
+	async addWordToGrammalecteDictionary(word: string, view?: EditorView): Promise<void> {
 		const normalized = word.trim();
 		if (!normalized) return;
 		this.settings.grammalecteCustomDictionary = addWordToDictionaryText(
@@ -1397,10 +1442,11 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			normalized
 		);
 		const lower = normalized.toLowerCase();
-		this.grammalecteErrors = this.grammalecteErrors.filter(
+		const analysis = view ? this.getNoteAnalysis(view) : this.noteAnalyses.current;
+		analysis.grammalecteErrors = analysis.grammalecteErrors.filter(
 			(err) => !(err.sType === "orthographe" && err.sValue && err.sValue.toLowerCase() === lower)
 		);
-		this.grammalecteErrorsVersion++;
+		analysis.grammalecteErrorsVersion++;
 		await this.saveSettings();
 		this.refreshAllEditors();
 	}
@@ -1419,7 +1465,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			const view = leaf.view;
 			if (view instanceof MarkdownView) {
 				const cm = (view.editor as unknown as { cm?: EditorView }).cm;
-				cm?.dispatch(clearNavigationFocus ? { effects: setNavigationFocus.of(null) } : {});
+				cm?.dispatch(clearNavigationFocus && view === this.app.workspace.getActiveViewOfType(MarkdownView) ? { effects: setNavigationFocus.of(null) } : {});
 			}
 		});
 	}

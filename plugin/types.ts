@@ -342,6 +342,7 @@ export function addWordToDictionaryText(raw: string, word: string): string {
  * ça permet de tester un mode isolément.
  */
 export interface FinitionRuntime {
+	getNoteAnalysis?: (view: import("@codemirror/view").EditorView, update?: import("@codemirror/view").ViewUpdate) => import("./note-analysis").NoteAnalysis;
 	updateAnalysisHighlights: (view: import("@codemirror/view").EditorView, highlights: Highlight[], pending: boolean) => void;
 	updateTicIAStats: (view: import("@codemirror/view").EditorView, tagged: number, total: number, pending: boolean) => void;
 	settings: FinitionSettings;

@@ -6,7 +6,7 @@ import { createRemarkInsertion } from "./insert-remark";
 import { mergeRanges, selectionTouchesLink } from "../markdown-links";
 import { markdownExclusionRanges } from "../markdown-tags";
 import { tokenize } from "../modes/tokenize";
-import { loadingMessage } from "./loading-message";
+import { LoadingNotice } from "./loading-message";
 
 export async function runLocalSynonyms(app: App, dictionary: SynonymsDictionary): Promise<void> {
 	await runLocalWordLookup(app, "Synonymes", async word => ({ groups: await dictionary.lookupGroups(word) }));
@@ -27,9 +27,10 @@ export async function runLocalWordLookup(app: App, title: string, lookup: (word:
 	if (markdownExclusionRanges(document).some(([start, end]) => from < end && to > start)) { new Notice(`${title} : sélectionne un mot hors du YAML et des tags.`); return; }
 	if (selectionTouchesLink(document, from, to)) { new Notice(`${title} : sélectionne un mot hors des liens et des adresses web.`); return; }
 	const insertRemark = createRemarkInsertion(app, view);
-	const notice = new Notice(loadingMessage(`${title} : recherche en cours…`), 0);
+	const notice = new LoadingNotice(`${title} : recherche en cours…`);
 	try {
 		const { groups = [], rows = [], description, citationLexicon } = await lookup(selected);
+		if (notice.cancelled) return;
 		const words = groups.flatMap(group => group.words);
 		if (!words.length && !rows.length) { new Notice(`${title} : aucun résultat pour « ${selected} ».`); return; }
 		if (rows.length) {
@@ -46,6 +47,7 @@ export async function runLocalWordLookup(app: App, title: string, lookup: (word:
 			return true;
 		}, insertRemark, title, groups).open();
 	} catch (error) {
+		if (notice.cancelled) return;
 		new Notice(`${title} : ${error instanceof Error ? error.message : String(error)}`, 10000);
 	} finally {
 		notice.hide();

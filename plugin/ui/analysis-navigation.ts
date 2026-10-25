@@ -39,7 +39,7 @@ export class AnalysisNavigation {
 	private refreshDocuments: () => void;
 	private initialTimer: number | null = null;
 
-	constructor(private plugin: Pick<Plugin, "app" | "registerDomEvent" | "register" | "registerEvent"> & Pick<FinitionRuntime, "settings">, parent: HTMLElement) {
+	constructor(private plugin: Pick<Plugin, "app" | "registerDomEvent" | "register" | "registerEvent"> & Pick<FinitionRuntime, "settings" | "getNoteAnalysis">, parent: HTMLElement) {
 		this.count = parent.createSpan({ cls: "finition-analysis-count", attr: { "aria-live": "polite", title: "Occurrences surlignées" } });
 		[this.previous, this.next] = (["previous", "next"] as const).map(direction => {
 			const button = parent.createEl("button", {
@@ -73,8 +73,9 @@ export class AnalysisNavigation {
 	update(view: EditorView, highlights: Highlight[], pending: boolean): void {
 		if (this.disposed) return;
 		const previous = this.snapshots.get(view);
-		const initialized = previous?.initialized === true && previous.doc === view.state.doc && previous.mode === this.plugin.settings.mode;
-		this.snapshots.set(view, { doc: view.state.doc, mode: this.plugin.settings.mode, highlights, pending, initialized });
+		const mode = this.mode(view);
+		const initialized = previous?.initialized === true && previous.doc === view.state.doc && previous.mode === mode;
+		this.snapshots.set(view, { doc: view.state.doc, mode, highlights, pending, initialized });
 		this.refresh();
 	}
 
@@ -90,7 +91,7 @@ export class AnalysisNavigation {
 		if (this.disposed) return;
 		const view = this.activeView();
 		const snapshot = this.current(view);
-		const mode = snapshot?.mode ?? this.plugin.settings.mode;
+		const mode = snapshot?.mode ?? this.mode(view);
 		const enabled = this.analysisActive = !!view && mode !== "none" && mode !== "tic-ia";
 		const ready = snapshot && !snapshot.pending;
 		this.count.title = mode === "grammalecte" ? "Fautes Grammalecte" : "Occurrences surlignées";
@@ -134,10 +135,15 @@ export class AnalysisNavigation {
 	}
 
 	private current(view: EditorView | undefined): AnalysisSnapshot | undefined {
+		const mode = this.mode(view);
 		const grammalecte = view ? this.grammalecteSnapshots.get(view) : undefined;
-		if (this.plugin.settings.mode === "none" && grammalecte?.doc === view?.state.doc && grammalecte?.highlights.length) return grammalecte;
+		if (mode === "none" && grammalecte?.doc === view?.state.doc && grammalecte?.highlights.length) return grammalecte;
 		const snapshot = view ? this.snapshots.get(view) : undefined;
-		return snapshot?.doc === view?.state.doc && snapshot?.mode === this.plugin.settings.mode ? snapshot : undefined;
+		return snapshot?.doc === view?.state.doc && snapshot?.mode === mode ? snapshot : undefined;
+	}
+
+	private mode(view: EditorView | undefined): FinitionMode {
+		return view && this.plugin.getNoteAnalysis ? this.plugin.getNoteAnalysis(view).mode : this.plugin.settings.mode;
 	}
 
 	private goTo(view: EditorView, highlight: Pick<Highlight, "from" | "to">): void {

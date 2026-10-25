@@ -95,10 +95,11 @@ export interface ReviseResult {
 export async function reviseChunkWithRetryOpenAI(
 	chunk: string,
 	system: string,
-	opts: Omit<OpenAICallOptions, "system" | "userText">
+	opts: Omit<OpenAICallOptions, "system" | "userText"> & { isCancelled?: () => boolean }
 ): Promise<ReviseResult> {
 	let lastError: string | null = null;
 	for (let attempt = 1; attempt <= (opts.baseUrl ? 1 : 3); attempt++) {
+		if (opts.isCancelled?.()) return { text: chunk, error: null };
 		const result = await callOpenAI({
 			...opts,
 			system,

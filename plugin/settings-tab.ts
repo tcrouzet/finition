@@ -1,6 +1,6 @@
 import { App, ColorComponent, DropdownComponent, Notice, PluginSettingTab, Setting } from "obsidian";
 import type { SettingDefinitionRender } from "obsidian";
-import { loadingMessage } from "./ui/loading-message";
+import { LoadingNotice } from "./ui/loading-message";
 import type { ResourcePack } from "./linguistic-files";
 import { resourceEngines, resourceLabels } from "./linguistic-files";
 import { finitionSynonymMetadata, isSynonymDocumentation, synonymDocumentation, synonymFileLimit, type SynonymMetadata } from "./synonyms";
@@ -77,6 +77,18 @@ export class FinitionSettingTab extends PluginSettingTab {
 		return details.createDiv({ cls: "finition-settings-section-body" });
 	}
 
+	private async downloadResources(pack: ResourcePack, label: string): Promise<boolean> {
+		const controller = new AbortController();
+		const notice = new LoadingNotice(label, () => controller.abort());
+		try {
+			await this.plugin.downloadLinguisticResources(pack, text => notice.setMessage(text), controller.signal);
+			return !notice.cancelled;
+		} catch (error) {
+			if (!notice.cancelled) throw error;
+			return false;
+		} finally { notice.hide(); }
+	}
+
 	private displaySynonyms(containerEl: HTMLElement): void {
 		containerEl = this.section(containerEl, "Synonymes");
 		const options = this.plugin.synonymDictionaryOptions;
@@ -100,9 +112,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 		const finition = new Setting(containerEl).setName("Finition")
 			.addButton(button => button.setButtonText(this.plugin.isLinguisticEngineInstalled("synonymes") ? "Recharger" : "Charger").setDisabled(busy)
 				.onClick(() => update(async () => {
-					const notice = new Notice(loadingMessage("Téléchargement des synonymes…"), 0);
-					try { await this.plugin.downloadLinguisticResources("synonymes", text => notice.setMessage(loadingMessage(text))); }
-					finally { notice.hide(); }
+					await this.downloadResources("synonymes", "Téléchargement des synonymes…");
 				})));
 		this.describeResource(finition, finitionSynonymMetadata);
 		for (const option of options.filter(option => option.id)) {
@@ -180,9 +190,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 			const finition = new Setting(container).setName("Finition")
 				.addButton(button => button.setButtonText(this.plugin.isLinguisticEngineInstalled(kind) ? "Recharger" : "Charger").setDisabled(busy)
 					.onClick(() => update(async () => {
-						const notice = new Notice(loadingMessage("Téléchargement du dictionnaire…"), 0);
-						try { await this.plugin.downloadLinguisticResources(kind, text => notice.setMessage(loadingMessage(text))); }
-						finally { notice.hide(); }
+						await this.downloadResources(kind, "Téléchargement du dictionnaire…");
 					})));
 			this.describeResource(finition, publicDictionaryMetadata);
 		}
@@ -243,9 +251,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 		const installed = options.some(option => option.path === "");
 		const finition = new Setting(container).setName("Dictionnaire Finition")
 			.addButton(button => button.setButtonText(installed ? "Recharger" : "Charger").setDisabled(busy).onClick(() => update(async () => {
-				const notice = new Notice(loadingMessage("Téléchargement du lexique…"), 0);
-				try { await this.plugin.downloadLinguisticResources("lexique", text => notice.setMessage(loadingMessage(text))); }
-				finally { notice.hide(); }
+				await this.downloadResources("lexique", "Téléchargement du lexique…");
 			})));
 		this.describeResource(finition, publicLexiconMetadata);
 		for (const option of options.filter(option => option.path)) {
@@ -309,14 +315,11 @@ export class FinitionSettingTab extends PluginSettingTab {
 					.setDisabled(busy).onClick(async () => {
 						this.downloadingEngine = engine;
 						this.update();
-						const notice = new Notice(loadingMessage("Téléchargement des ressources…"), 0);
 						try {
-							await this.plugin.downloadLinguisticResources(engine, text => notice.setMessage(loadingMessage(text)));
-							new Notice("Ressources installées. Utilisation hors ligne disponible.");
+							if (await this.downloadResources(engine, "Téléchargement des ressources…")) new Notice("Ressources installées. Utilisation hors ligne disponible.");
 						} catch (error) {
 							new Notice(error instanceof Error ? error.message : String(error), 10000);
 						} finally {
-							notice.hide();
 							this.downloadingEngine = null;
 							this.update();
 						}

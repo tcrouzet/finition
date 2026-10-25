@@ -6,6 +6,7 @@
 
 .finition-correction-spinner { display: inline-flex; vertical-align: middle; margin-right: 0.5em; }
 .finition-correction-spinner svg { width: 1em; height: 1em; animation: finition-correction-spin 1s linear infinite; }
+.finition-loading-cancel { display: inline-flex; vertical-align: middle; margin-left: 0.5em; }
 @keyframes finition-correction-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .finition-correction-spinner svg { animation: none; } }
 
@@ -435,6 +436,12 @@ body.is-mobile .finition-synonyms-insert {
 	cursor: pointer;
 }
 
+.finition-correction-gutter .finition-correction-line {
+	border-left: 2px solid var(--color-red, #c0392b);
+	margin-left: 3px;
+	margin-right: 3px;
+}
+
 .finition-ai-ins {
 	text-decoration: underline;
 	color: #1e8449;
@@ -442,20 +449,22 @@ body.is-mobile .finition-synonyms-insert {
 	margin-left: 0.15em;
 }
 
-.finition-ai-delete {
+.finition-ai-keep, .finition-ai-delete, .finition-ai-reject {
 	display: inline-flex;
 	vertical-align: middle;
 	margin-left: 0.2em;
 	padding: 2px;
-	color: var(--color-green, #1e8449);
 }
 
-.finition-ai-delete:focus-visible {
+.finition-ai-keep { color: var(--color-green, #1e8449); }
+.finition-ai-delete, .finition-ai-reject { color: var(--text-muted); }
+
+.finition-ai-keep:focus-visible, .finition-ai-delete:focus-visible, .finition-ai-reject:focus-visible, .finition-loading-cancel:focus-visible {
 	outline: 2px solid var(--interactive-accent);
 	outline-offset: 2px;
 }
 
-body.is-mobile .finition-ai-delete {
+body.is-mobile .finition-ai-keep, body.is-mobile .finition-ai-delete, body.is-mobile .finition-ai-reject, body.is-mobile .finition-loading-cancel {
 	min-width: 44px;
 	min-height: 44px;
 }

@@ -57,6 +57,8 @@ Choisir **Grammalecte** ou **Neuronal** dans le menu **♫** :
 
 Les deux analysent la sélection, ou toute la note si rien n’est sélectionné. Cliquer sur une faute pour choisir une correction ou ignorer le signalement. Les mots inconnus peuvent être ajoutés au dictionnaire personnel. La flèche de la barre d’état mène à la faute suivante. Recliquer sur le correcteur coché efface ses suggestions.
 
+Une barre rouge dans la marge repère les lignes portant des corrections orthographiques ou IA en attente. Elle disparaît lorsque les corrections de la ligne sont traitées.
+
 Le modèle public **CamemBERT** se charge dans les réglages. Des modèles personnels peuvent aussi être importés ; le choix du moteur d’analyse de Structure, Tricolons et Cadences reste indépendant du correcteur utilisé.
 
 ### Soigner la ponctuation
@@ -94,7 +96,7 @@ Sur ordinateur, si **Codex CLI** est détecté, **Codex** apparaît dans **Modè
 
 Avec Ollama ou un autre serveur compatible OpenAI, renseigner **Serveur local** (par exemple `http://localhost:11434`, avec ou sans `/v1`) et **Modèle local**, sous les clés API. Le serveur doit déjà fonctionner et disposer du modèle indiqué. Sauf si Codex est choisi, ces champs remplacent le fournisseur et le modèle cloud pour les deux fonctions ci-dessous, sans transmettre les clés API. Vider **Serveur local** pour revenir à Claude/GPT. Finition ne télécharge aucun modèle et ne bascule jamais vers le cloud en cas d’erreur locale.
 
-- **Corrections IA** relit le texte sélectionné. Les propositions apparaissent dans la note : cliquer sur le vert pour appliquer une correction, sur la coche pour valider une suppression, ou sur le rouge pour garder l’original.
+- **Corrections IA** relit le texte sélectionné et marque les mots ou signes modifiés. Cliquer sur le vert applique la correction. La poubelle après le vert refuse la proposition ; la coche après le rouge conserve l’original. Pour une suppression seule, la poubelle retire le texte.
 - **Synonymes IA**, dans le menu Dictionnaires, cherche des variantes adaptées au contexte de la sélection.
 
 Les consignes de relecture sont personnalisables et peuvent être enregistrées avec leur modèle. Les liens restent intacts dans la note.

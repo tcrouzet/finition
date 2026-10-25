@@ -21,7 +21,7 @@ export interface DiffGroup {
 type DiffOp = { op: "equal" | "del" | "ins"; text: string };
 
 function tokenize(text: string): string[] {
-	return text.split(/(\s+)/).filter((t) => t.length > 0);
+	return text.match(/[\p{L}\p{M}\p{N}_]+|[^\p{L}\p{M}\p{N}_]+/gu) ?? [];
 }
 
 /** Diff mot-à-mot (LCS classique) entre deux textes déjà tokenisés. */
@@ -30,6 +30,34 @@ function wordDiff(original: string, revised: string): DiffOp[] {
 	const b = tokenize(revised);
 	const n = a.length;
 	const m = b.length;
+	const isWord = (token: string) => /^[\p{L}\p{M}\p{N}_]/u.test(token);
+	const wordsA = a.filter(isWord), wordsB = b.filter(isWord);
+	// Les mots identiques ancrent la ponctuation sans table quadratique.
+	if (wordsA.length === wordsB.length && wordsA.every((word, index) => word === wordsB[index])) {
+		const ops: DiffOp[] = [];
+		let i = 0, j = 0;
+		while (i < n || j < m) {
+			const before = i < n && !isWord(a[i]) ? a[i++] : "";
+			const after = j < m && !isWord(b[j]) ? b[j++] : "";
+			if (before === after) { if (before) ops.push({ op: "equal", text: before }); }
+			else {
+				if (before) ops.push({ op: "del", text: before });
+				if (after) ops.push({ op: "ins", text: after });
+			}
+			if (i < n) { ops.push({ op: "equal", text: a[i++] }); j++; }
+		}
+		return ops;
+	}
+	let prefix = 0, suffix = 0;
+	while (prefix < n && prefix < m && a[prefix] === b[prefix]) prefix++;
+	while (suffix < n - prefix && suffix < m - prefix && a[n - suffix - 1] === b[m - suffix - 1]) suffix++;
+	if (prefix || suffix) {
+		return [
+			{ op: "equal", text: a.slice(0, prefix).join("") },
+			...wordDiff(a.slice(prefix, n - suffix).join(""), b.slice(prefix, m - suffix).join("")),
+			{ op: "equal", text: a.slice(n - suffix).join("") },
+		];
+	}
 
 	// Garde-fou perf : au-delà, la table LCS deviendrait trop grosse ;
 	// on retombe sur un remplacement en bloc (toujours correct, juste
@@ -109,11 +137,16 @@ export function diffToGroups(original: string, revised: string): DiffGroup[] {
 			}
 			i++;
 		}
+		const removed = Array.from(delText), added = Array.from(insText);
+		let prefix = 0, suffix = 0;
+		while (prefix < removed.length && prefix < added.length && removed[prefix] === added[prefix] && !/[\p{L}\p{M}\p{N}_]/u.test(removed[prefix])) prefix++;
+		while (suffix < removed.length - prefix && suffix < added.length - prefix && removed[removed.length - suffix - 1] === added[added.length - suffix - 1] && !/[\p{L}\p{M}\p{N}_]/u.test(removed[removed.length - suffix - 1])) suffix++;
+		const replacement = added.slice(prefix, added.length - suffix).join("");
 		groups.push({
-			delFrom: groupStart,
-			delTo: pos,
-			delText,
-			insText: insText.length > 0 ? insText : null,
+			delFrom: groupStart + removed.slice(0, prefix).join("").length,
+			delTo: pos - removed.slice(removed.length - suffix).join("").length,
+			delText: removed.slice(prefix, removed.length - suffix).join(""),
+			insText: replacement || null,
 		});
 	}
 	return groups;

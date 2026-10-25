@@ -31,8 +31,10 @@ import { checkMarkdownExclusions } from "./check-markdown-exclusions";
 import { checkDictionaryLemmas } from "./check-dictionary-lemmas";
 import { checkCodex } from "./check-codex";
 import { checkNoteReset } from "./check-note-reset";
+import { checkAIDiff } from "./check-ai-diff";
 
 async function main() {
+	checkAIDiff();
 	assert.deepEqual(computeHingeHighlights("Et mais et OU où", ["et", "mais", "ou", "où"]).map(highlight => highlight.lemma), ["et", "mais", "et", "ou", "où"], "Chaque charnière doit garder son identité, sans distinguer les majuscules");
 	assert.deepEqual(computeHedgingHighlights("D'après moi, d’après moi.", ["d’après moi"]).map(highlight => highlight.lemma), ["d’après moi", "d’après moi"], "Casse et apostrophes ne doivent pas séparer la même atténuation");
 	for (const [value, words, characters] of [[0, "0W", "0S"], [1, "1W", "1S"], [999, "999W", "999S"], [1000, "1K", "1K"], [1001, "1K", "1K"], [1050, "1,1K", "1,1K"], [1500, "1,5K", "1,5K"], [10000, "10K", "10K"]] as const) {
@@ -54,6 +56,7 @@ async function main() {
 	});
 	const notices: string[] = [];
 	const noticeInstances: Notice[] = [];
+	const buttons: Array<{ className: string; dataset: Record<string, string>; attributes: Record<string, string>; click: () => void }> = [];
 	let requestHandler: (request: { url: string; body: string; headers: Record<string, string> }) => unknown = () => { throw new Error("Appel API inattendu"); };
 	class Notice {
 		hidden = false;
@@ -101,6 +104,16 @@ async function main() {
 	sandbox.window = sandbox;
 	sandbox.createFragment = () => ({ textContent: "", append(...nodes: Array<string | { textContent: string }>) { this.textContent += nodes.map(node => typeof node === "string" ? node : node.textContent).join(""); } });
 	sandbox.createSpan = () => ({ textContent: "" });
+	sandbox.createEl = (_tag: string, options: { cls?: string; attr?: Record<string, string> }) => {
+		let click = (_event: MouseEvent) => {};
+		const button = { className: options.cls ?? "", textContent: "", dataset: {} as Record<string, string>, attributes: { ...options.attr },
+			setAttribute(name: string, value: string) { this.attributes[name] = value; },
+			addEventListener(_type: string, handler: (event: MouseEvent) => void) { click = handler; },
+			click() { click({ preventDefault() {}, stopPropagation() {} } as MouseEvent); },
+		};
+		buttons.push(button);
+		return button;
+	};
 	vm.runInContext(modules.outputFiles[0].text, sandbox);
 	sandbox.document = { body: { classList: { toggle() {} }, style: { setProperty() {} } } };
 	const api = module.exports as {
@@ -141,6 +154,10 @@ async function main() {
 			settings: FinitionSettings;
 			aiGroups: DiffGroup[];
 			grammalecteErrors: import("../plugin/modes/grammalecte").GrammalecteError[];
+			aiSourcePath: string | null;
+			getNoteAnalysis: (view: EditorView, update?: ViewUpdate) => import("../plugin/note-analysis").NoteAnalysis;
+			changeAnalysisNote: (file: unknown) => Promise<void>;
+			addWordToGrammalecteDictionary: (word: string, view?: EditorView) => Promise<void>;
 			loadSettings: () => Promise<void>;
 			refreshAllEditors: (clearNavigationFocus?: boolean) => void;
 			setMode: (mode: FinitionSettings["mode"]) => Promise<void>;
@@ -171,6 +188,9 @@ async function main() {
 	Object.assign(refreshPlugin.app.workspace, { iterateAllLeaves: (visit: (leaf: { view: MarkdownView }) => void) => visit({ view: refreshView }) });
 	refreshPlugin.refreshAllEditors(false);
 	assert.equal(refreshedState.field(api.navigationFocus).size, 1, "Les résultats progressifs doivent conserver le repère existant");
+	refreshPlugin.refreshAllEditors();
+	assert.equal(refreshedState.field(api.navigationFocus).size, 1, "Le reset de la note active efface le repère d’un autre volet");
+	Object.assign(refreshPlugin.app.workspace, { getActiveViewOfType: () => refreshView });
 	refreshPlugin.refreshAllEditors();
 	assert.equal(refreshedState.field(api.navigationFocus).size, 0, "Un reset ou changement de mode doit toujours effacer le repère");
 	const modePlugin = new api.FinitionPlugin();
@@ -213,12 +233,26 @@ async function main() {
 	const outdated = modePlugin.setMode("repetition");
 	await waitFor(() => lexiconLoads === 2);
 	const outdatedNotice = noticeInstances.at(-1)!;
+	const outdatedStop = buttons.at(-1)!;
 	await modePlugin.setMode("formes");
+	outdatedStop.click();
+	assert.equal(modePlugin.settings.mode, "formes", "Une ancienne croix arrête la nouvelle analyse");
 	assert.equal(outdatedNotice.hidden, true, "Changer de fonction laisse l’ancienne roue ouverte");
 	finishLexicon();
 	await outdated;
 	assert.equal(modePlugin.settings.mode, "formes", "Un ancien chargement réactive le mode abandonné");
 	modePlugin.updateAnalysisHighlights(modeEditor, [], false);
+	const stoppedMode = modePlugin.setMode("repetition");
+	await waitFor(() => lexiconLoads === 3);
+	const stopModeNotice = noticeInstances.at(-1)!;
+	const stopMode = buttons.at(-1)!;
+	assert.match(stopMode.className, /finition-loading-cancel/);
+	assert.equal(stopMode.attributes["aria-label"], "Arrêter l’opération");
+	stopMode.click();
+	assert.equal(stopModeNotice.hidden, true, "La croix ne ferme pas la progression");
+	finishLexicon();
+	await stoppedMode;
+	assert.equal(modePlugin.settings.mode, "none", "Un surlignage arrêté se réactive après le chargement");
 	Object.assign(modePlugin, { loadLexiconData: async () => { throw new Error("Chargement impossible"); } });
 	await assert.rejects(modePlugin.setMode("repetition"), /Chargement impossible/);
 	assert.equal(modePlugin.settings.mode, "none");
@@ -253,6 +287,12 @@ async function main() {
 	assert.equal(modePlugin.grammalecteErrors.length, 1);
 	await modePlugin.runGrammalecte();
 	assert.equal(modePlugin.grammalecteErrors.length, 0, "Le reclic sur Corrections ne désactive plus l’analyse");
+	const stoppedCorrection = modePlugin.runGrammalecte();
+	await waitFor(() => correctionCalls === 3);
+	buttons.at(-1)!.click();
+	finishCorrection([{ nStart: 0, nEnd: 1, sRuleId: "test", sType: "orthographe", sMessage: "Faute", aSuggestions: [] }]);
+	await stoppedCorrection;
+	assert.equal(modePlugin.grammalecteErrors.length, 0, "Un correcteur arrêté par la croix réaffiche ses résultats");
 	process.stdout.write("Changement de fonction : reset avant chargement, roue jusqu’au résultat final, reclic et concurrence vérifiés\n");
 	assert.equal(api.gzipData[9], 255, "Le gzip embarqué dépend du système de compilation");
 	assert.ok(modelPresets.length > 0 && modelPresets.every(model => model.value.trim() && model.label.trim()), "Les modèles IA doivent avoir un identifiant et un libellé");
@@ -338,13 +378,14 @@ async function main() {
 	const sequence = "Suite à un collègue, je réponds.";
 	const sequenceGroups = api.protectLinks(sequence).diff("A la suite d'un collègue, je réponds.");
 	assert.equal(sequenceGroups.length, 1, "Un remplacement de plusieurs mots est morcelé");
-	assert.equal(sequenceGroups[0].delText, "Suite à un");
-	assert.equal(sequenceGroups[0].insText, "A la suite d’un");
+	assert.equal(sequenceGroups[0].delText, "Suite à ");
+	assert.equal(sequenceGroups[0].insText, "A la suite d’");
 	assert.equal(apply(sequence, sequenceGroups), "A la suite d’un collègue, je réponds.");
-	for (const [source, revised, expected] of [
+	for (const action of ["accept", "reject", "keep"]) for (const [source, revised, accepted] of [
 		[sequence, "À la suite d'un collègue, je réponds.", "À la suite d’un collègue, je réponds."],
 		["Il dit bonjour.", "Il dit : bonjour.", "Il dit\u00a0: bonjour."],
 		["Il dit bonjour. Une fote.", "Il dit : bonjour. Une faute.", "Il dit\u00a0: bonjour. Une faute."],
+		["Un inutile texte.", "Un texte.", "Un texte."],
 	] as const) {
 		const host = { aiSourcePath: "source.md", aiGroups: api.protectLinks(source).diff(revised).map((group, id) => ({ ...group, id })), aiGroupsVersion: 0 };
 		let state = api.EditorState.create({ doc: source }), filePath = "source.md";
@@ -364,6 +405,7 @@ async function main() {
 		view.dispatch({ changes: { from: 0, to: state.doc.length, insert: source } });
 		assert.equal(JSON.stringify(host.aiGroups), before, "Revenir à la note source déplace les suggestions");
 		let removed = "", inserted = "";
+		const buttonsBefore = buttons.length;
 		sandbox.createSpan = () => ({ dataset: {}, setAttribute() {}, textContent: "" });
 		instance.decorations.between(0, source.length, (from, to, decoration) => {
 			const spec = decoration.spec as { class?: string; widget?: { toDOM: () => { textContent: string } } };
@@ -372,8 +414,19 @@ async function main() {
 		});
 		assert.equal(removed, host.aiGroups.map(group => group.delText).join(""), "La séquence n’est pas barrée en entier");
 		assert.equal(inserted, host.aiGroups.map(group => group.insText ?? "").join(""), "Le widget altère le remplacement ou son insécable");
-		for (const group of [...host.aiGroups]) listeners.get("click")!({ target: { closest: () => ({ dataset: { finitionAiGroup: String(group.id), finitionAiAction: "accept" } }) }, preventDefault() {} } as unknown as MouseEvent);
-		assert.equal(state.doc.toString(), expected, "Le clic insère un remplacement incomplet ou une espace ordinaire");
+		const controls = buttons.slice(buttonsBefore);
+		const rejects = controls.filter(button => button.className.includes("finition-ai-reject"));
+		const keeps = controls.filter(button => button.className.includes("finition-ai-keep"));
+		assert.equal(rejects.length, host.aiGroups.filter(group => group.insText).length, "Chaque proposition verte doit proposer une poubelle");
+		assert.equal(keeps.length, host.aiGroups.filter(group => group.delFrom < group.delTo).length, "Chaque passage rouge doit proposer une coche pour garder l’original");
+		for (const group of [...host.aiGroups]) {
+			const keepOriginal = (action === "keep" && group.delFrom < group.delTo) || !group.insText;
+			const kind = action === "accept" ? group.insText ? null : "delete" : keepOriginal ? "keep" : "reject";
+			const marker = kind ? controls.find(button => button.className.includes(`finition-ai-${kind}`) && button.dataset.finitionAiGroup === String(group.id)) : { dataset: { finitionAiGroup: String(group.id), finitionAiAction: "accept" } };
+			assert.ok(marker, `Bouton ${kind} absent`);
+			listeners.get("click")!({ target: { closest: () => marker }, preventDefault() {} } as unknown as MouseEvent);
+		}
+		assert.equal(state.doc.toString(), action === "accept" ? accepted : source, "Le clic applique une mauvaise correction ou modifie le texte après refus");
 		assert.equal(host.aiGroups.length, 0);
 		instance.destroy();
 	}
@@ -413,7 +466,7 @@ async function main() {
 		["Il avance – doucement –, puis repart.", "Il avance –\u00a0doucement\u00a0–, puis repart."],
 		["- Une liste avec — une incise — dedans.\n`a—b` [a — b](https://example.org)\n```\na — b\n```", "- Une liste avec –\u00a0une incise\u00a0– dedans.\n`a—b` [a — b](https://example.org)\n```\na — b\n```"],
 		["Il avance – doucement.\r\n\r\nIl recule – lentement.", "Il avance –\u00a0doucement.\r\n\r\nIl recule –\u00a0lentement."],
-		["2019–2025, 10 – 20 km, 2 modèles, 3 minutes.", "2019–2025, 10 – 20\u00a0km, 2 modèles, 3 minutes."],
+		["2019–2025, 10 – 20 km, 2 modèles, 3 minutes.", "2019–2025, 10 – 20\u00a0km, 2 modèles, 3\u00a0minutes."],
 		["« Il dit : « bonjour » puis « au revoir ». »", "«\u00a0Il dit\u00a0: “bonjour” puis “au revoir”.\u00a0»"],
 		["😀 ««mot»» puis «autre».", "😀 «\u00a0“mot”\u00a0» puis «\u00a0autre\u00a0»."],
 		["« Une « citation « imbriquée »\ncontinue » ici. »", "«\u00a0Une “citation “imbriquée”\ncontinue” ici.\u00a0»"],
@@ -749,8 +802,62 @@ async function main() {
 	assert.equal(aiPlugin.saved!.mode, "none", "Reset n’est pas persisté");
 	assert.equal(aiPlugin.aiGroups.length, 0);
 	assert.equal(aiPlugin.grammalecteErrors.length, 0);
+	for (const model of ["gpt-test", "claude-test"]) {
+		aiPlugin.settings.aiModel = model;
+		let calls = 0;
+		let reply!: (value: unknown) => void;
+		requestHandler = () => { calls++; return new Promise(resolve => { reply = resolve; }); };
+		const stopped = aiPlugin.runOrthoTypoIA();
+		await waitFor(() => calls === 1);
+		const progress = noticeInstances.at(-1)!;
+		buttons.at(-1)!.click();
+		assert.equal(progress.hidden, true, "La croix ne ferme pas la progression IA");
+		reply({ status: 503, text: "Indisponible", json: { error: { message: "Indisponible" } } });
+		await stopped;
+		assert.equal(calls, 1, "Une correction IA arrêtée relance des appels API");
+		assert.equal(aiPlugin.aiGroups.length, 0, "Une correction IA arrêtée réaffiche ses suggestions");
+	}
 	assert.equal(sourceText, "Une fote.", "Reset applique ou annule une modification du texte");
 	process.stdout.write("Reset : menu conditionnel, surlignages et corrections effacés, requête annulée et relance concurrente vérifiés\n");
+	const noteA = sourceView.file, noteB = { path: "Dossier/Autre.md" };
+	const firstNoteView = { state: { doc: api.EditorState.create({ doc: sourceText }).doc, field: () => ({ file: noteA }) } } as unknown as EditorView;
+	const secondNoteView = { state: { doc: api.EditorState.create({ doc: "Autre texte." }).doc, field: () => ({ file: noteB }) } } as unknown as EditorView;
+	aiPlugin.settings.mode = "hinges";
+	aiPlugin.aiSourcePath = noteA.path;
+	const savedGroup = { id: 101, delFrom: 4, delTo: 8, delText: "fote", insText: "faute" };
+	aiPlugin.aiGroups = [savedGroup];
+	aiPlugin.grammalecteErrors = [{ nStart: 4, nEnd: 8, sRuleId: "test", sType: "orthographe", sMessage: "Faute", aSuggestions: [] }];
+	aiPlugin.getNoteAnalysis(firstNoteView);
+	await aiPlugin.changeAnalysisNote(noteB);
+	assert.equal(aiPlugin.settings.mode, "none", "Une nouvelle note hérite du mode précédent");
+	assert.equal(aiPlugin.aiGroups.length + aiPlugin.grammalecteErrors.length, 0);
+	assert.equal(aiPlugin.getNoteAnalysis(firstNoteView).aiGroups[0], savedGroup, "Le départ efface les corrections IA de l’ancienne note");
+	assert.equal(aiPlugin.getNoteAnalysis(firstNoteView).mode, "hinges", "Le départ efface le surlignage de l’ancienne note");
+	aiPlugin.settings.mode = "formes";
+	await aiPlugin.changeAnalysisNote(noteA);
+	assert.equal(aiPlugin.settings.mode, "hinges", "Le mode n’est pas restauré au retour");
+	assert.equal(aiPlugin.aiGroups[0], savedGroup);
+	assert.equal(aiPlugin.grammalecteErrors.length, 1);
+	aiPlugin.grammalecteErrors[0].sValue = "fote";
+	await aiPlugin.changeAnalysisNote(noteB);
+	await aiPlugin.addWordToGrammalecteDictionary("fote", firstNoteView);
+	assert.equal(aiPlugin.getNoteAnalysis(firstNoteView).grammalecteErrors.length, 0, "Le dictionnaire personnel efface les erreurs d’une autre note");
+	assert.equal(aiPlugin.settings.mode, "formes");
+	await aiPlugin.changeAnalysisNote(noteA);
+	aiPlugin.showModeMenu({});
+	await menuActions.get("Reset")!();
+	assert.equal(aiPlugin.getNoteAnalysis(firstNoteView).mode, "none", "Reset ne vide pas l’analyse de la note courante");
+	assert.equal(aiPlugin.getNoteAnalysis(secondNoteView).mode, "formes", "Reset efface aussi l’analyse d’une autre note");
+	let releaseNoteReply!: (value: unknown) => void;
+	requestHandler = () => new Promise(resolve => { releaseNoteReply = resolve; });
+	const departing = aiPlugin.runOrthoTypoIA();
+	await waitFor(() => Boolean(releaseNoteReply));
+	await aiPlugin.changeAnalysisNote(noteB);
+	await aiPlugin.changeAnalysisNote(noteA);
+	releaseNoteReply(correctedResponse);
+	await departing;
+	assert.equal(aiPlugin.aiGroups.length, 0, "Une réponse reçue après départ puis retour réactive une correction annulée");
+	process.stdout.write("Analyse par note : retour, isolation des modes et corrections, reset local et réponse tardive vérifiés\n");
 	let localStatus = 200;
 	let localReply: unknown = { choices: [{ message: { content: "Une faute Finition." } }] };
 	const localRequests: Array<{ path?: string; authorization?: string; body: unknown }> = [];
@@ -943,6 +1050,21 @@ async function main() {
 	assert.equal(sourceText, ternaryText);
 	assert.equal(statsPlugin.settings.analysisEngine, "finition-corrector");
 	assert.equal(statsPlugin.settings.debugMode, true);
+	Object.defineProperty(statsPlugin, "hasAnalysisResources", { value: true });
+	for (const command of ["runStatisticsReport", "runStructureReport"] as const) {
+		let release!: (categories: Record<string, string>) => void;
+		let waiting = false;
+		const engine = { getCategories: () => new Promise<Record<string, string>>(resolve => { waiting = true; release = resolve; }) };
+		Object.assign(statsPlugin, { ensureGrammalecteEngine: async () => engine, ensureSpellingEngine: async () => engine });
+		const before: number = notes.size, beforeOpen: number = opened.length;
+		const stopped = statsPlugin[command]();
+		await waitFor(() => waiting);
+		buttons.at(-1)!.click();
+		release({});
+		await stopped;
+		assert.equal(notes.size, before, `${command} crée une note après arrêt`);
+		assert.equal(opened.length, beforeOpen, `${command} ouvre une note après arrêt`);
+	}
 	process.stdout.write("Statistiques : 108 variables YAML, Unicode, dialogues, gzip stable, lemmes, blocs de répétitions, tricolons, note complète et collisions vérifiés\n");
 
 	let enumerationFailures = 0;
