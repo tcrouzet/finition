@@ -99,7 +99,7 @@ Avec Ollama ou un autre serveur compatible OpenAI, renseigner **Serveur local** 
 - **Corrections IA** relit la sélection, ou toute la note si rien n’est sélectionné, et marque les mots ou signes modifiés. Cliquer sur le rouge ou le vert accepte la correction. La poubelle refuse la suggestion et conserve le texte original.
 - **Synonymes IA**, dans le menu Dictionnaires, cherche des variantes adaptées au contexte de la sélection.
 
-L’œil en fin de paragraphe affiche un aperçu avec les corrections appliquées, sans modifier la note ni accepter les suggestions. Un second clic ou **Échap** ferme l’aperçu. Les corrections d’espaces et de retours à la ligne sont matérialisées par **·** et **¶**. Les sauts de ligne finaux sont conservés.
+L’œil dans la marge, en haut de chaque paragraphe corrigé, affiche un aperçu avec les corrections appliquées, sans modifier la note ni accepter les suggestions. Un second clic ou **Échap** ferme l’aperçu. Les corrections d’espaces et de retours à la ligne sont matérialisées par **·** et **¶**. Les sauts de ligne finaux sont conservés.
 
 Les validations et refus de corrections IA utilisent **Annuler/Rétablir** : `⌘Z` et `⌘⇧Z` sur Mac, `Ctrl+Z` et `Ctrl+Y` sur Windows. Annuler fait réapparaître la suggestion et restaure le texte. L’historique natif conserve au moins dix opérations, sans réduire l’historique habituel de la note.
 

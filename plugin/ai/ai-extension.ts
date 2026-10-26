@@ -18,7 +18,7 @@ import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetTy
 import { RangeSetBuilder, type Range, type Text } from "@codemirror/state";
 import { editorInfoField, setIcon } from "obsidian";
 import { applyCorrectionHistory, correctionHistory, resolveCorrection } from "./correction-history";
-import { closeParagraphPreview, paragraphPreview, paragraphPreviewDecorations, toggleParagraphPreview } from "./paragraph-preview";
+import { closeParagraphPreview, paragraphPreview } from "./paragraph-preview";
 import { whitespaceDisplay } from "./whitespace-display";
 
 export interface AIGroup {
@@ -96,7 +96,7 @@ function buildAIDecorations(groups: AIGroup[], document: Text): DecorationSet {
 			builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget("", g.id, "reject"), side: 2 }));
 		}
 	}
-	return builder.finish().update({ add: [...whitespace, ...paragraphPreviewDecorations(document, groups)], sort: true });
+	return builder.finish().update({ add: whitespace, sort: true });
 }
 
 export function finitionAIExtension(host: AIGroupHost) {
@@ -120,13 +120,6 @@ export function finitionAIExtension(host: AIGroupHost) {
 				this.handleClick = (event: Event) => {
 					if (!this.isSourceView()) return;
 					const target = event.target as HTMLElement | null;
-					const preview = target?.closest<HTMLElement>("[data-finition-ai-preview-from]");
-					if (preview?.dataset.finitionAiPreviewFrom !== undefined) {
-						toggleParagraphPreview(this.view, this.host.aiGroups, Number(preview.dataset.finitionAiPreviewFrom), Number(preview.dataset.finitionAiPreviewTo));
-						this.view.focus();
-						event.preventDefault();
-						return;
-					}
 					const marker = target?.closest<HTMLElement>("[data-finition-ai-group]");
 					if (!marker) return;
 					const id = Number(marker.dataset.finitionAiGroup);
