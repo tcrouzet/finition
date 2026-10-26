@@ -459,6 +459,11 @@ body.is-mobile .finition-synonyms-insert {
 	margin-left: 0.15em;
 }
 
+.finition-ai-busy .finition-ai-del, .finition-ai-busy .finition-ai-ins, .finition-ai-busy .finition-ai-reject {
+	cursor: wait;
+	pointer-events: none;
+}
+
 .finition-ai-reject, .finition-ai-preview-toggle {
 	display: inline-flex;
 	vertical-align: middle;

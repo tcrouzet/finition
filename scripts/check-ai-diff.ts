@@ -8,6 +8,8 @@ import { stripHTMLTags } from "../plugin/ai/annotations";
 const apply = (source: string, groups: DiffGroup[]) => [...groups].reverse().reduce((text, group) => text.slice(0, group.delFrom) + (group.insText ?? "") + text.slice(group.delTo), source);
 
 export function checkAIDiff(): void {
+	const linked = "Une fote. " + "mot ".repeat(700) + "[lien](https://example.org) " + "mot ".repeat(700) + "Une fote.";
+	assert.equal(apply(linked, protectLinks(linked).diff(linked.replace("[lien](https://example.org)", "lien").replaceAll("fote", "faute"))), linked.replaceAll("fote", "faute"), "Le comparateur perd les corrections d’un long tronçon contenant un lien");
 	for (const separator of ["\n\n", "\r\n\r\n", "\n \t\n", "\n\u00a0\n", "\n\u202f\n"]) {
 		const source = `«\u00a0Maman,${separator}«\u00a0Besoin de te voir.${separator}«\u00a0C’est difficile pour moi.\u00a0»${separator}«\u00a0T’en penses quoi\u00a0?\u00a0»`;
 		assert.equal(fixPunctuationSpacing(source), source, "Une ouverture de citation du paragraphe précédent transforme les suivantes en guillemets anglais");
@@ -126,6 +128,15 @@ export function checkAIDiff(): void {
 	assert.ok(longGroups.every(group => !/\p{L}/u.test(group.delText + (group.insText ?? ""))), "De nombreuses ponctuations dans un long paragraphe recolorent des mots intacts");
 	let seed = 173;
 	const next = (limit: number) => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed % limit; };
+	for (let sample = 0; sample < 20; sample++) {
+		const source = `Avant ${"mot ".repeat(700)}milieu ${"texte ".repeat(700)}après.`;
+		const revised = source.replace("Avant", "😀 Un commencement").replace("milieu", next(2) ? "" : "au centre").replace("après", "une conclusion entière");
+		const groups = diffToGroups(source, revised);
+		assert.equal(apply(source, groups), revised, "Le diff des longs tronçons perd une insertion, suppression ou position Unicode");
+		for (const group of groups) assert.equal(source.slice(group.delFrom, group.delTo), group.delText);
+	}
+	const rewritten = "source ".repeat(1200), replacement = "réécrit ".repeat(1200);
+	assert.equal(apply(rewritten, diffToGroups(rewritten, replacement)), replacement, "Le garde-fou du diff perd une réécriture complète");
 	const alphabet = ["mot", "a", "é", "e\u0301", "😀", "😃", " ", "\u00a0", ",", ";", "'", "’", "\n", "-", "1"];
 	for (let sample = 0; sample < 200; sample++) {
 		const tokens = Array.from({ length: 30 }, () => alphabet[next(alphabet.length)]);

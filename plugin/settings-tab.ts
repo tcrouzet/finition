@@ -921,6 +921,16 @@ export class FinitionSettingTab extends PluginSettingTab {
 	private displayRepetitions(containerEl: HTMLElement): void {
 		containerEl = this.section(containerEl, "Répétitions");
 		new Setting(containerEl)
+			.setName("Compteur des répétitions")
+			.setDesc("Nombre de mots surlignés ou pourcentage des mots analysés, mots-outils inclus dans le total.")
+			.addDropdown(dropdown => dropdown.addOption("count", "Nombre").addOption("percent", "Pourcentage")
+				.setValue(this.plugin.settings.repetitionCountDisplay)
+				.onChange(async value => {
+					this.plugin.settings.repetitionCountDisplay = value === "percent" ? "percent" : "count";
+					await this.plugin.saveSettings();
+					this.plugin.refreshAllEditors();
+				}));
+		new Setting(containerEl)
 			.setName("Empan de répétition (caractères)")
 			.setDesc("Deux occurrences du même lemme séparées de moins de cette distance sont considérées comme une répétition.")
 			.addText((text) => {
@@ -1141,7 +1151,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 			this.sectionDefinition("Corrections IA", ["Clé API Anthropic", "Clé API OpenAI", "Serveur local", "Modèle local", "Modèle Codex", "Modèle par défaut", "Identifiant du modèle personnalisé", "Taille des tronçons (caractères)", "Prompt enregistré", "Prompt de révision", "Modèle pour ce prompt", "Identifiant du modèle pour ce prompt", "Enregistrer sous ce nom"], container => this.displayAICorrections(container)),
 			this.sectionDefinition("Synonymes", ["Dictionnaire", "Finition", "Charger un dictionnaire", ...this.plugin.synonymDictionaryOptions.map(option => option.name)], container => this.displaySynonyms(container)),
 			...dictionaryCommands.map(kind => this.sectionDefinition(dictionaryLabels[kind], ["Dictionnaire", "Charger un dictionnaire", ...(this.plugin.wordDictionaries?.options.filter(option => option.kind === kind).map(option => option.name) ?? [])], container => this.displayWordDictionary(container, kind))),
-			this.sectionDefinition("Répétitions", ["Empan de répétition (caractères)", "Longueur minimale d'un mot (caractères)", "Mots-outils"], container => this.displayRepetitions(container)),
+			this.sectionDefinition("Répétitions", ["Compteur des répétitions", "Nombre", "Pourcentage", "Empan de répétition (caractères)", "Longueur minimale d'un mot (caractères)", "Mots-outils"], container => this.displayRepetitions(container)),
 			this.sectionDefinition("Cadence", ["Empan de cadence (caractères)", "Moteur de cadence"], container => this.displayCadence(container)),
 			this.sectionDefinition("Monotonie", ["Longueur minimale d'une série (en phrases)", "Tolérance (% de la longueur de phrase)"], container => this.displayMonotony(container)),
 			this.sectionDefinition("Palette", [], container => this.displayPalette(container)),

@@ -12,6 +12,10 @@ function blankMarkdownHeadings(text: string): string {
 	return text.replace(MARKDOWN_HEADING_RE, (line) => " ".repeat(line.length));
 }
 
+export function countRepetitionWords(text: string, lexicon: Map<string, string>): number {
+	return tokenize(blankMarkdownHeadings(text), lexicon).length;
+}
+
 /** Détecte les répétitions lexicales par lemme dans une fenêtre glissante de `span` caractères. */
 export function computeRepetitions(
 	text: string,

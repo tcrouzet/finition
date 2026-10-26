@@ -26,6 +26,7 @@ interface AnalysisSnapshot {
 	highlights: Array<Pick<Highlight, "from" | "to"> & { lemma?: string }>;
 	pending: boolean;
 	initialized: boolean;
+	wordCount?: number;
 }
 
 export class AnalysisNavigation {
@@ -70,12 +71,12 @@ export class AnalysisNavigation {
 		this.refresh();
 	}
 
-	update(view: EditorView, highlights: Highlight[], pending: boolean): void {
+	update(view: EditorView, highlights: Highlight[], pending: boolean, wordCount = 0): void {
 		if (this.disposed) return;
 		const previous = this.snapshots.get(view);
 		const mode = this.mode(view);
 		const initialized = previous?.initialized === true && previous.doc === view.state.doc && previous.mode === mode;
-		this.snapshots.set(view, { doc: view.state.doc, mode, highlights, pending, initialized });
+		this.snapshots.set(view, { doc: view.state.doc, mode, highlights, pending, initialized, wordCount });
 		this.refresh();
 	}
 
@@ -94,9 +95,12 @@ export class AnalysisNavigation {
 		const mode = snapshot?.mode ?? this.mode(view);
 		const enabled = this.analysisActive = !!view && mode !== "none" && mode !== "tic-ia";
 		const ready = snapshot && !snapshot.pending;
-		this.count.title = mode === "grammalecte" ? "Fautes Grammalecte" : "Occurrences surlignées";
+		const percent = mode === "repetition" && this.plugin.settings.repetitionCountDisplay === "percent";
+		this.count.title = percent && ready ? `${snapshot.highlights.length} mots répétés sur ${snapshot.wordCount ?? 0} mots analysés` : mode === "grammalecte" ? "Fautes Grammalecte" : "Occurrences surlignées";
 		this.count.hidden = !enabled;
-		this.count.setText(enabled ? ready ? String(snapshot.highlights.length) : "…" : "");
+		const total = snapshot?.wordCount ?? 0;
+		const value = percent && ready ? `${String(total ? Math.round(snapshot.highlights.length / total * 1000) / 10 : 0).replace(".", ",")} %` : String(snapshot?.highlights.length ?? 0);
+		this.count.setText(enabled ? ready ? value : "…" : "");
 		if (!enabled) { this.refreshDocuments(); return; }
 		for (const [button, label] of [[this.previous, mode === "grammalecte" ? "Faute précédente" : "Occurrence précédente"], [this.next, mode === "grammalecte" ? "Faute suivante" : "Occurrence suivante"]] as const) {
 			button.setAttribute("aria-label", label);

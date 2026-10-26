@@ -118,7 +118,7 @@ export function finitionAIExtension(host: AIGroupHost) {
 				this.decorations = this.sourceView ? buildAIDecorations(this.host.aiGroups, view.state.doc) : Decoration.none;
 
 				this.handleClick = (event: Event) => {
-					if (!this.isSourceView()) return;
+					if (!this.isSourceView() || this.view.state.readOnly) return;
 					const target = event.target as HTMLElement | null;
 					const marker = target?.closest<HTMLElement>("[data-finition-ai-group]");
 					if (!marker) return;

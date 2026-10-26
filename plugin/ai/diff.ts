@@ -24,6 +24,33 @@ function tokenize(text: string): string[] {
 	return text.match(/[\p{L}\p{M}\p{N}_]+|[^\p{L}\p{M}\p{N}_]+/gu) ?? [];
 }
 
+// Myers conserve les ancrages des longs tronçons sans table quadratique.
+function sparseDiff(a: string[], b: string[]): DiffOp[] | null {
+	const frontier = new Map<number, number>([[1, 0]]), trace: Map<number, number>[] = [];
+	let work = 0;
+	for (let depth = 0; depth <= Math.min(a.length + b.length, 512); depth++) {
+		trace.push(new Map(frontier));
+		for (let diagonal = -depth; diagonal <= depth; diagonal += 2) {
+			let x = diagonal === -depth || diagonal !== depth && (frontier.get(diagonal - 1) ?? -1) < (frontier.get(diagonal + 1) ?? -1)
+				? frontier.get(diagonal + 1) ?? 0 : (frontier.get(diagonal - 1) ?? 0) + 1;
+			let y = x - diagonal;
+			while (x < a.length && y < b.length && a[x] === b[y]) { x++; y++; if (++work > 4_000_000) return null; }
+			frontier.set(diagonal, x);
+			if (x < a.length || y < b.length) continue;
+			const ops: DiffOp[] = [];
+			for (let d = depth; d >= 0; d--) {
+				const previous = trace[d], k = x - y;
+				const previousK = k === -d || k !== d && (previous.get(k - 1) ?? -1) < (previous.get(k + 1) ?? -1) ? k + 1 : k - 1;
+				const previousX = previous.get(previousK) ?? 0, previousY = previousX - previousK;
+				while (x > previousX && y > previousY) { ops.push({ op: "equal", text: a[--x] }); y--; }
+				if (d > 0) ops.push(x === previousX ? { op: "ins", text: b[--y] } : { op: "del", text: a[--x] });
+			}
+			return ops.reverse();
+		}
+	}
+	return null;
+}
+
 /** Diff mot-à-mot (LCS classique) entre deux textes déjà tokenisés. */
 function wordDiff(original: string, revised: string): DiffOp[] {
 	const a = tokenize(original);
@@ -63,7 +90,7 @@ function wordDiff(original: string, revised: string): DiffOp[] {
 	// on retombe sur un remplacement en bloc (toujours correct, juste
 	// moins fin visuellement).
 	if (n * m > 4_000_000) {
-		return [
+		return sparseDiff(a, b) ?? [
 			{ op: "del", text: original },
 			{ op: "ins", text: revised },
 		];

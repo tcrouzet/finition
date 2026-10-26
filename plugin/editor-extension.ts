@@ -13,7 +13,7 @@ import type { Range } from "@codemirror/state";
 import { Notice } from "obsidian";
 import { FinitionMode, FinitionRuntime, Highlight } from "./types";
 import type { NoteAnalysis } from "./note-analysis";
-import { computeRepetitions } from "./modes/repetition";
+import { computeRepetitions, countRepetitionWords } from "./modes/repetition";
 import { computeHedgingHighlights } from "./modes/hedging";
 import { computeStereotypeHighlights } from "./modes/stereotype";
 import { computeBurstinessHighlights } from "./modes/burstiness";
@@ -163,7 +163,7 @@ function buildDecorations(view: EditorView, runtime: FinitionRuntime, focusedLem
 	}
 
 	highlights.sort((a, b) => a.from - b.from);
-	runtime.updateAnalysisHighlights(view, focusedLemma === null ? highlights : highlights.filter(highlight => highlight.lemma === focusedLemma), pending);
+	runtime.updateAnalysisHighlights(view, focusedLemma === null ? highlights : highlights.filter(highlight => highlight.lemma === focusedLemma), pending, mode === "repetition" ? countRepetitionWords(text, runtime.lexicon) : undefined);
 	const decorations: Range<Decoration>[] = [];
 	let firstProtected = 0;
 	for (const highlight of highlights) {

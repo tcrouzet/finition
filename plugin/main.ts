@@ -14,6 +14,7 @@
 import { FileSystemAdapter, Menu, MarkdownView, Notice, Plugin, setIcon } from "obsidian";
 import type { TFile } from "obsidian";
 import { EditorView } from "@codemirror/view";
+import { lockAINote } from "./ai/note-lock";
 import {
 	addWordToDictionaryText,
 	BUILTIN_PROMPTS,
@@ -134,6 +135,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	private finitionCorrectorEngine: FinitionCorrectorEngine | null = null;
 	private spellingRequest = 0;
 	private pendingCorrectionRequest: number | null = null;
+	private unlockAINote: (() => void) | null = null;
 	private analysisProgress: { notice: Notice; view: MarkdownView | null; mode?: FinitionMode } | null = null;
 	private linguisticResources: LinguisticResources | null = null;
 	private neuralModels: NeuralModels | null = null;
@@ -241,6 +243,9 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	onunload(): void {
+		this.spellingRequest++;
+		this.unlockAINote?.();
+		this.unlockAINote = null;
 		closeGrammalectePopup();
 		cancelSynonyms();
 		cancelCodex();
@@ -265,6 +270,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.settings.localAIServer = typeof this.settings.localAIServer === "string" ? this.settings.localAIServer.trim() : "";
 		this.settings.localAIModel = typeof this.settings.localAIModel === "string" ? this.settings.localAIModel.trim() : "";
 		if (!["none", "words", "characters", "both"].includes(this.settings.documentCountDisplay)) this.settings.documentCountDisplay = "none";
+		if (this.settings.repetitionCountDisplay !== "percent") this.settings.repetitionCountDisplay = "count";
 		this.settings.hideBacklinksCount = this.settings.hideBacklinksCount === true;
 		this.settings.singleNoteOpen = this.settings.singleNoteOpen === true;
 		this.settings.showLeftSidebarToggle = this.settings.showLeftSidebarToggle !== false;
@@ -510,8 +516,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.documentCountEl.setText(values.join(" · "));
 	}
 
-	updateAnalysisHighlights(view: EditorView, highlights: Highlight[], pending: boolean): void {
-		this.analysisNavigation?.update(view, highlights, pending);
+	updateAnalysisHighlights(view: EditorView, highlights: Highlight[], pending: boolean, wordCount?: number): void {
+		this.analysisNavigation?.update(view, highlights, pending, wordCount);
 		const progress = this.analysisProgress;
 		if (!pending && progress?.mode === this.settings.mode && (progress.view?.editor as { cm?: EditorView } | undefined)?.cm === view) this.finishAnalysisProgress(progress.notice);
 	}
@@ -597,6 +603,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	private cancelPendingAnalysis(): number {
+		this.unlockAINote?.();
+		this.unlockAINote = null;
 		closeGrammalectePopup();
 		cancelSynonyms();
 		cancelCodex();
@@ -774,6 +782,13 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		let modelName = aiModelName(connection);
 		const progress = this.startAnalysisProgress(`Corrections IA · ${modelName}`, view);
 		const errors: string[] = [];
+		let unlock: (() => void) | undefined;
+		const isCurrent = () => {
+			if (request !== this.spellingRequest || this.app.workspace.getActiveViewOfType(MarkdownView) !== view) return false;
+			if (document === editor.getValue()) return true;
+			new Notice("Corrections IA : le texte a changé, l’analyse a été interrompue. Relance-la pour traiter toute la note.", 8000);
+			return false;
+		};
 
 		// try/finally : si quoi que ce soit plante de façon inattendue (pas
 		// seulement les erreurs API déjà gérées une par une plus bas), la
@@ -781,10 +796,14 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		// s'affiche, au lieu de laisser croire que le plugin est resté bloqué.
 		try {
 			await reset;
+			if (request !== this.spellingRequest) return;
+			const cm = (editor as { cm?: EditorView }).cm;
+			unlock = cm ? lockAINote(cm) : undefined;
+			this.unlockAINote = unlock ?? null;
 			for (let i = 0; i < chunks.length; i++) {
-				if (request !== this.spellingRequest || document !== editor.getValue() || this.app.workspace.getActiveViewOfType(MarkdownView) !== view) return;
+				if (!isCurrent()) return;
 				const chunk = chunks[i];
-				const reportProgress = () => progress.setMessage(`Corrections IA · ${modelName} : tronçon ${i + 1}/${chunks.length}…`);
+				const reportProgress = () => progress.setMessage(`Corrections IA · ${modelName} : tronçon ${i + 1}/${chunks.length}… Note verrouillée.`);
 				reportProgress();
 				if (chunk.text.trim().length === 0) continue;
 				const reviseChunk = connection.provider === "codex" ? reviseChunkWithCodex : connection.provider === "openai" ? reviseChunkWithRetryOpenAI : reviseChunkWithRetryAnthropic;
@@ -797,7 +816,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 					isCancelled: () => request !== this.spellingRequest,
 					onModel: model => { modelName = `Codex · ${model}`; if (request === this.spellingRequest) reportProgress(); },
 				});
-				if (request !== this.spellingRequest || document !== editor.getValue() || this.app.workspace.getActiveViewOfType(MarkdownView) !== view) return;
+				if (!isCurrent()) return;
 				if (error) {
 					// Échec sur ce tronçon : on garde le texte d'origine (pas de
 					// fausse correction), mais on prévient — plutôt que de laisser
@@ -824,6 +843,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			if (request !== this.spellingRequest) return;
 			errors.push(`Erreur inattendue : ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
+			if (this.unlockAINote === unlock) this.unlockAINote = null;
+			unlock?.();
 			if (this.pendingCorrectionRequest === request) this.pendingCorrectionRequest = null;
 			this.finishAnalysisProgress(progress);
 		}

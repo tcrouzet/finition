@@ -129,6 +129,16 @@ export async function checkDocumentNavigation(Navigation: typeof AnalysisNavigat
 		forward.dispatchEvent(new Event("click"));
 		assert.equal(editor.state.selection.main.head, 10, `${mode} : un groupe isolé ne doit pas rejoindre une autre catégorie`);
 	}
+	plugin.settings.mode = "repetition";
+	plugin.settings.repetitionCountDisplay = "percent";
+	navigation.update(view, marks, false, 7);
+	assert.equal(count.textContent, "42,9 %", "Le compteur des répétitions ne rapporte pas les mots répétés au total");
+	assert.equal(count.title, "3 mots répétés sur 7 mots analysés");
+	navigation.update(view, [], false, 0);
+	assert.equal(count.textContent, "0 %", "Le pourcentage d’une note vide est invalide");
+	plugin.settings.repetitionCountDisplay = "count";
+	navigation.update(view, marks, false, 7);
+	assert.equal(count.textContent, "3", "Le choix Nombre ne restaure pas le compteur habituel");
 	editor.dispatch({ selection: { anchor: 12 } });
 	plugin.settings.mode = "none";
 	navigation.updateGrammalecte(view, marks);

@@ -104,6 +104,7 @@ export interface FinitionSettings {
 	// même répété (ex. "et", "ou", "si"...). Par défaut 2 : seuls les mots
 	// d'au moins 3 lettres sont pris en compte.
 	repetitionMinLength: number;
+	repetitionCountDisplay: "count" | "percent";
 	debounceMs: number;
 	maxDocumentLength: number; // garde-fou perf
 	// Liste de mots-outils éditée par l'utilisateur, séparés par espace
@@ -251,6 +252,7 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	debugMode: false,
 	span: 1500,
 	repetitionMinLength: 2,
+	repetitionCountDisplay: "count",
 	debounceMs: 300,
 	maxDocumentLength: 200_000,
 	customStopWords: null,
@@ -343,7 +345,7 @@ export function addWordToDictionaryText(raw: string, word: string): string {
  */
 export interface FinitionRuntime {
 	getNoteAnalysis?: (view: import("@codemirror/view").EditorView, update?: import("@codemirror/view").ViewUpdate) => import("./note-analysis").NoteAnalysis;
-	updateAnalysisHighlights: (view: import("@codemirror/view").EditorView, highlights: Highlight[], pending: boolean) => void;
+	updateAnalysisHighlights: (view: import("@codemirror/view").EditorView, highlights: Highlight[], pending: boolean, wordCount?: number) => void;
 	updateTicIAStats: (view: import("@codemirror/view").EditorView, tagged: number, total: number, pending: boolean) => void;
 	settings: FinitionSettings;
 	lexicon: Map<string, string>;

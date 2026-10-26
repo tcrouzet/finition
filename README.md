@@ -22,7 +22,7 @@ Pour commencer avec les répétitions, ouvrir **Réglages → Finition → Corre
 
 Ouvrir **♫ → Surlignages** et choisir ce que l’on veut observer :
 
-- **Répétitions** retrouve les mots qui reviennent à proximité, y compris sous leurs formes conjuguées ou accordées. Chaque groupe reçoit sa couleur.
+- **Répétitions** retrouve les mots qui reviennent à proximité, y compris sous leurs formes conjuguées ou accordées. Chaque groupe reçoit sa couleur. Dans les réglages **Répétitions**, le compteur peut afficher leur nombre ou leur pourcentage parmi les mots analysés.
 - **Atténuations** fait ressortir les précautions de langage : « il semblerait que », « dans une certaine mesure »…
 - **Stéréotypes** repère les clichés et lieux communs, comme « serrer les poings ».
 - **Monotonies** révèle les suites de phrases de longueur proche.
@@ -100,6 +100,8 @@ Avec Ollama ou un autre serveur compatible OpenAI, renseigner **Serveur local** 
 - **Synonymes IA**, dans le menu Dictionnaires, cherche des variantes adaptées au contexte de la sélection.
 
 L’œil dans la marge, en haut de chaque paragraphe corrigé, affiche un aperçu avec les corrections appliquées, sans modifier la note ni accepter les suggestions. Un second clic ou **Échap** ferme l’aperçu. Les corrections d’espaces et de retours à la ligne sont matérialisées par **·** et **¶**. Les sauts de ligne finaux sont conservés.
+
+Pendant l’analyse IA, la note reste en lecture seule et les corrections attendent la fin du traitement pour pouvoir être acceptées ou refusées. La croix de la notification arrête l’analyse et déverrouille immédiatement la note.
 
 Les validations et refus de corrections IA utilisent **Annuler/Rétablir** : `⌘Z` et `⌘⇧Z` sur Mac, `Ctrl+Z` et `Ctrl+Y` sur Windows. Annuler fait réapparaître la suggestion et restaure le texte. L’historique natif conserve au moins dix opérations, sans réduire l’historique habituel de la note.
 

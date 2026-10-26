@@ -26,6 +26,16 @@ export async function checkMarkdownExclusions(): Promise<void> {
 		});
 		assert.equal(decorationCount, 2, "La phrase doit rester surlignée de part et d’autre du tag");
 	} finally { instance.destroy(); }
+	const repeatedText = "---\ntitle: chat chat\n---\n# chat chat\n\nLe chat dort, le chat rêve. #chat\n\nSuite exclue.";
+	let repetitionWords = 0;
+	Object.assign(runtime, { settings: { ...DEFAULT_SETTINGS, mode: "repetition", maxDocumentLength: repeatedText.indexOf(" #chat") }, lexicon: new Map([["chat", "chat"]]), functionWords: new Set(["le"]),
+		updateAnalysisHighlights(_view: EditorView, highlights: Highlight[], _pending: boolean, wordCount?: number) { logical = highlights; repetitionWords = wordCount ?? 0; } });
+	const repetitionView = { state: EditorState.create({ doc: repeatedText }), dom: new EventTarget() } as unknown as EditorView;
+	const repetitionInstance = factory.create(repetitionView);
+	try {
+		assert.equal(logical.length, 2, "Le numérateur du pourcentage perd les occurrences répétées");
+		assert.equal(repetitionWords, 6, "Le dénominateur doit inclure les mots-outils et exclure YAML, titres, tags et texte non analysé");
+	} finally { repetitionInstance.destroy(); }
 	const source = "\ufeff---\r\ntitle: secret!\r\ntags: [#école/🌿]\r\n...\r\n😀 Une fote #cachée/🌿.\r\nUne fote.";
 	const body = source.indexOf("😀");
 	const tokens = tokenize(source, new Map());

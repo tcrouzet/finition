@@ -45,6 +45,7 @@ async function main() {
 	import { checkAICorrections, checkAICorrectionLayout } from "./scripts/check-ai-corrections";
 	import { checkAIHistory } from "./scripts/check-ai-history";
 	import { checkAIPreview } from "./scripts/check-ai-preview";
+	import { checkAINoteLock } from "./scripts/check-ai-note-lock";
 	import { checkCorrectionGutter } from "./scripts/check-correction-gutter";
 	import { checkSynonyms } from "./scripts/check-synonyms";
 	import { checkLocalSynonyms } from "./scripts/check-local-synonyms";
@@ -94,6 +95,7 @@ async function main() {
 	    checkAICorrections();
 	    checkAIHistory();
 	    await checkAIPreview();
+	    checkAINoteLock();
 	    await checkAICorrectionLayout();
 	    await checkCorrectionGutter();
 	    await checkPromptModels(ReleasedPlugin);

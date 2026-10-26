@@ -694,6 +694,18 @@ async function main() {
 		assert.equal(calls, 0, "Une note vide est envoyée à l’IA");
 		assert.equal(aiPlugin.aiGroups.length, 0);
 	}
+	for (const model of ["gpt-test", "claude-test"]) {
+		aiPlugin.settings.aiModel = model; aiPlugin.settings.aiChunkSize = 5000;
+		sourceText = "Une fote. " + "mot ".repeat(700) + "[lien](https://example.org) " + "mot ".repeat(700) + "Une fote.";
+		aiFrom = aiTo = sourceText.length;
+		requestHandler = request => {
+			const body = JSON.parse(request.body) as { messages: Array<{ content: string }> };
+			const text = body.messages.at(-1)!.content.replaceAll("fote", "faute");
+			return { status: 200, json: { choices: [{ message: { content: text } }], content: [{ type: "text", text }] } };
+		};
+		await aiPlugin.runOrthoTypoIA();
+		assert.equal(apply(sourceText, aiPlugin.aiGroups), sourceText.replaceAll("fote", "faute"), "Une analyse de note entière perd les corrections autour d’un lien dans un long paragraphe");
+	}
 	sourceText = "J’ai des mots."; aiFrom = 0; aiTo = undefined;
 	aiPlugin.settings.aiModel = "gpt-test";
 	aiPlugin.settings.aiChunkSize = 1000;
@@ -737,6 +749,7 @@ async function main() {
 	};
 	await aiPlugin.runOrthoTypoIA();
 	assert.equal(notes.size, 2, "Une analyse périmée crée une note Debug");
+	assert.ok(notices.some(message => message.includes("le texte a changé")), "Une modification du texte arrête silencieusement l’analyse IA");
 	requestHandler = () => ({ status: 200, json: { content: [{ type: "text", text: sourceText }] } });
 	failWrite = true;
 	await aiPlugin.runOrthoTypoIA();
