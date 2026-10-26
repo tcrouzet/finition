@@ -65,7 +65,7 @@ Le modèle public **CamemBERT** se charge dans les réglages. Des modèles perso
 
 **Ponctuations** harmonise les espaces insécables, les apostrophes, les tirets et les lignes vides, y compris les espaces entre un nombre et son unité. Elle remplace `...` par `…`. Une fin de paragraphe clôt implicitement le suivi des guillemets. Le code, les liens et les horaires sont préservés.
 
-Cette commande modifie directement toute la note, sans étape de validation.
+Cette commande apparaît en tête des correcteurs dans le menu ♫ et traite toute la note. Par défaut, elle affiche les corrections à accepter ou refuser une par une, avec le même aperçu que les autres corrections. Pour tout appliquer immédiatement, activer **Réglages → Finition → Ponctuation → Ponctuation validée automatiquement**.
 
 ## Dictionnaires
 

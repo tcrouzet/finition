@@ -32,6 +32,7 @@ import { finitionEditorExtension } from "./editor-extension";
 import { FinitionSettingTab } from "./settings-tab";
 import { finitionAIExtension, AIGroup } from "./ai/ai-extension";
 import { resetCorrectionHistory } from "./ai/correction-history";
+import { diffToGroups } from "./ai/diff";
 import { splitIntoChunks } from "./ai/chunk";
 import { protectLinks } from "./ai/protected-links";
 import { hasResponseText } from "./ai/clean";
@@ -116,6 +117,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	// uniquement en mémoire, jamais persistées : elles ne modifient le
 	// document que lorsque l'utilisateur clique dessus (voir ai-extension.ts).
 	private noteAnalyses = new NoteAnalyses();
+	private get correctionSource(): NoteAnalysis["correctionSource"] { return this.noteAnalyses.current.correctionSource; }
+	private set correctionSource(value: NoteAnalysis["correctionSource"]) { this.noteAnalyses.current.correctionSource = value; }
 	get aiGroups(): AIGroup[] { return this.noteAnalyses.current.aiGroups; }
 	set aiGroups(value: AIGroup[]) { this.noteAnalyses.current.aiGroups = value; }
 	get aiGroupsVersion(): number { return this.noteAnalyses.current.aiGroupsVersion; }
@@ -271,6 +274,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.settings.localAIModel = typeof this.settings.localAIModel === "string" ? this.settings.localAIModel.trim() : "";
 		if (!["none", "words", "characters", "both"].includes(this.settings.documentCountDisplay)) this.settings.documentCountDisplay = "none";
 		if (this.settings.repetitionCountDisplay !== "percent") this.settings.repetitionCountDisplay = "count";
+		this.settings.punctuationAutoApply = this.settings.punctuationAutoApply === true;
 		this.settings.hideBacklinksCount = this.settings.hideBacklinksCount === true;
 		this.settings.singleNoteOpen = this.settings.singleNoteOpen === true;
 		this.settings.showLeftSidebarToggle = this.settings.showLeftSidebarToggle !== false;
@@ -665,6 +669,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 		menu.addSeparator();
 
+		menu.addItem(item => item.setTitle("Ponctuations").setIcon("quote")
+			.setChecked(this.aiGroups.length > 0 && this.correctionSource === "punctuation")
+			.onClick(() => this.runPunctuationFix()));
+
 		for (const engine of resourceEngines) {
 			const installed = this.isLinguisticEngineInstalled(engine);
 			menu.addItem(item => item
@@ -679,14 +687,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			item
 				.setTitle("Corrections IA")
 				.setIcon("bot")
-				.setChecked(this.aiGroups.length > 0)
+				.setChecked(this.aiGroups.length > 0 && this.correctionSource !== "punctuation")
 				.onClick(() => this.toggleOrthoTypoIA())
-		);
-		menu.addItem((item) =>
-			item
-				.setTitle("Ponctuations")
-				.setIcon("quote")
-				.onClick(() => this.runPunctuationFix())
 		);
 
 		if (this.settings.debugMode) menu.addItem((item) =>
@@ -743,7 +745,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	 * sinon, lance une nouvelle analyse (coché).
 	 */
 	private async toggleOrthoTypoIA(): Promise<void> {
-		if (this.aiGroups.length > 0) {
+		if (this.aiGroups.length > 0 && this.correctionSource !== "punctuation") {
 			await this.resetAnalysis();
 			return;
 		}
@@ -768,6 +770,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		const document = editor.getValue();
 
 		this.aiSourcePath = view.file?.path ?? null;
+		this.correctionSource = "ai";
 		const selectionFrom = selected ? editor.posToOffset(editor.getCursor("from")) : 0;
 		const original = selected ? editor.getSelection() : document;
 		const chunks = splitIntoChunks(original, this.settings.aiChunkSize);
@@ -863,27 +866,32 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		}
 	}
 
-	/**
-	 * Corrige instantanément les espaces insécables et tirets de la
-	 * sélection (règles déterministes, voir punctuation.ts) : contrairement
-	 * à Corrections IA, pas de validation au cas par cas, le document est
-	 * modifié directement.
-	 */
-	/**
-	 * Applique toutes les règles de Ponctuation (espaces, tirets, apostrophes,
-	 * sauts de ligne) à TOUTE la note, sans condition de sélection — limiter
-	 * ces règles objectives à une sélection n'avait pas d'intérêt pratique.
-	 */
-	private runPunctuationFix(): void {
+	/** Calcule la ponctuation sur toute la note, avec validation selon le réglage. */
+	private async runPunctuationFix(): Promise<void> {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) return;
 		const editor = view.editor;
-
+		const automatically = this.settings.punctuationAutoApply;
+		if (!automatically && this.correctionSource === "punctuation" && this.aiGroups.length) {
+			await this.resetAnalysis();
+			return;
+		}
 		const original = editor.getValue();
+		const reset = this.resetAnalysis(), request = this.spellingRequest;
+		await reset;
+		if (request !== this.spellingRequest || this.app.workspace.getActiveViewOfType(MarkdownView) !== view || editor.getValue() !== original) return;
 		let fixed = fixPunctuationSpacing(original);
 		fixed = fixBlankLinesProtected(fixed);
 
-		if (fixed !== original) {
+		if (fixed !== original && !automatically) {
+			this.aiSourcePath = view.file?.path ?? null;
+			this.correctionSource = "punctuation";
+			this.aiGroups = diffToGroups(original, fixed).map(group => ({ ...group, id: this.nextAiGroupId++ }));
+			this.aiGroupsVersion++;
+			this.updateStatusBarIcon();
+			this.refreshAllEditors();
+			new Notice(`Ponctuation : ${this.aiGroups.length} correction(s) à valider.`);
+		} else if (fixed !== original) {
 			const selections = editor.listSelections();
 			const scroll = editor.getScrollInfo();
 			editor.setValue(fixed);
@@ -1475,6 +1483,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		resetCorrectionHistory(this.noteAnalyses.current);
 		this.aiGroups = [];
 		this.aiSourcePath = null;
+		this.correctionSource = null;
 		this.aiGroupsVersion++;
 		this.refreshAllEditors();
 	}

@@ -72,6 +72,7 @@ async function main() {
 	}
 	const menuTitles: string[] = [];
 	const menuDisabled = new Map<string, boolean>();
+	const menuChecked = new Map<string, boolean>();
 	const menuParents = new Map<string, string>();
 	const menuActions = new Map<string, () => void | Promise<void>>();
 	class MarkdownView {}
@@ -89,7 +90,7 @@ async function main() {
 			const item = {
 				setTitle(value: string) { title = value; menuTitles.push(value); menuParents.set(value, parent); return this; },
 				setSubmenu() { return new Menu(title); },
-				setIcon() { return this; }, setChecked() { return this; }, setDisabled(value: boolean) { menuDisabled.set(menuTitles[menuTitles.length - 1], value); return this; }, onClick(callback: () => void | Promise<void>) { menuActions.set(title, callback); return this; },
+				setIcon() { return this; }, setChecked(value: boolean) { menuChecked.set(title, value); return this; }, setDisabled(value: boolean) { menuDisabled.set(menuTitles[menuTitles.length - 1], value); return this; }, onClick(callback: () => void | Promise<void>) { menuActions.set(title, callback); return this; },
 			};
 			callback(item);
 		}
@@ -158,6 +159,7 @@ async function main() {
 			aiGroups: DiffGroup[];
 			grammalecteErrors: import("../plugin/modes/grammalecte").GrammalecteError[];
 			aiSourcePath: string | null;
+			correctionSource: "ai" | "punctuation" | null;
 			getNoteAnalysis: (view: EditorView, update?: ViewUpdate) => import("../plugin/note-analysis").NoteAnalysis;
 			changeAnalysisNote: (file: unknown) => Promise<void>;
 			addWordToGrammalecteDictionary: (word: string, view?: EditorView) => Promise<void>;
@@ -359,7 +361,7 @@ async function main() {
 	assert.ok(menuTitles.includes("Tricolons") && !menuTitles.includes("Structure"));
 	assert.equal(menuDisabled.get("Tricolons"), true);
 	assert.ok(menuTitles.includes("Synonymes IA"));
-	assert.deepEqual(menuTitles.filter(title => !menuParents.get(title)), ["Surlignages", "Dictionnaires", "Grammalecte", "Neuronal", "Corrections IA", "Ponctuations", "Paramètres", "Reset"]);
+	assert.deepEqual(menuTitles.filter(title => !menuParents.get(title)), ["Surlignages", "Dictionnaires", "Ponctuations", "Grammalecte", "Neuronal", "Corrections IA", "Paramètres", "Reset"]);
 	assert.ok(!menuTitles.includes("Statistiques"));
 	assert.deepEqual(menuTitles.filter(title => menuParents.get(title) === "Surlignages"), ["Répétitions", "Atténuations", "Stéréotypes", "Monotonies", "Tricolons", "Cadences", "Charnières", "Formes", "Copules"]);
 	assert.equal(menuDisabled.get("Copules"), true, "Copules doit demander le lexique");
@@ -532,17 +534,20 @@ async function main() {
 	});
 	const punctuationPlugin = new productionModule.exports.default();
 	await punctuationPlugin.loadSettings();
+	assert.equal(punctuationPlugin.settings.punctuationAutoApply, false, "La ponctuation doit proposer ses corrections par défaut");
+	punctuationPlugin.settings.punctuationAutoApply = true;
 	let punctuationNote = "– Bonjour! Oui? Il dit: «bonjour»; 40 Mo. Il avance — doucement —. Il recule — lentement — puis repart.";
 	const expectedPunctuationNote = "—\u00a0Bonjour\u00a0! Oui\u00a0? Il dit\u00a0: «\u00a0bonjour\u00a0»\u00a0; 40\u00a0Mo. Il avance –\u00a0doucement. Il recule –\u00a0lentement\u00a0– puis repart.";
 	const punctuationCursor = { line: 0, ch: 5 };
 	let punctuationSelections = [{ anchor: { line: 0, ch: 12 }, head: punctuationCursor }];
 	let punctuationScroll = { top: 480, left: 12 };
-	Object.assign(punctuationPlugin.app.workspace, { getActiveViewOfType: () => ({ editor: {
+	const punctuationView = { file: { path: "ponctuation.md" }, editor: {
 		getValue: () => punctuationNote, setValue: (value: string) => { punctuationNote = value; punctuationSelections = []; punctuationScroll = { top: 0, left: 0 }; },
 		getCursor: () => punctuationCursor, setCursor: (value: unknown) => assert.equal(value, punctuationCursor),
 		listSelections: () => punctuationSelections, setSelections: (value: typeof punctuationSelections) => { punctuationSelections = value; },
 		getScrollInfo: () => punctuationScroll, scrollTo: (left: number, top: number) => { punctuationScroll = { left, top }; },
-	} }) });
+	} };
+	Object.assign(punctuationPlugin.app.workspace, { getActiveViewOfType: () => punctuationView, iterateAllLeaves() {} });
 	punctuationPlugin.showModeMenu({});
 	const punctuationAction = menuActions.get("Ponctuations");
 	assert.ok(punctuationAction, "La commande Ponctuations est absente du menu compilé");
@@ -554,6 +559,20 @@ async function main() {
 	await punctuationAction();
 	assert.equal(punctuationNote, expectedPunctuationNote);
 	assert.equal(notices.at(-1), "Ponctuation : rien à corriger.");
+	punctuationPlugin.settings.punctuationAutoApply = false;
+	punctuationNote = "Attends... 27 ans!\n\n\nSuite.";
+	const originalPunctuation = punctuationNote;
+	await punctuationAction();
+	assert.equal(punctuationNote, originalPunctuation, "La ponctuation non automatique modifie la note avant validation");
+	assert.equal(apply(punctuationNote, punctuationPlugin.aiGroups), "Attends… 27\u00a0ans\u00a0!\n\nSuite.", "Les propositions de ponctuation ne reconstituent pas la correction complète");
+	assert.equal(punctuationPlugin.aiSourcePath, punctuationView.file.path);
+	assert.equal(punctuationPlugin.correctionSource, "punctuation");
+	punctuationPlugin.showModeMenu({});
+	assert.equal(menuChecked.get("Ponctuations"), true, "La ponctuation à valider n’est pas cochée");
+	assert.equal(menuChecked.get("Corrections IA"), false, "Les propositions de ponctuation cochent le correcteur IA");
+	await punctuationAction();
+	assert.equal(punctuationPlugin.aiGroups.length, 0, "Un second clic ne retire pas les propositions de ponctuation");
+	assert.equal(punctuationNote, originalPunctuation, "Retirer les propositions applique la ponctuation");
 	process.stdout.write("Ponctuations : menu de main.js, caractères U+00A0, tirets, point fermant et second clic vérifiés\n");
 	for (const link of ["[signal](https://example.org/signal)", "https://example.org/signal", "![signal](signal.png)", "[[Note|signal]]", "<a href='https://example.org/signal'>signal</a>", "<signal@example.org>", "[signal][ref]\n\n[ref]: https://example.org/signal"]) {
 		const text = `😀 signal ${link}\n\nsignal`;

@@ -283,6 +283,16 @@ export class FinitionSettingTab extends PluginSettingTab {
 		loader.descEl.createEl("a", { text: "Lexique au format Finition", href: lexiconDocumentation, attr: { target: "_blank", rel: "noopener noreferrer" } });
 		loader.settingEl.appendChild(loader.descEl);
 	}
+	private displayPunctuation(containerEl: HTMLElement): void {
+		containerEl = this.section(containerEl, "Ponctuation");
+		new Setting(containerEl).setName("Ponctuation validée automatiquement")
+			.setDesc("Activé : applique toutes les corrections. Désactivé : propose chaque correction à accepter ou refuser.")
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.punctuationAutoApply).onChange(async value => {
+				this.plugin.settings.punctuationAutoApply = value;
+				await this.plugin.saveSettings();
+			}));
+	}
+
 	private displayCorrections(containerEl: HTMLElement): void {
 		containerEl = this.section(containerEl, "Corrections");
 		const installed = resourceEngines.filter(engine => this.plugin.isLinguisticEngineInstalled(engine));
@@ -1147,6 +1157,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 	getSettingDefinitions(): SettingDefinitionRender[] {
 		return [
 			...this.generalDefinitions(),
+			this.sectionDefinition("Ponctuation", ["Ponctuation validée automatiquement", "Validation", "Automatique"], container => this.displayPunctuation(container)),
 			this.sectionDefinition("Corrections", ["Lexique", "Charger un lexique", ...(this.plugin.lexiconDictionaries?.options.map(option => option.name) ?? []), "Dictionnaire Finition", "Moteur d’analyse", "Neuronal", "Structure", "Tricolons", "Grammalecte", "Correcteur neuronal par défaut", "CamemBERT", "Charger un modèle neuronal", "Dictionnaire personnel", ...this.plugin.neuralModelOptions.map(option => option.name)], container => this.displayCorrections(container)),
 			this.sectionDefinition("Corrections IA", ["Clé API Anthropic", "Clé API OpenAI", "Serveur local", "Modèle local", "Modèle Codex", "Modèle par défaut", "Identifiant du modèle personnalisé", "Taille des tronçons (caractères)", "Prompt enregistré", "Prompt de révision", "Modèle pour ce prompt", "Identifiant du modèle pour ce prompt", "Enregistrer sous ce nom"], container => this.displayAICorrections(container)),
 			this.sectionDefinition("Synonymes", ["Dictionnaire", "Finition", "Charger un dictionnaire", ...this.plugin.synonymDictionaryOptions.map(option => option.name)], container => this.displaySynonyms(container)),

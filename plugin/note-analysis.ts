@@ -11,12 +11,13 @@ export interface NoteAnalysis {
 	aiGroups: AIGroup[];
 	aiGroupsVersion: number;
 	aiSourcePath: string | null;
+	correctionSource: "ai" | "punctuation" | null;
 	grammalecteErrors: GrammalecteError[];
 	grammalecteErrorsVersion: number;
 	document?: Text;
 }
 
-const emptyAnalysis = (): NoteAnalysis => ({ mode: "none", aiGroups: [], aiGroupsVersion: 0, aiSourcePath: null, grammalecteErrors: [], grammalecteErrorsVersion: 0 });
+const emptyAnalysis = (): NoteAnalysis => ({ mode: "none", aiGroups: [], aiGroupsVersion: 0, aiSourcePath: null, correctionSource: null, grammalecteErrors: [], grammalecteErrorsVersion: 0 });
 
 export class NoteAnalyses {
 	private states = new WeakMap<Pick<TFile, "path">, NoteAnalysis>();
@@ -57,6 +58,7 @@ export class NoteAnalyses {
 				resetCorrectionHistory(state);
 				state.aiGroups = [];
 				state.aiSourcePath = null;
+				state.correctionSource = null;
 				state.grammalecteErrors = [];
 			}
 			state.aiGroupsVersion++;

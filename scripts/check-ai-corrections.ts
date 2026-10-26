@@ -6,6 +6,9 @@ import { protectLinks } from "../plugin/ai/protected-links";
 import { cleanTypography } from "../plugin/ai/clean";
 import { splitIntoChunks } from "../plugin/ai/chunk";
 import { NoteAnalyses } from "../plugin/note-analysis";
+import { diffToGroups } from "../plugin/ai/diff";
+import { fixPunctuationSpacing, fixBlankLinesProtected } from "../plugin/modes/punctuation";
+import { undo, redo } from "@codemirror/commands";
 
 export async function checkAICorrectionLayout(): Promise<void> {
 	const paragraph = "Cette demande est légitime. Je ne cesse de m’y plier, quand je renonce à publier le modèle neuronal et les dictionnaires. ".repeat(4);
@@ -148,5 +151,28 @@ export function checkAICorrections(): void {
 			}
 			check(view.state.doc.toString() === (apply ? cleanTypography(revised) : source), "La validation ou le refus de ponctuation modifie le texte voisin");
 		} finally { view.destroy(); }
+	}
+	for (const accept of [true, false]) {
+		const source = "---\ntitle: secret!\n---\n#secret\n\n– Bonjour! «oui»... 27 ans [lien](https://example.org).\n\n\nSuite.\n";
+		const fixed = fixBlankLinesProtected(fixPunctuationSpacing(source));
+		const groups = diffToGroups(source, fixed).map((group, id) => ({ ...group, id }));
+		check(groups.length > 0 && groups.every(group => !/\p{L}/u.test(group.delText + (group.insText ?? ""))), "La ponctuation proposée englobe des mots inchangés");
+		const host = { aiSourcePath: "ponctuation.md", aiGroups: groups, aiGroupsVersion: 0 };
+		const state = EditorState.create({ doc: source, extensions: [editorInfoField, finitionAIExtension(host)] });
+		Object.assign(state.field(editorInfoField), { file: { path: host.aiSourcePath } });
+		const parent = document.body.createDiv(), view = new EditorView({ parent, state });
+		try {
+			const originalGroups = JSON.stringify(groups);
+			for (const group of [...host.aiGroups]) {
+				const selector = !accept ? ".finition-ai-reject" : group.insText ? ".finition-ai-ins" : ".finition-ai-del";
+				const target = view.dom.querySelector<HTMLElement>(`${selector}[data-finition-ai-group="${group.id}"]`);
+				check(target, "Une proposition de ponctuation n’a pas de contrôle de validation"); target!.click();
+			}
+			check(view.state.doc.toString() === (accept ? fixed : source) && host.aiGroups.length === 0, "La validation individuelle de la ponctuation altère le texte");
+			for (let operation = 0; operation < groups.length; operation++) check(undo(view), "L’annulation d’une correction de ponctuation est perdue");
+			check(view.state.doc.toString() === source && JSON.stringify(host.aiGroups) === originalGroups, "Annuler ne restaure pas les propositions de ponctuation");
+			for (let operation = 0; operation < groups.length; operation++) check(redo(view), "Le rétablissement d’une correction de ponctuation est perdu");
+			check(view.state.doc.toString() === (accept ? fixed : source) && host.aiGroups.length === 0, "Rétablir ne rejoue pas les décisions de ponctuation");
+		} finally { view.destroy(); parent.remove(); }
 	}
 }
