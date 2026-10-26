@@ -17,7 +17,7 @@ export function checkAIHistory(): void {
 		const state = EditorState.create({ doc: text, extensions: [editorInfoField, keymap.of(historyKeymap), finitionAIExtension(host)] });
 		Object.assign(state.field(editorInfoField), { file });
 		const parent = document.body.createDiv(), view = new EditorView({ parent, state });
-		const click = (action: string, id = 0) => view.dom.querySelector<HTMLElement>(`.finition-ai-${action}[data-finition-ai-group="${id}"]`)!.click();
+		const click = (action: string, id = 0) => view.dom.querySelector<HTMLElement>(`[data-finition-ai-action="${action}"][data-finition-ai-group="${id}"]`)!.click();
 		return { view, analysis, click, destroy() { view.destroy(); parent.remove(); } };
 	};
 	for (const kind of ["insertion", "replacement", "deletion"]) for (const action of ["accept", "reject"]) {
@@ -29,7 +29,7 @@ export function checkAIHistory(): void {
 			for (let cycle = 0; cycle < 2; cycle++) {
 				check(undo(view), `Annuler indisponible : ${kind}, ${action}`);
 				check(view.state.doc.toString() === source && JSON.stringify(analysis.aiGroups) === JSON.stringify([group]), "Annuler ne restaure pas le texte et la suggestion");
-				check(!!view.dom.querySelector(".finition-ai-accept"), "La suggestion annulée ne réapparaît pas");
+				check(!!view.dom.querySelector(".finition-ai-reject"), "La suggestion annulée ne réapparaît pas");
 				check(redo(view), "Rétablir indisponible");
 				check(view.state.doc.toString() === resolved && analysis.aiGroups.length === 0, "Rétablir ne rejoue pas la décision");
 			}

@@ -58,8 +58,9 @@ export function protectSpans(text: string): { text: string; restore: (s: string)
 function fixGuillemets(text: string): string {
 	const openings: number[] = [];
 	const nested = new Set<number>();
-	for (const match of text.matchAll(/[«»]/g)) {
-		if (match[0] === "«") openings.push(match.index);
+	for (const match of text.matchAll(/[«»]|\r?\n[^\S\r\n]*(?:\r?\n)+/g)) {
+		if (match[0].includes("\n")) openings.length = 0;
+		else if (match[0] === "«") openings.push(match.index);
 		else {
 			const opening = openings.pop();
 			if (opening !== undefined && openings.length > 0) {

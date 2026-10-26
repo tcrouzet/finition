@@ -1,4 +1,4 @@
-import { cleanTypography } from "./clean";
+import { cleanTypography, hasResponseText } from "./clean";
 import { diffToGroups, type DiffGroup } from "./diff";
 import { markdownLinks, linkRanges, mergeRanges, type MarkdownLink } from "../markdown-links";
 import { frontmatterRanges, hashtagRanges } from "../markdown-tags";
@@ -47,7 +47,9 @@ export function protectLinks(original: string, from = 0, to = original.length, l
 	append(to);
 	return { text, diff(revised) {
 		const groups: DiffGroup[] = [];
-		for (const group of diffToGroups(text, preserveNumberSpaces(text, cleanTypography(stripHTMLTags(revised))))) {
+		// Les séparateurs Markdown en fin de plage restent ceux du texte source.
+		const cleaned = cleanTypography(stripHTMLTags(revised)).replace(/[\r\n]*$/u, text.match(/[\r\n]*$/u)?.[0] ?? "");
+		for (const group of diffToGroups(text, preserveNumberSpaces(text, cleaned))) {
 			let start = group.delFrom, end = group.delTo, replacement = group.insText ?? "";
 			if (!parts.some(part => start >= part.from && end <= part.to)) {
 				while (start < end && replacement && text[start] === replacement[0]) { start++; replacement = replacement.slice(1); }
@@ -70,6 +72,12 @@ export function protectLinks(original: string, from = 0, to = original.length, l
 			} else groups.push({ delFrom, delTo, delText: original.slice(from + delFrom, from + delTo), insText: replacement || null });
 		}
 		for (const group of groups) {
+			const position = from + group.delFrom;
+			const lineStart = position === 0 ? 0 : original.lastIndexOf("\n", position - 1) + 1;
+			if (!hasResponseText(original.slice(lineStart, position))) {
+				if (!hasResponseText(group.delText + (group.insText ?? "")) && !/[\r\n]/u.test(group.delText + (group.insText ?? ""))) { group.delText = ""; group.insText = null; continue; }
+				if (group.insText) group.insText = (group.delText.match(/^[ \t]*/u)?.[0] ?? "") + group.insText.replace(/^[\p{Zs}\p{Cf}\t]+/u, "");
+			}
 			while (group.delText && group.insText && group.delText[0] === group.insText[0] && /^[ \t\u00a0\u202f]$/.test(group.delText[0])) {
 				group.delFrom++; group.delText = group.delText.slice(1); group.insText = group.insText.slice(1);
 			}

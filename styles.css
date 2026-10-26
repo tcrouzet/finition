@@ -448,7 +448,7 @@ body.is-mobile .finition-synonyms-insert {
 	border-left: 2px solid var(--color-red, #c0392b);
 }
 
-.markdown-source-view.mod-cm6.is-live-preview .cm-line:has([data-finition-ai-group]) {
+.markdown-source-view.mod-cm6.is-live-preview .cm-line:has([data-finition-ai-group], [data-finition-ai-preview-from]) {
 	height: auto;
 }
 
@@ -459,22 +459,34 @@ body.is-mobile .finition-synonyms-insert {
 	margin-left: 0.15em;
 }
 
-.finition-ai-accept, .finition-ai-reject {
+.finition-ai-reject, .finition-ai-preview-toggle {
 	display: inline-flex;
 	vertical-align: middle;
 	margin-left: 0.2em;
 	padding: 2px;
+	color: var(--text-muted);
 }
 
-.finition-ai-accept { color: var(--color-green, #1e8449); }
-.finition-ai-reject { color: var(--text-muted); }
+.finition-ai-paragraph-preview {
+	max-width: min(42rem, calc(100vw - 2rem));
+	max-height: 50vh;
+	overflow: auto;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	padding: 12px;
+	color: var(--text-normal);
+	background: var(--background-primary);
+	font-family: var(--font-text, inherit);
+	font-size: var(--font-text-size, inherit);
+	line-height: var(--line-height-normal, 1.5);
+}
 
-.finition-ai-accept:focus-visible, .finition-ai-reject:focus-visible, .finition-loading-cancel:focus-visible {
+.finition-ai-del:focus-visible, .finition-ai-ins:focus-visible, .finition-ai-reject:focus-visible, .finition-ai-preview-toggle:focus-visible, .finition-loading-cancel:focus-visible {
 	outline: 2px solid var(--interactive-accent);
 	outline-offset: 2px;
 }
 
-body.is-mobile .finition-ai-accept, body.is-mobile .finition-ai-reject, body.is-mobile .finition-loading-cancel {
+body.is-mobile .finition-ai-reject, body.is-mobile .finition-ai-preview-toggle, body.is-mobile .finition-loading-cancel {
 	min-width: 44px;
 	min-height: 44px;
 }

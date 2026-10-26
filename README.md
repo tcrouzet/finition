@@ -63,7 +63,7 @@ Le modèle public **CamemBERT** se charge dans les réglages. Des modèles perso
 
 ### Soigner la ponctuation
 
-**Ponctuations** harmonise les espaces insécables, les apostrophes, les tirets et les lignes vides, y compris les espaces entre un nombre et son unité. Elle remplace `...` par `…`. Le code, les liens et les horaires sont préservés.
+**Ponctuations** harmonise les espaces insécables, les apostrophes, les tirets et les lignes vides, y compris les espaces entre un nombre et son unité. Elle remplace `...` par `…`. Une fin de paragraphe clôt implicitement le suivi des guillemets. Le code, les liens et les horaires sont préservés.
 
 Cette commande modifie directement toute la note, sans étape de validation.
 
@@ -96,8 +96,10 @@ Sur ordinateur, si **Codex CLI** est détecté, **Codex** apparaît dans **Modè
 
 Avec Ollama ou un autre serveur compatible OpenAI, renseigner **Serveur local** (par exemple `http://localhost:11434`, avec ou sans `/v1`) et **Modèle local**, sous les clés API. Le serveur doit déjà fonctionner et disposer du modèle indiqué. Sauf si Codex est choisi, ces champs remplacent le fournisseur et le modèle cloud pour les deux fonctions ci-dessous, sans transmettre les clés API. Vider **Serveur local** pour revenir à Claude/GPT. Finition ne télécharge aucun modèle et ne bascule jamais vers le cloud en cas d’erreur locale.
 
-- **Corrections IA** relit la sélection, ou toute la note si rien n’est sélectionné, et marque les mots ou signes modifiés. Cliquer sur le rouge, le vert ou la coche accepte la correction. La poubelle refuse la suggestion et conserve le texte original. La coche précède toujours la poubelle.
+- **Corrections IA** relit la sélection, ou toute la note si rien n’est sélectionné, et marque les mots ou signes modifiés. Cliquer sur le rouge ou le vert accepte la correction. La poubelle refuse la suggestion et conserve le texte original.
 - **Synonymes IA**, dans le menu Dictionnaires, cherche des variantes adaptées au contexte de la sélection.
+
+L’œil en fin de paragraphe affiche un aperçu avec les corrections appliquées, sans modifier la note ni accepter les suggestions. Un second clic ou **Échap** ferme l’aperçu. Les corrections d’espaces et de retours à la ligne sont matérialisées par **·** et **¶**. Les sauts de ligne finaux sont conservés.
 
 Les validations et refus de corrections IA utilisent **Annuler/Rétablir** : `⌘Z` et `⌘⇧Z` sur Mac, `Ctrl+Z` et `Ctrl+Y` sur Windows. Annuler fait réapparaître la suggestion et restaure le texte. L’historique natif conserve au moins dix opérations, sans réduire l’historique habituel de la note.
 

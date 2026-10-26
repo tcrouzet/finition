@@ -44,6 +44,7 @@ async function main() {
 	import { checkAnalysisNavigation } from "./scripts/check-analysis-navigation";
 	import { checkAICorrections, checkAICorrectionLayout } from "./scripts/check-ai-corrections";
 	import { checkAIHistory } from "./scripts/check-ai-history";
+	import { checkAIPreview } from "./scripts/check-ai-preview";
 	import { checkCorrectionGutter } from "./scripts/check-correction-gutter";
 	import { checkSynonyms } from "./scripts/check-synonyms";
 	import { checkLocalSynonyms } from "./scripts/check-local-synonyms";
@@ -92,6 +93,7 @@ async function main() {
 	    const lexiconChecks = checkLexiconDictionaries(ReleasedPlugin);
 	    checkAICorrections();
 	    checkAIHistory();
+	    await checkAIPreview();
 	    await checkAICorrectionLayout();
 	    await checkCorrectionGutter();
 	    await checkPromptModels(ReleasedPlugin);

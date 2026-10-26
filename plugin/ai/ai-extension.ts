@@ -5,7 +5,7 @@
  * suite (un widget, PAS du texte réel) — à la manière d'un commentaire.
  *
  * Le document n'est JAMAIS modifié automatiquement : un clic sur le
- * rouge, le vert ou la coche applique la correction. La poubelle
+ * rouge ou le vert applique la correction. La poubelle
  * refuse la proposition. Tant que rien
  * n'est cliqué, le fichier reste identique à avant l'appel IA.
  *
@@ -15,9 +15,11 @@
  */
 
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
-import { RangeSetBuilder } from "@codemirror/state";
+import { RangeSetBuilder, type Range, type Text } from "@codemirror/state";
 import { editorInfoField, setIcon } from "obsidian";
 import { applyCorrectionHistory, correctionHistory, resolveCorrection } from "./correction-history";
+import { closeParagraphPreview, paragraphPreview, paragraphPreviewDecorations, toggleParagraphPreview } from "./paragraph-preview";
+import { whitespaceDisplay } from "./whitespace-display";
 
 export interface AIGroup {
 	id: number;
@@ -39,33 +41,41 @@ class CorrectionWidget extends WidgetType {
 	constructor(
 		private readonly text: string,
 		private readonly groupId: number,
-		private readonly action: "accept" | "reject" | null = null
+		private readonly kind: "insert" | "delete" | "reject" = "insert"
 	) {
 		super();
 	}
 
-	get lineBreaks(): number { return this.action ? 0 : this.text.split("\n").length - 1; }
+	get lineBreaks(): number { return this.kind === "reject" ? 0 : this.text.split("\n").length - 1; }
 
 	toDOM(): HTMLElement {
-		const label = this.action === "reject" ? "Refuser la correction" : "Accepter la correction";
-		const span = this.action ? createEl("button", { cls: `clickable-icon finition-ai-${this.action}`, attr: { type: "button", "aria-label": label } }) : createSpan();
-		if (this.action) setIcon(span, this.action === "reject" ? "trash-2" : "check");
-		else { span.className = "finition-ai-ins"; span.textContent = this.text; }
+		const label = this.kind === "reject" ? "Refuser la correction" : "Accepter la correction";
+		const span = this.kind === "reject" ? createEl("button", { cls: "clickable-icon finition-ai-reject", attr: { type: "button", "aria-label": label } }) : createSpan({ attr: { role: "button", tabindex: "0", "aria-label": label } });
+		if (this.kind === "reject") setIcon(span, "trash-2");
+		else { span.className = this.kind === "delete" ? "finition-ai-del" : "finition-ai-ins"; span.textContent = this.text; }
 		span.dataset.finitionAiGroup = String(this.groupId);
-		span.dataset.finitionAiAction = this.action ?? "accept";
-		span.setAttribute("title", this.action ? label : "Cliquer pour appliquer la correction");
+		span.dataset.finitionAiAction = this.kind === "reject" ? "reject" : "accept";
+		span.setAttribute("title", label);
 		return span;
 	}
 
 	eq(other: CorrectionWidget): boolean {
-		return other.text === this.text && other.groupId === this.groupId && other.action === this.action;
+		return other.text === this.text && other.groupId === this.groupId && other.kind === this.kind;
 	}
 }
 
-function buildAIDecorations(groups: AIGroup[]): DecorationSet {
+function buildAIDecorations(groups: AIGroup[], document: Text): DecorationSet {
 	const builder = new RangeSetBuilder<Decoration>();
+	const whitespace: Range<Decoration>[] = [];
 	const sorted = [...groups].sort((a, b) => a.delFrom - b.delFrom || a.delTo - b.delTo);
 	for (const g of sorted) {
+		const display = whitespaceDisplay(document, g);
+		if (display) {
+			if (display.removed) whitespace.push(Decoration.widget({ widget: new CorrectionWidget(display.removed, g.id, "delete"), side: 4 }).range(display.anchor));
+			if (display.added) whitespace.push(Decoration.widget({ widget: new CorrectionWidget(display.added, g.id), side: 5 }).range(display.anchor));
+			whitespace.push(Decoration.widget({ widget: new CorrectionWidget("", g.id, "reject"), side: 6 }).range(display.anchor));
+			continue;
+		}
 		if (g.delFrom < g.delTo) {
 			builder.add(
 				g.delFrom,
@@ -76,17 +86,17 @@ function buildAIDecorations(groups: AIGroup[]): DecorationSet {
 						"data-finition-ai-group": String(g.id),
 						"data-finition-ai-action": "accept",
 						title: "Cliquer pour appliquer la correction",
+						role: "button", tabindex: "0", "aria-label": "Accepter la correction",
 					},
 				})
 			);
 		}
 		if (g.insText) builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget(g.insText, g.id), side: 1 }));
 		if (g.insText || g.delFrom < g.delTo) {
-			builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget("", g.id, "accept"), side: 2 }));
-			builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget("", g.id, "reject"), side: 3 }));
+			builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget("", g.id, "reject"), side: 2 }));
 		}
 	}
-	return builder.finish();
+	return builder.finish().update({ add: [...whitespace, ...paragraphPreviewDecorations(document, groups)], sort: true });
 }
 
 export function finitionAIExtension(host: AIGroupHost) {
@@ -96,7 +106,8 @@ export function finitionAIExtension(host: AIGroupHost) {
 			decorations: DecorationSet;
 			private lastVersion: number;
 			private sourceView: boolean;
-			private readonly handleClick: (event: MouseEvent) => void;
+			private readonly handleClick: (event: Event) => void;
+			private readonly handleKeyDown: (event: KeyboardEvent) => void;
 			private readonly view: EditorView;
 
 			constructor(view: EditorView) {
@@ -104,11 +115,18 @@ export function finitionAIExtension(host: AIGroupHost) {
 				this.host = host.getNoteAnalysis?.(view) ?? host;
 				this.lastVersion = this.host.aiGroupsVersion;
 				this.sourceView = this.isSourceView();
-				this.decorations = this.sourceView ? buildAIDecorations(this.host.aiGroups) : Decoration.none;
+				this.decorations = this.sourceView ? buildAIDecorations(this.host.aiGroups, view.state.doc) : Decoration.none;
 
-				this.handleClick = (event: MouseEvent) => {
+				this.handleClick = (event: Event) => {
 					if (!this.isSourceView()) return;
 					const target = event.target as HTMLElement | null;
+					const preview = target?.closest<HTMLElement>("[data-finition-ai-preview-from]");
+					if (preview?.dataset.finitionAiPreviewFrom !== undefined) {
+						toggleParagraphPreview(this.view, this.host.aiGroups, Number(preview.dataset.finitionAiPreviewFrom), Number(preview.dataset.finitionAiPreviewTo));
+						this.view.focus();
+						event.preventDefault();
+						return;
+					}
 					const marker = target?.closest<HTMLElement>("[data-finition-ai-group]");
 					if (!marker) return;
 					const id = Number(marker.dataset.finitionAiGroup);
@@ -119,11 +137,20 @@ export function finitionAIExtension(host: AIGroupHost) {
 					this.view.focus();
 					event.preventDefault();
 				};
+				this.handleKeyDown = event => {
+					if (event.key === "Escape" && closeParagraphPreview(this.view)) { event.preventDefault(); event.stopPropagation(); return; }
+					if (event.key !== "Enter" && event.key !== " ") return;
+					if (!(event.target as HTMLElement | null)?.closest(".finition-ai-del, .finition-ai-ins")) return;
+					this.handleClick(event);
+					event.stopPropagation();
+				};
 				view.dom.addEventListener("click", this.handleClick);
+				view.dom.addEventListener("keydown", this.handleKeyDown, true);
 			}
 
 			destroy(): void {
 				this.view.dom.removeEventListener("click", this.handleClick);
+				this.view.dom.removeEventListener("keydown", this.handleKeyDown, true);
 			}
 
 			private isSourceView(): boolean {
@@ -155,10 +182,10 @@ export function finitionAIExtension(host: AIGroupHost) {
 				applyCorrectionHistory(this.host, update.transactions ?? [], this.view.state.doc);
 				if (update.docChanged || previousHost !== this.host || this.lastVersion !== this.host.aiGroupsVersion) {
 					this.lastVersion = this.host.aiGroupsVersion;
-					this.decorations = buildAIDecorations(this.host.aiGroups);
+					this.decorations = buildAIDecorations(this.host.aiGroups, this.view.state.doc);
 				}
 			}
 		},
-		{ decorations: (instance) => instance.decorations, provide: () => correctionHistory }
+		{ decorations: (instance) => instance.decorations, provide: () => [correctionHistory, paragraphPreview] }
 	);
 }

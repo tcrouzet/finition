@@ -432,40 +432,41 @@ async function main() {
 		assert.equal(JSON.stringify(host.aiGroups), before, "Revenir à la note source déplace les suggestions");
 		let removed = "", inserted = "";
 		const redMarkers = new Map<number, { dataset: { finitionAiGroup: string; finitionAiAction: string } }>();
+		const greenMarkers = new Map<number, { dataset: Record<string, string> }>();
 		const buttonsBefore = buttons.length;
 		sandbox.createSpan = () => ({ dataset: {}, setAttribute() {}, textContent: "" });
 		instance.decorations.between(0, source.length, (from, to, decoration) => {
-			const spec = decoration.spec as { class?: string; attributes?: Record<string, string>; widget?: { toDOM: () => { textContent: string } } };
+			const spec = decoration.spec as { class?: string; attributes?: Record<string, string>; widget?: { toDOM: () => { textContent: string; dataset: Record<string, string> } } };
 			if (spec.class === "finition-ai-del") {
 				removed += source.slice(from, to);
 				const id = spec.attributes!["data-finition-ai-group"];
 				redMarkers.set(Number(id), { dataset: { finitionAiGroup: id, finitionAiAction: spec.attributes!["data-finition-ai-action"] } });
 			}
-			if (spec.widget) inserted += spec.widget.toDOM().textContent;
+			if (spec.widget) {
+				const element = spec.widget.toDOM();
+				inserted += element.textContent;
+				if (element.dataset.finitionAiAction === "accept") greenMarkers.set(Number(element.dataset.finitionAiGroup), element);
+			}
 		});
 		assert.equal(removed, host.aiGroups.map(group => group.delText).join(""), "La séquence n’est pas barrée en entier");
 		assert.equal(inserted, host.aiGroups.map(group => group.insText ?? "").join(""), "Le widget altère le remplacement ou son insécable");
-		const controls = buttons.slice(buttonsBefore);
+		const controls = buttons.slice(buttonsBefore).filter(button => button.dataset.finitionAiGroup !== undefined);
 		const rejects = controls.filter(button => button.className.includes("finition-ai-reject"));
-		const accepts = controls.filter(button => button.className.includes("finition-ai-accept"));
 		assert.equal(rejects.length, host.aiGroups.length, "Chaque correction doit proposer une poubelle pour la refuser");
-		assert.equal(accepts.length, host.aiGroups.length, "Chaque correction doit proposer une coche pour la valider");
+		assert.equal(controls.length, rejects.length, "Une coche de validation reste affichée");
 		for (const group of host.aiGroups) {
 			const refuse = rejects.find(button => button.dataset.finitionAiGroup === String(group.id));
-			const confirm = accepts.find(button => button.dataset.finitionAiGroup === String(group.id));
-			assert.ok(confirm && refuse);
+			assert.ok(refuse);
 			assert.equal(refuse.attributes["data-icon"], "trash-2", "La poubelle doit refuser la correction");
-			assert.equal(confirm.attributes["data-icon"], "check", "La coche doit valider la correction");
-			assert.ok(controls.indexOf(confirm) < controls.indexOf(refuse), "La coche doit précéder la poubelle");
 		}
 		for (const group of [...host.aiGroups]) {
-			const marker = action === "red" && redMarkers.has(group.id) ? redMarkers.get(group.id) : (action === "reject" ? rejects : accepts).find(button => button.dataset.finitionAiGroup === String(group.id));
+			const marker = action === "reject" ? rejects.find(button => button.dataset.finitionAiGroup === String(group.id)) : action === "red" ? redMarkers.get(group.id) ?? greenMarkers.get(group.id) : greenMarkers.get(group.id) ?? redMarkers.get(group.id);
 			assert.ok(marker, `Contrôle ${action} absent`);
 			listeners.get("click")!({ target: { closest: () => marker }, preventDefault() {} } as unknown as MouseEvent);
 		}
 		assert.equal(state.doc.toString(), action === "reject" ? source : accepted, "Le clic applique une mauvaise correction ou modifie le texte après refus");
 		assert.equal(host.aiGroups.length, 0);
-		const appliedText = state.doc.toString(), operations = accepts.length;
+		const appliedText = state.doc.toString(), operations = rejects.length;
 		for (let operation = 0; operation < operations; operation++) assert.ok(api.undo({ state, dispatch }), "Annuler ne retrouve pas une décision IA");
 		assert.equal(state.doc.toString(), source, "Annuler ne restaure pas le texte original");
 		assert.equal(JSON.stringify(host.aiGroups), before, "Annuler ne restaure pas les suggestions et leurs positions");

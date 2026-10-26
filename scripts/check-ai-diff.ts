@@ -8,6 +8,28 @@ import { stripHTMLTags } from "../plugin/ai/annotations";
 const apply = (source: string, groups: DiffGroup[]) => [...groups].reverse().reduce((text, group) => text.slice(0, group.delFrom) + (group.insText ?? "") + text.slice(group.delTo), source);
 
 export function checkAIDiff(): void {
+	for (const separator of ["\n\n", "\r\n\r\n", "\n \t\n", "\n\u00a0\n", "\n\u202f\n"]) {
+		const source = `«\u00a0Maman,${separator}«\u00a0Besoin de te voir.${separator}«\u00a0C’est difficile pour moi.\u00a0»${separator}«\u00a0T’en penses quoi\u00a0?\u00a0»`;
+		assert.equal(fixPunctuationSpacing(source), source, "Une ouverture de citation du paragraphe précédent transforme les suivantes en guillemets anglais");
+		assert.equal(protectLinks(source).diff(source).length, 0, "La correction IA modifie les guillemets d’un dialogue sur plusieurs paragraphes");
+	}
+	assert.equal(fixPunctuationSpacing("« Il dit : « oui »\nencore. »\n\n« Une « autre » citation. »"), "«\u00a0Il dit\u00a0: “oui”\nencore.\u00a0»\n\n«\u00a0Une “autre” citation.\u00a0»", "Les citations réellement imbriquées ne sont plus reconnues dans leur paragraphe");
+	for (const ending of ["", "\n", "\n\n", "\n\n\n", "\r\n", "\r\n\r\n"]) {
+		const source = "Une fote." + ending;
+		for (const replyEnding of ["", "\n", "\n\n", "\r\n"]) {
+			assert.equal(protectLinks(source).diff(source.trimEnd() + replyEnding).length, 0, "Un retour IA crée une correction sur le saut de ligne final de la note");
+			assert.equal(apply(source, protectLinks(source).diff("Une faute." + replyEnding)), "Une faute." + ending, "Accepter une correction change les sauts de ligne finaux");
+		}
+	}
+	const selected = "Avant.\n\nUne fote.\n\nAprès.";
+	const from = selected.indexOf("Une"), to = selected.indexOf("Après");
+	assert.equal(apply(selected.slice(from, to), protectLinks(selected, from, to).diff("Une faute.")), "Une faute.\n\n", "Une correction sur une sélection supprime son séparateur de paragraphes");
+	for (const source of ["  Premier paragraphe.", "\u2060Premier paragraphe.", "Avant.\n\n\u00a0Suite."]) {
+		const revised = source.replace(/^[ \t\p{Cf}\u00a0]+/gmu, "");
+		assert.equal(protectLinks(source).diff(revised).length, 0, "Des blancs de début de paragraphe produisent une poubelle sans texte visible");
+	}
+	assert.equal(apply("fote.", protectLinks("fote.").diff(" faute.")), "faute.", "Une correction de mot ajoute un blanc au début du paragraphe");
+	assert.equal(apply("25 tonnes.", protectLinks("25 tonnes.").diff("25 tonnes.")), "25\u00a0tonnes.", "Le filtrage des blancs supprime une vraie correction intérieure");
 	for (const invisible of ["\u2060", "\u200e", "\u200f", "\u200b", "\ufeff", "\u00a0", "\u202f", "\u2009"]) {
 		const source = "Premier paragraphe.\n\nDeuxième paragraphe.";
 		const revised = `${invisible} Premier paragraphe.\n\n${invisible} Deuxième paragraphe.`;
