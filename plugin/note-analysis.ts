@@ -35,14 +35,17 @@ export class NoteAnalyses {
 	forView(view: EditorView, update?: ViewUpdate): NoteAnalysis {
 		const file = view.state.field(editorInfoField, false)?.file;
 		if (!file) return this.empty;
-		const changedNote = this.views.get(view) !== file;
-		this.views.set(view, file);
+		const previousFile = this.views.get(view);
+		const changedNote = previousFile !== file;
 		if (this.file === undefined) { this.file = file; this.states.set(file, this.current); }
 		const state = this.states.get(file) ?? emptyAnalysis();
 		this.states.set(file, state);
+		const document = view.state.doc;
+		// Le fichier peut avoir changé avant le chargement de son texte dans l’éditeur.
+		if (previousFile && changedNote && !update?.docChanged && state.document && !state.document.eq(document)) return this.empty;
+		this.views.set(view, file);
 		if (state.aiSourcePath) state.aiSourcePath = file.path;
 		if (!state.aiGroups.length && !state.grammalecteErrors.length) { state.document = undefined; return state; }
-		const document = view.state.doc;
 		// La navigation peut lire un autre volet avant qu’Obsidian y propage l’édition.
 		if (state.document && !changedNote && !update?.docChanged) return state;
 		if (state.document && state.document !== document && !state.document.eq(document)) {

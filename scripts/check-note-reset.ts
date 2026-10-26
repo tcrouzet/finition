@@ -75,6 +75,18 @@ export async function checkNoteReset(): Promise<void> {
 	assert.equal(firstAnalysis.mode, "hinges");
 	assert.equal(firstAnalysis.aiGroups.length, 1, "Les corrections IA disparaissent au retour");
 	assert.equal(firstAnalysis.grammalecteErrors.length, 1, "Les corrections orthographiques disparaissent au retour");
+	// Obsidian peut changer le fichier de l’éditeur avant d’y charger son texte.
+	const reused = view(firstFile, "Une fote ici.");
+	analyses.forView(reused);
+	Object.assign(reused.state.field(editorInfoField), { file: secondFile });
+	analyses.forView(reused);
+	Object.assign(reused, { state: EditorState.create({ doc: "Une autre fote.", extensions: [editorInfoField.init(() => ({ file: secondFile }))] }) });
+	analyses.forView(reused);
+	Object.assign(reused.state.field(editorInfoField), { file: firstFile });
+	assert.equal(analyses.forView(reused).aiGroups.length, 0, "Le texte de la note quittée affiche les corrections de la note d’arrivée");
+	assert.equal(firstAnalysis.aiGroups.length, 1, "Le chargement transitoire de la note efface les corrections sauvegardées");
+	Object.assign(reused, { state: firstView.state });
+	assert.equal(analyses.forView(reused).aiGroups.length, 1, "Le retour dans l’éditeur réutilisé ne restaure pas les corrections");
 	const transaction = firstView.state.update({ changes: { from: 0, insert: "Hier, " } });
 	const editedView = { state: transaction.state } as EditorView;
 	const update = { docChanged: true, startState: transaction.startState, changes: transaction.changes } as ViewUpdate;

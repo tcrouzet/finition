@@ -4,6 +4,8 @@ import { editorInfoField } from "obsidian";
 import { finitionAIExtension, type AIGroup } from "../plugin/ai/ai-extension";
 import { protectLinks } from "../plugin/ai/protected-links";
 import { cleanTypography } from "../plugin/ai/clean";
+import { splitIntoChunks } from "../plugin/ai/chunk";
+import { NoteAnalyses } from "../plugin/note-analysis";
 
 export async function checkAICorrectionLayout(): Promise<void> {
 	const paragraph = "Cette demande est légitime. Je ne cesse de m’y plier, quand je renonce à publier le modèle neuronal et les dictionnaires. ".repeat(4);
@@ -35,12 +37,47 @@ export async function checkAICorrectionLayout(): Promise<void> {
 		const lines = Array.from(view.contentDOM.querySelectorAll<HTMLElement>(".cm-line"));
 		for (let i = 1; i < lines.length; i++) if (lines[i - 1].getBoundingClientRect().bottom > lines[i].getBoundingClientRect().top + 1) throw new Error("Les paragraphes de correction IA se chevauchent");
 		if (view.state.doc.toString() !== source) throw new Error("La prévisualisation multilignes modifie la note");
+		host.aiGroups = splitIntoChunks(source, 0).flatMap(chunk => {
+			const revised = chunk.text.replaceAll("demande", "requête motivée").replaceAll("cesse", "m’arrête").replaceAll("légitime", "justifiée").replaceAll("modèle neuronal", "modèle\n\nlocal").replaceAll("dictionnaires", "ouvrages de référence");
+			return protectLinks(source, chunk.start, chunk.end).diff(revised).map(group => ({ ...group, delFrom: chunk.start + group.delFrom, delTo: chunk.start + group.delTo }));
+		}).map((group, id) => ({ ...group, id }));
+		host.aiGroupsVersion++;
+		view.dispatch({});
+		for (const top of [0, 1200, 3000, 0]) {
+			view.scrollDOM.scrollTop = top;
+			await settle();
+			const visible = Array.from(view.contentDOM.querySelectorAll<HTMLElement>(".cm-line"));
+			if (!view.dom.querySelector(".finition-ai-ins")) throw new Error(`Les suggestions disparaissent après le défilement : ${top}, plage ${view.viewport.from}–${view.viewport.to}`);
+			for (let index = 0; index < visible.length; index++) {
+				const rect = visible[index].getBoundingClientRect();
+				if (Math.abs(rect.height - view.lineBlockAt(view.posAtDOM(visible[index])).height) > 2) throw new Error("Les mesures des paragraphes divergent après un lot de corrections");
+				if (index && visible[index - 1].getBoundingClientRect().bottom > rect.top + 1) throw new Error("Les nombreux paragraphes corrigés se chevauchent");
+			}
+		}
+		if (view.state.doc.toString() !== source) throw new Error("L’affichage d’un lot de corrections modifie la note");
 	} finally { view.destroy(); parent.remove(); }
 }
 
 export function checkAICorrections(): void {
 	const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
 	const source = "Un inutile texte. Une fote.";
+	const firstFile = { path: "première.md" }, otherFile = { path: "autre.md" }, analyses = new NoteAnalyses();
+	const saved = analyses.activate(firstFile);
+	Object.assign(saved, { aiSourcePath: firstFile.path, aiGroups: [{ id: 0, delFrom: 22, delTo: 26, delText: "fote", insText: "faute" }] });
+	const runtime = { ...saved, getNoteAnalysis: (view: EditorView, update?: import("@codemirror/view").ViewUpdate) => analyses.forView(view, update) };
+	const initial = EditorState.create({ doc: source, extensions: [editorInfoField, finitionAIExtension(runtime)] });
+	Object.assign(initial.field(editorInfoField), { file: firstFile });
+	const parent = document.body.createDiv(), reused = new EditorView({ parent, state: initial });
+	try {
+		for (const [file, text] of [[otherFile, "Une autre note."], [firstFile, source]] as const) {
+			analyses.activate(file);
+			Object.assign(reused.state.field(editorInfoField), { file });
+			reused.dispatch({});
+			check(!reused.dom.querySelector("[data-finition-ai-group]"), "Le chargement transitoire affiche les corrections sur le mauvais texte");
+			reused.dispatch({ changes: { from: 0, to: reused.state.doc.length, insert: text } });
+		}
+		check(saved.aiGroups.length === 1 && reused.dom.querySelector(".finition-ai-del")?.textContent === "fote" && reused.dom.querySelector(".finition-ai-ins")?.textContent === "faute", "Le retour dans la note ne réaffiche pas les corrections IA");
+	} finally { reused.destroy(); parent.remove(); }
 	for (const [kind, end, insertion, applied] of [
 		["insertion", 3, "joli ", "Un joli inutile texte. Une fote."],
 		["replacement", 11, "joli ", "Un joli texte. Une fote."],
