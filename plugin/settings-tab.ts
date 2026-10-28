@@ -286,7 +286,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 	private displayPunctuation(containerEl: HTMLElement): void {
 		containerEl = this.section(containerEl, "Ponctuation");
 		new Setting(containerEl).setName("Ponctuation validée automatiquement")
-			.setDesc("Activé : applique toutes les corrections. Désactivé : propose chaque correction à accepter ou refuser.")
+			.setDesc("Activé : applique toutes les corrections. Désactivé : propose chaque correction à accepter ou refuser. En mode debug, application toujours automatique.")
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.punctuationAutoApply).onChange(async value => {
 				this.plugin.settings.punctuationAutoApply = value;
 				await this.plugin.saveSettings();

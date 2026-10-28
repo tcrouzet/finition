@@ -597,6 +597,14 @@ async function main() {
 	await punctuationAction();
 	assert.equal(punctuationPlugin.aiGroups.length, 0, "Un second clic ne retire pas les propositions de ponctuation");
 	assert.equal(punctuationNote, originalPunctuation, "Retirer les propositions applique la ponctuation");
+	punctuationPlugin.settings.debugMode = true;
+	const revealsBeforeDebug = punctuationRevealed.length;
+	await punctuationAction();
+	assert.equal(punctuationNote, "Saison\u00a01. Attends… 27\u00a0ans\u00a0!\n\nSuite.", "Le mode debug doit appliquer directement la ponctuation même si la validation automatique est désactivée");
+	assert.equal(punctuationPlugin.aiGroups.length, 0, "Le mode debug affiche des propositions de ponctuation");
+	assert.equal(punctuationRevealed.length, revealsBeforeDebug, "Le mode debug cherche une proposition à valider");
+	assert.equal(punctuationPlugin.settings.punctuationAutoApply, false, "Le mode debug modifie le choix de validation hors debug");
+	punctuationPlugin.settings.debugMode = false;
 	process.stdout.write("Ponctuations : menu de main.js, caractères U+00A0, tirets, point fermant et second clic vérifiés\n");
 	for (const link of ["[signal](https://example.org/signal)", "https://example.org/signal", "![signal](signal.png)", "[[Note|signal]]", "<a href='https://example.org/signal'>signal</a>", "<signal@example.org>", "[signal][ref]\n\n[ref]: https://example.org/signal"]) {
 		const text = `😀 signal ${link}\n\nsignal`;

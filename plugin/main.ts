@@ -882,7 +882,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) return;
 		const editor = view.editor;
-		const automatically = this.settings.punctuationAutoApply;
+		const automatically = this.settings.debugMode || this.settings.punctuationAutoApply;
 		if (!automatically && this.correctionSource === "punctuation" && this.aiGroups.length) {
 			await this.resetAnalysis();
 			return;
