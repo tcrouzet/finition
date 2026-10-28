@@ -1,6 +1,6 @@
 {
   "name": "finition",
-  "version": "0.4.29",
+  "version": "0.4.30",
   "description": "Finition — plugin Obsidian d'aide à l'écriture en français",
   "main": "main.js",
   "scripts": {
