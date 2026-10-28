@@ -1,12 +1,11 @@
 import { linkRanges, mergeRanges } from "../markdown-links";
 import { markdownExclusionRanges } from "../markdown-tags";
 import { SENTENCE_SEPARATOR_RE } from "./clause-split";
+import { preserveNonbreakingSpaces } from "../ai/diff";
 
 /**
- * Correction automatique et déterministe des espaces insécables et des
- * tirets, selon le code typographique français. Appliquée instantanément
- * (pas de validation au cas par cas comme Ortho-typo IA : ce sont des
- * règles objectives, pas un jugement).
+ * Correction déterministe des espaces insécables et des tirets, selon le
+ * code typographique français, en conservant les insécables de l’auteur.
  *
  * Règles implémentées :
  * 1. Espace insécable AVANT ! ? : ; » (double ponctuation).
@@ -170,7 +169,7 @@ export function fixPunctuationSpacing(text: string): string {
 	result = fixInciseDashes(result);
 	result = fixApostrophes(result);
 	result = fixUnitSpacing(result);
-	return restore(result);
+	return preserveNonbreakingSpaces(text, restore(result));
 }
 
 /** fixBlankLines, mais avec la même protection (blocs de code...) que fixPunctuationSpacing. */

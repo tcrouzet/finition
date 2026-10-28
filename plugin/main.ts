@@ -752,6 +752,12 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		await this.runOrthoTypoIA();
 	}
 
+	private revealCorrection(view: MarkdownView, offset: number): void {
+		const position = view.editor.offsetToPos(offset);
+		view.editor.setCursor(position);
+		view.editor.scrollIntoView({ from: position, to: position }, true);
+	}
+
 	private async runOrthoTypoIA(): Promise<void> {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) return;
@@ -785,6 +791,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		let modelName = aiModelName(connection);
 		const progress = this.startAnalysisProgress(`Corrections IA · ${modelName}`, view);
 		const errors: string[] = [];
+		let revealed = false;
 		let unlock: (() => void) | undefined;
 		const isCurrent = () => {
 			if (request !== this.spellingRequest || this.app.workspace.getActiveViewOfType(MarkdownView) !== view) return false;
@@ -840,6 +847,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				}
 				this.aiGroupsVersion++;
 				this.refreshAllEditors(); // les suggestions déjà calculées s'affichent au fil de l'eau, pas seulement à la toute fin
+				if (!revealed && this.aiGroups.length) {
+					this.revealCorrection(view, this.aiGroups[0].delFrom);
+					revealed = true;
+				}
 			}
 			if (debugMode && errors.length === 0 && debugChunks.length) await this.createDebugNote(view, debugChunks.join("\n\n"), "");
 		} catch (e) {
@@ -890,6 +901,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			this.aiGroupsVersion++;
 			this.updateStatusBarIcon();
 			this.refreshAllEditors();
+			this.revealCorrection(view, this.aiGroups[0].delFrom);
 			new Notice(`Ponctuation : ${this.aiGroups.length} correction(s) à valider.`);
 		} else if (fixed !== original) {
 			const selections = editor.listSelections();
@@ -1320,6 +1332,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		const label = this.settings.spellingEngine === "finition-corrector" && this.settings.spellingNeural ? "Correction neurale" : "Corrections";
 		this.pendingCorrectionRequest = request;
 		const notice = this.startAnalysisProgress(label, view);
+		let revealed = false;
 		const publish = (rawErrors: GrammalecteError[]): boolean => {
 			if (request !== this.spellingRequest || document !== editor.getValue() || this.app.workspace.getActiveViewOfType(MarkdownView) !== view) return false;
 			const dictionary = parseGrammalecteDictionary(this.settings.grammalecteCustomDictionary);
@@ -1332,6 +1345,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			);
 			this.grammalecteErrorsVersion++;
 			this.refreshAllEditors(this.grammalecteErrors.length === 0);
+			if (!revealed && this.grammalecteErrors.length) {
+				this.revealCorrection(view, this.grammalecteErrors.reduce((first, error) => Math.min(first, error.nStart), document.length));
+				revealed = true;
+			}
 			return true;
 		};
 		try {

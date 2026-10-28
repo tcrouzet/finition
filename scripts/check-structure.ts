@@ -278,10 +278,15 @@ async function main() {
 	assert.equal(modePlugin.settings.mode, "none");
 	assert.equal(noticeInstances.at(-1)!.hidden, true, "Un échec laisse la roue ouverte");
 	Object.defineProperty(modePlugin, "hasLinguisticResources", { value: true });
-	Object.assign(modeView.editor, { getValue: () => "texte", getCursor: () => ({ ch: 0 }), posToOffset: (position: { ch: number }) => position.ch });
+	const correctionPositions: number[] = [], correctionScrolls: number[] = [];
+	Object.assign(modeView.editor, { getValue: () => "texte", getCursor: () => ({ ch: 4 }), posToOffset: (position: { ch: number }) => position.ch,
+		offsetToPos: (ch: number) => ({ line: 0, ch }), setCursor: (position: { ch: number }) => correctionPositions.push(position.ch),
+		scrollIntoView: (range: { from: { ch: number } }, center: boolean) => { assert.equal(center, true); correctionScrolls.push(range.from.ch); },
+	});
 	let finishCorrection = (_errors: typeof modePlugin.grammalecteErrors) => {};
+	let publishCorrection = (_errors: typeof modePlugin.grammalecteErrors) => {};
 	let correctionCalls = 0;
-	Object.assign(modePlugin, { ensureSpellingEngine: async () => ({ parse: () => new Promise<typeof modePlugin.grammalecteErrors>(resolve => { correctionCalls++; finishCorrection = resolve; }) }) });
+	Object.assign(modePlugin, { ensureSpellingEngine: async () => ({ parse: (_text: string, onPartial: typeof publishCorrection) => new Promise<typeof modePlugin.grammalecteErrors>(resolve => { correctionCalls++; finishCorrection = resolve; publishCorrection = onPartial; }) }) });
 	modePlugin.settings.mode = "hinges";
 	modePlugin.aiGroups = [{ delFrom: 0, delTo: 1, delText: "a", insText: "b" }];
 	const correcting = modePlugin.runGrammalecte();
@@ -296,15 +301,21 @@ async function main() {
 	finishCorrection([{ nStart: 0, nEnd: 1, sRuleId: "test", sType: "orthographe", sMessage: "Faute", aSuggestions: [] }]);
 	await correcting;
 	assert.equal(modePlugin.grammalecteErrors.length, 0, "Un correcteur annulé réaffiche ses résultats");
+	assert.equal(correctionPositions.length, 0, "Un correcteur annulé déplace le curseur");
 	assert.equal(replacementNotice.hidden, false, "Le correcteur annulé ferme la roue du nouveau mode");
 	modePlugin.updateAnalysisHighlights(modeEditor, [], false);
 	const finalCorrection = modePlugin.runGrammalecte();
 	await waitFor(() => correctionCalls === 2);
 	const finalCorrectionNotice = noticeInstances.at(-1)!;
+	publishCorrection([3, 0].map(nStart => ({ nStart, nEnd: nStart + 1, sRuleId: "test", sType: "orthographe", sMessage: "Faute", aSuggestions: [] })));
+	assert.equal(finalCorrectionNotice.hidden, false, "La première suggestion ferme la progression avant la fin du correcteur");
+	assert.deepEqual(correctionPositions, [0], "Les premiers résultats ne montrent pas la suggestion la plus tôt dans le texte");
 	finishCorrection([{ nStart: 0, nEnd: 1, sRuleId: "test", sType: "orthographe", sMessage: "Faute", aSuggestions: [] }]);
 	await finalCorrection;
 	assert.equal(finalCorrectionNotice.hidden, true);
 	assert.equal(modePlugin.grammalecteErrors.length, 1);
+	assert.deepEqual(correctionPositions, [0], "Le correcteur ne sélectionne pas sa première suggestion");
+	assert.deepEqual(correctionScrolls, [0], "Le correcteur ne montre pas sa première suggestion");
 	await modePlugin.runGrammalecte();
 	assert.equal(modePlugin.grammalecteErrors.length, 0, "Le reclic sur Corrections ne désactive plus l’analyse");
 	const stoppedCorrection = modePlugin.runGrammalecte();
@@ -484,7 +495,7 @@ async function main() {
 		["C'est bon?", "C'est bon?", "C’est bon\u00a0?"],
 		["Il répond : oui!", "Il répond : oui !", "Il répond\u00a0: oui\u00a0!"],
 		["«mot »; vraiment?", "«mot »; vraiment?", "«\u00a0mot\u00a0»\u00a0; vraiment\u00a0?"],
-		["Et alors\u202f?", "Et alors\u202f?", "Et alors\u00a0?"],
+		["Et alors\u202f?", "Et alors\u202f?", "Et alors\u202f?"],
 		["– Salut!", "– Salut!", "—\u00a0Salut\u00a0!"],
 		["Il vient – peut-être – demain.", "Il vient – peut-être – demain.", "Il vient –\u00a0peut-être\u00a0– demain."],
 		["Premier.\n\n\nDernier.", "Premier.\n\n\nDernier.", "Premier.\n\nDernier."],
@@ -497,7 +508,15 @@ async function main() {
 	for (const [source, revised] of [
 		["Le modèle pèse 40\u00a0Mo.", "Le modèle pèse 40 Mo."],
 		["Il avance –\u00a0à son rythme.", "Il avance – à son rythme."],
+		["Saison\u00a01, épisode\u202f2, Jean\u00a0Dupont.", "Saison 1, épisode 2, Jean Dupont."],
 	] as const) assert.equal(api.protectLinks(source).diff(revised).length, 0, "L’IA propose de retirer une insécable correcte");
+	for (const [source, revised, expected] of [
+		["😀 saison\u00a01 : une fote.", "😀 saison 1 : une faute.", "😀 saison\u00a01\u00a0: une faute."],
+		["Saison\u00a01, puis saison\u202f1.", "Nouvelle saison 1, puis saison 1.", "Nouvelle saison\u00a01, puis saison\u202f1."],
+		["Premier\u00a0mot. Deuxième\u202fmot.", "Deuxième mot.", "Deuxième\u202fmot."],
+	] as const) assert.equal(apply(source, api.protectLinks(source).diff(revised)), expected, "Une correction voisine perd une insécable choisie par l’auteur");
+	const authorSpaces = "Saison\u00a01, épisode\u202f2, Jean\u00a0Dupont\u202f?";
+	assert.equal(api.fixBlankLinesProtected(api.fixPunctuationSpacing(authorSpaces)), authorSpaces, "Ponctuations modifie les insécables de l’auteur");
 	for (const [source, expected] of [
 		["40 Mo, 2 Ko, 3 Go, 1 To.", "40\u00a0Mo, 2\u00a0Ko, 3\u00a0Go, 1\u00a0To."],
 		["40Mo, 3,5kg, 20 km/h, 10 m², 5 kWh, 2 µg, 25 °C.", "40\u00a0Mo, 3,5\u00a0kg, 20\u00a0km/h, 10\u00a0m², 5\u00a0kWh, 2\u00a0µg, 25\u00a0°C."],
@@ -541,9 +560,11 @@ async function main() {
 	const punctuationCursor = { line: 0, ch: 5 };
 	let punctuationSelections = [{ anchor: { line: 0, ch: 12 }, head: punctuationCursor }];
 	let punctuationScroll = { top: 480, left: 12 };
+	const punctuationRevealed: number[] = [], punctuationScrolled: number[] = [];
 	const punctuationView = { file: { path: "ponctuation.md" }, editor: {
 		getValue: () => punctuationNote, setValue: (value: string) => { punctuationNote = value; punctuationSelections = []; punctuationScroll = { top: 0, left: 0 }; },
-		getCursor: () => punctuationCursor, setCursor: (value: unknown) => assert.equal(value, punctuationCursor),
+		getCursor: () => punctuationCursor, offsetToPos: (ch: number) => ({ line: 0, ch }), setCursor: (position: { ch: number }) => punctuationRevealed.push(position.ch),
+		scrollIntoView: (range: { from: { ch: number } }, center: boolean) => { assert.equal(center, true); punctuationScrolled.push(range.from.ch); },
 		listSelections: () => punctuationSelections, setSelections: (value: typeof punctuationSelections) => { punctuationSelections = value; },
 		getScrollInfo: () => punctuationScroll, scrollTo: (left: number, top: number) => { punctuationScroll = { left, top }; },
 	} };
@@ -556,15 +577,18 @@ async function main() {
 	assert.equal(notices.at(-1), "Ponctuation : corrections appliquées.");
 	assert.deepEqual(punctuationSelections, [{ anchor: { line: 0, ch: 12 }, head: punctuationCursor }], "Ponctuations perd la sélection inversée");
 	assert.deepEqual(punctuationScroll, { top: 480, left: 12 }, "Ponctuations perd le défilement");
+	assert.equal(punctuationRevealed.length, 0, "La ponctuation automatique cherche une suggestion à valider");
 	await punctuationAction();
 	assert.equal(punctuationNote, expectedPunctuationNote);
 	assert.equal(notices.at(-1), "Ponctuation : rien à corriger.");
 	punctuationPlugin.settings.punctuationAutoApply = false;
-	punctuationNote = "Attends... 27 ans!\n\n\nSuite.";
+	punctuationNote = "Saison\u00a01. Attends... 27 ans!\n\n\nSuite.";
 	const originalPunctuation = punctuationNote;
 	await punctuationAction();
 	assert.equal(punctuationNote, originalPunctuation, "La ponctuation non automatique modifie la note avant validation");
-	assert.equal(apply(punctuationNote, punctuationPlugin.aiGroups), "Attends… 27\u00a0ans\u00a0!\n\nSuite.", "Les propositions de ponctuation ne reconstituent pas la correction complète");
+	assert.equal(apply(punctuationNote, punctuationPlugin.aiGroups), "Saison\u00a01. Attends… 27\u00a0ans\u00a0!\n\nSuite.", "Les propositions de ponctuation ne reconstituent pas la correction complète");
+	assert.deepEqual(punctuationRevealed, [originalPunctuation.indexOf("...")], "Ponctuations ne sélectionne pas sa première suggestion");
+	assert.deepEqual(punctuationScrolled, punctuationRevealed, "La première suggestion de ponctuation n’est pas visible");
 	assert.equal(punctuationPlugin.aiSourcePath, punctuationView.file.path);
 	assert.equal(punctuationPlugin.correctionSource, "punctuation");
 	punctuationPlugin.showModeMenu({});
@@ -660,9 +684,12 @@ async function main() {
 	let writeOverride: string | null = null;
 	const notes = new Map<string, string>();
 	const opened: string[] = [];
+	const aiRevealed: number[] = [], aiScrolled: number[] = [];
 	const sourceView = { file: { path: "Dossier/Article.md", basename: "Article", parent: { path: "Dossier" } }, editor: {
 		getValue: () => sourceText, getSelection: () => sourceText.slice(aiFrom, aiTo), somethingSelected: () => aiFrom !== (aiTo ?? sourceText.length),
 		getCursor: () => ({ line: 0, ch: aiFrom }), posToOffset: (position: { ch: number }) => position.ch,
+		offsetToPos: (ch: number) => ({ line: 0, ch }), setCursor: (position: { ch: number }) => aiRevealed.push(position.ch),
+		scrollIntoView: (range: { from: { ch: number } }, center: boolean) => { assert.equal(center, true); aiScrolled.push(range.from.ch); },
 	} };
 	Object.assign(aiPlugin.app, { vault: {
 		getAbstractFileByPath: (path: string) => notes.has(path) ? { path } : null,
@@ -684,6 +711,7 @@ async function main() {
 	} });
 	const scopeSource = "Avant 😀 une fote.\n\nMilieu une fote.\n\nAprès une fote.";
 	for (const model of ["gpt-test", "claude-test"]) for (const scope of ["cursor-middle", "cursor-end", "selection"] as const) {
+		aiRevealed.length = aiScrolled.length = 0;
 		aiPlugin.settings.aiModel = model;
 		aiPlugin.settings.aiChunkSize = 10;
 		sourceText = scopeSource;
@@ -693,6 +721,7 @@ async function main() {
 		requestHandler = request => {
 			const body = JSON.parse(request.body) as { messages: Array<{ content: string }> };
 			const text = body.messages.at(-1)!.content;
+			if (sent.length) assert.equal(aiRevealed.length, 1, "L’IA attend la fin de toute la note avant de montrer sa première suggestion");
 			sent.push(text);
 			const revised = text.replace("fote", "faute");
 			return { status: 200, json: { choices: [{ message: { content: revised } }], content: [{ type: "text", text: revised }] } };
@@ -703,15 +732,19 @@ async function main() {
 		const expected = scope === "selection" ? sourceText.slice(0, aiFrom) + sourceText.slice(aiFrom, aiTo).replace("fote", "faute") + sourceText.slice(aiTo) : sourceText.replaceAll("fote", "faute");
 		assert.equal(apply(sourceText, aiPlugin.aiGroups), expected, "Les corrections IA perdent leurs positions dans la note");
 		assert.equal(sourceText, scopeSource, "L’analyse IA modifie le texte source");
-		assert.equal(sourceView.editor.getCursor().ch, aiFrom, "L’analyse IA déplace le curseur");
+		const firstSuggestion = sourceText.indexOf("fote", scope === "selection" ? aiFrom : 0);
+		assert.deepEqual(aiRevealed, [firstSuggestion], "L’IA doit sélectionner une seule fois la première suggestion de la portée analysée");
+		assert.deepEqual(aiScrolled, [firstSuggestion], "L’IA laisse la première suggestion hors écran");
 	}
 	for (const blank of ["", " \n\n "]) {
 		sourceText = blank; aiFrom = aiTo = 0;
+		const previousReveals = aiRevealed.length;
 		let calls = 0;
 		requestHandler = () => { calls++; throw new Error("Une note vide est envoyée à l’IA"); };
 		await aiPlugin.runOrthoTypoIA();
 		assert.equal(calls, 0, "Une note vide est envoyée à l’IA");
 		assert.equal(aiPlugin.aiGroups.length, 0);
+		assert.equal(aiRevealed.length, previousReveals, "Une analyse sans suggestion déplace le curseur");
 	}
 	for (const model of ["gpt-test", "claude-test"]) {
 		aiPlugin.settings.aiModel = model; aiPlugin.settings.aiChunkSize = 5000;

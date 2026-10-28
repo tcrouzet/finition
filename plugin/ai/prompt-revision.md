@@ -17,6 +17,7 @@ Ne vous contentez pas d'un texte "acceptable". Cherchez activement:
 - Les tournures plus fluides
 
 # Consignes
+Dans les citations entre guillemets ou les quotes ne corriger que l'orthographe. Ne jamais réécrire les citations ou quotes.
 Ne pas systématiquement remplacer "quand" par "lorsque".
 Ne pas remplacer les mots vulgaires ou grossiers s'ils sont justifiés dans le contexte.
 Ne pas modifier la mise en forme des dialogues (surtout quand ils sont libres sans repère typographique).

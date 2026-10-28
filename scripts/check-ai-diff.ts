@@ -95,8 +95,9 @@ export function checkAIDiff(): void {
 	for (const [number, unit] of [["27", "ans"], ["1", "an"], ["2", "années"], ["1", "année"], ["3", "mois"], ["1", "jour"], ["12", "jours"], ["2", "semaines"], ["1", "semaine"], ["24", "heures"], ["1", "heure"], ["5", "minutes"], ["1", "minute"], ["30", "secondes"], ["1", "seconde"], ["2", "décennies"], ["3", "siècles"], ["1", "millénaire"], ["27", "ANS"]] as const) {
 		const expected = `${number}\u00a0${unit}`;
 		for (const space of ["", " ", "\t", "\u00a0", "\u202f"]) {
-			assert.equal(fixPunctuationSpacing(`${number}${space}${unit}`), expected, "Ponctuations n’ajoute pas l’insécable avant une durée");
-			assert.equal(cleanTypography(`${number}${space}${unit}`), expected, "La normalisation IA perd l’insécable avant une durée");
+			const preserved = space === "\u202f" ? `${number}\u202f${unit}` : expected;
+			assert.equal(fixPunctuationSpacing(`${number}${space}${unit}`), preserved, "Ponctuations n’ajoute pas l’insécable ou modifie celle de l’auteur avant une durée");
+			assert.equal(cleanTypography(`${number}${space}${unit}`), preserved, "La normalisation IA perd l’insécable avant une durée");
 		}
 		assert.equal(protectLinks(expected).diff(`${number} ${unit}`).length, 0);
 		assert.equal(fixPunctuationSpacing(expected), expected, "Une durée correcte n’est pas stable au second passage");

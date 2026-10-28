@@ -1,22 +1,8 @@
 import { cleanTypography, hasResponseText } from "./clean";
-import { diffToGroups, type DiffGroup } from "./diff";
+import { diffToGroups, preserveNonbreakingSpaces, type DiffGroup } from "./diff";
 import { markdownLinks, linkRanges, mergeRanges, type MarkdownLink } from "../markdown-links";
 import { frontmatterRanges, hashtagRanges } from "../markdown-tags";
 import { annotationRanges, htmlTagRanges, stripHTMLTags } from "./annotations";
-
-function preserveNumberSpaces(source: string, revised: string): string {
-	const numbers = /(\d+(?:[.,]\d+)?)([\u00a0\u202f \t]+)/gu;
-	const originals = Array.from(source.matchAll(numbers));
-	const sameCount = originals.length === Array.from(revised.matchAll(numbers)).length;
-	const unique = new Map<string, string | null>();
-	for (const match of originals) unique.set(match[1], unique.has(match[1]) ? null : match[2]);
-	let index = 0;
-	return revised.replace(numbers, (match: string, number: string) => {
-		const spaces = sameCount ? originals[index++][2] : unique.get(number);
-		const nonbreaking = spaces?.match(/[\u00a0\u202f]/u)?.[0];
-		return nonbreaking ? number + nonbreaking : match;
-	});
-}
 
 export function protectLinks(original: string, from = 0, to = original.length, links: readonly MarkdownLink[] = markdownLinks(original)): { text: string; diff: (revised: string) => DiffGroup[] } {
 	const tags = hashtagRanges(original);
@@ -49,7 +35,7 @@ export function protectLinks(original: string, from = 0, to = original.length, l
 		const groups: DiffGroup[] = [];
 		// Les séparateurs Markdown en fin de plage restent ceux du texte source.
 		const cleaned = cleanTypography(stripHTMLTags(revised)).replace(/[\r\n]*$/u, text.match(/[\r\n]*$/u)?.[0] ?? "");
-		for (const group of diffToGroups(text, preserveNumberSpaces(text, cleaned))) {
+		for (const group of diffToGroups(text, preserveNonbreakingSpaces(text, cleaned))) {
 			let start = group.delFrom, end = group.delTo, replacement = group.insText ?? "";
 			if (!parts.some(part => start >= part.from && end <= part.to)) {
 				while (start < end && replacement && text[start] === replacement[0]) { start++; replacement = replacement.slice(1); }

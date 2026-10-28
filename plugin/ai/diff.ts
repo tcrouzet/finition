@@ -178,3 +178,26 @@ export function diffToGroups(original: string, revised: string): DiffGroup[] {
 	}
 	return groups;
 }
+
+export function preserveNonbreakingSpaces(source: string, revised: string): string {
+	if (source === revised || !/[\u00a0\u202f]/u.test(source)) return revised;
+	const normalize = (text: string) => text.replace(/[\u00a0\u202f]/gu, " ");
+	let result = "", cursor = 0, revisedCursor = 0;
+	const appendUnchanged = (end: number) => {
+		result += revised.slice(revisedCursor, revisedCursor + end - cursor).replace(/[ \u00a0\u202f]/gu, (space, offset: number) => {
+			const original = source[cursor + offset];
+			return /[\u00a0\u202f]/u.test(original) ? original : space;
+		});
+		revisedCursor += end - cursor;
+	};
+	// Aligner le texte conserve les choix de l’auteur même après une insertion ou suppression.
+	for (const group of diffToGroups(normalize(source), normalize(revised))) {
+		appendUnchanged(group.delFrom);
+		const length = group.insText?.length ?? 0;
+		result += revised.slice(revisedCursor, revisedCursor + length);
+		revisedCursor += length;
+		cursor = group.delTo;
+	}
+	appendUnchanged(source.length);
+	return result;
+}
