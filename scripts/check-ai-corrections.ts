@@ -63,6 +63,25 @@ export async function checkAICorrectionLayout(): Promise<void> {
 
 export function checkAICorrections(): void {
 	const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
+	const multiline = "Début.\n\nUn mot\nsur deux lignes.\n\nFin.";
+	for (const [from, to, replacement, expectedLines] of [
+		[multiline.indexOf("Un"), multiline.indexOf("lignes.") + 7, "Autre texte.", [3, 4]],
+		[7, 7, "Ajout.", [2]],
+		[7, 8, null, [1]],
+	] as const) {
+		const host = { aiSourcePath: "lignes.md", aiGroups: [{ id: 0, delFrom: from, delTo: to, delText: multiline.slice(from, to), insText: replacement }] as AIGroup[], aiGroupsVersion: 0 };
+		const state = EditorState.create({ doc: multiline, extensions: [editorInfoField, finitionAIExtension(host)] });
+		Object.assign(state.field(editorInfoField), { file: { path: host.aiSourcePath } });
+		const parent = document.body.createDiv(), view = new EditorView({ parent, state });
+		const decoratedLines = () => Array.from(view.contentDOM.querySelectorAll(".cm-line.finition-ai-line"), line => view.state.doc.lineAt(view.posAtDOM(line)).number);
+		try {
+			check(JSON.stringify(decoratedLines()) === JSON.stringify(expectedLines), "Les classes de hauteur ne ciblent pas les lignes contenant une correction");
+			view.dom.querySelector<HTMLElement>(".finition-ai-reject")!.click();
+			check(decoratedLines().length === 0, "Une ligne conserve la hauteur des corrections après refus");
+			check(undo(view) && JSON.stringify(decoratedLines()) === JSON.stringify(expectedLines), "Annuler ne restaure pas les classes de hauteur des corrections");
+			check(view.state.doc.toString() === multiline, "Les classes de ligne modifient la note");
+		} finally { view.destroy(); parent.remove(); }
+	}
 	const source = "Un inutile texte. Une fote.";
 	const firstFile = { path: "première.md" }, otherFile = { path: "autre.md" }, analyses = new NoteAnalyses();
 	const saved = analyses.activate(firstFile);

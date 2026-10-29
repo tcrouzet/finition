@@ -448,7 +448,7 @@ body.is-mobile .finition-synonyms-insert {
 	border-left: 2px solid var(--color-red, #c0392b);
 }
 
-.markdown-source-view.mod-cm6.is-live-preview .cm-editor .cm-line:has([data-finition-ai-group]) {
+.markdown-source-view.mod-cm6.is-live-preview .cm-editor .cm-line.finition-ai-line {
 	height: auto;
 }
 

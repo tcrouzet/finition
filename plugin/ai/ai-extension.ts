@@ -96,7 +96,13 @@ function buildAIDecorations(groups: AIGroup[], document: Text): DecorationSet {
 			builder.add(g.delTo, g.delTo, Decoration.widget({ widget: new CorrectionWidget("", g.id, "reject"), side: 2 }));
 		}
 	}
-	return builder.finish().update({ add: whitespace, sort: true });
+	const decorations = builder.finish().update({ add: whitespace, sort: true });
+	const lines = new Set<number>();
+	decorations.between(0, document.length, (from, to) => {
+		const lastLine = document.lineAt(to).number;
+		for (let number = document.lineAt(from).number; number <= lastLine; number++) lines.add(document.line(number).from);
+	});
+	return decorations.update({ add: Array.from(lines, from => Decoration.line({ class: "finition-ai-line" }).range(from)), sort: true });
 }
 
 export function finitionAIExtension(host: AIGroupHost) {
