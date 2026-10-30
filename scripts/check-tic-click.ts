@@ -123,6 +123,8 @@ async function main() {
 				import { StateField } from "@codemirror/state";
 				export const Platform = { isDesktop: false, isMacOS: ${process.platform === "darwin"} };
 				export const editorInfoField = StateField.define({ create: () => ({ file: null }), update: value => value });
+				const icons = new Map();
+				export const addIcon = (id, svg) => { icons.set(id, svg); };
 				const configure = (element, options = {}) => {
 				  element.className = options.cls ?? "";
 				  if (options.text) element.textContent = options.text;

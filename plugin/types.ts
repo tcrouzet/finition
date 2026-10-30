@@ -253,7 +253,7 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	singleNoteOpen: false,
 	debugMode: false,
 	punctuationAutoApply: false,
-	apostrophesAutoApply: false,
+	apostrophesAutoApply: true,
 	span: 1500,
 	repetitionMinLength: 2,
 	repetitionCountDisplay: "count",

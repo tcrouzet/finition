@@ -4,6 +4,10 @@
  * viennent des variables actualisées par applyPalette() dans main.ts.
  */
 
+.vertical-tab-nav-item[data-setting-id="finition"] .vertical-tab-nav-item-icon {
+	display: flex;
+}
+
 .finition-correction-spinner { display: inline-flex; vertical-align: middle; margin-right: 0.5em; }
 .finition-correction-spinner svg { width: 1em; height: 1em; animation: finition-correction-spin 1s linear infinite; }
 .finition-loading-cancel { display: inline-flex; vertical-align: middle; margin-left: 0.5em; }

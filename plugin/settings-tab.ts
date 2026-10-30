@@ -29,6 +29,7 @@ const COLOR_FUNCTIONS: Array<{ key: ColorFunctionKey; label: string }> = [
 // en un même bloc.
 
 export class FinitionSettingTab extends PluginSettingTab {
+	override icon = "finition";
 	plugin: FinitionPlugin;
 
 	// Les brouillons survivent aux reconstructions de l’interface ; null recharge le prompt actif.

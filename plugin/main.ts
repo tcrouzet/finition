@@ -11,7 +11,7 @@
  * - settings-tab.ts       : onglet de réglages
  */
 
-import { FileSystemAdapter, Menu, MarkdownView, Notice, Plugin, setIcon } from "obsidian";
+import { addIcon, FileSystemAdapter, Menu, MarkdownView, Notice, Plugin, setIcon } from "obsidian";
 import type { MenuItem, TFile } from "obsidian";
 import { EditorView } from "@codemirror/view";
 import { lockAINote } from "./ai/note-lock";
@@ -70,6 +70,7 @@ import { lookupFamily } from "./ui/family";
 import { NeuralModels, neuralFileLimit } from "./neural-models";
 import { dictionaryCommands, dictionaryLabels, WordDictionaries, type DictionaryKind } from "./dictionaries";
 import { LexiconDictionaries } from "./lexicon/dictionaries";
+import finitionIcon from "../icon.svg?raw";
 
 // Les petites ressources stylistiques restent intégrées au plugin.
 // Dictionnaires et modèles de correction se téléchargent séparément.
@@ -173,6 +174,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.registerEditorExtension(finitionAIExtension(this));
 		this.registerEditorExtension(finitionGrammalecteExtension(this));
 		this.registerEditorExtension(correctionGutter(this));
+		addIcon("finition", finitionIcon);
 		this.settingsTab = new FinitionSettingTab(this.app, this);
 		this.addSettingTab(this.settingsTab);
 		registerNoteReset(this, file => this.changeAnalysisNote(file));

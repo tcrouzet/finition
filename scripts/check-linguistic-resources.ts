@@ -119,11 +119,12 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	};
 	for (const [name, key] of [["Apostrophes validées automatiquement", "apostrophesAutoApply"], ["Autres ponctuations validées automatiquement", "punctuationAutoApply"]] as const) {
 		const toggle = row(name)?.querySelector<HTMLInputElement>('input[type="checkbox"]');
-		check(toggle && !toggle.checked, "Un interrupteur de validation indépendant manque ou est activé par défaut");
+		check(toggle && toggle.checked === (key === "apostrophesAutoApply"), "Les apostrophes doivent être sur ON et les autres ponctuations sur OFF par défaut");
+		const value = !toggle!.checked;
 		toggle!.click();
-		await settled(() => plugin.settings[key]);
+		await settled(() => plugin.settings[key] === value);
 		await plugin.loadSettings();
-		check(plugin.settings[key] && plugin.settings.debugMode, "Le choix de validation ne persiste pas ou change le mode debug");
+		check(plugin.settings[key] === value && plugin.settings.debugMode, "Le choix de validation ne persiste pas ou change le mode debug");
 	}
 	for (const [title, section] of [["Tricolons", "Corrections"], ["Synonymes", "Synonymes"], ["Étymologie", "Étymologie"], ["Citations", "Citations"]]) {
 		internal.showModeMenu(new MouseEvent("click"));

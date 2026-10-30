@@ -348,11 +348,11 @@ async function main() {
 	assert.equal(plugin.settings.mode, "ternary");
 	assert.equal(plugin.saved.mode, "ternary");
 	assert.equal(plugin.settings.debugMode, false);
-	assert.equal(plugin.settings.apostrophesAutoApply, false);
-	plugin.settings.apostrophesAutoApply = true;
+	assert.equal(plugin.settings.apostrophesAutoApply, true, "Les apostrophes doivent être validées automatiquement par défaut");
+	plugin.settings.apostrophesAutoApply = false;
 	await plugin.saveData(plugin.settings);
 	await plugin.loadSettings();
-	assert.equal(plugin.settings.apostrophesAutoApply, true, "Le choix de validation des apostrophes est perdu au rechargement");
+	assert.equal(plugin.settings.apostrophesAutoApply, false, "Le choix de désactiver la validation des apostrophes est perdu au rechargement");
 	assert.equal(plugin.settings.codexModel, "", "Sans choix explicite, le modèle configuré dans Codex doit être conservé");
 	assert.equal(plugin.settings.singleNoteOpen, false, "Une seule note ouverte doit être désactivé par défaut");
 	assert.equal(plugin.settings.showLeftSidebarToggle, true, "Le bouton de barre latérale doit être proposé par défaut");
@@ -567,6 +567,7 @@ async function main() {
 	const punctuationPlugin = new productionModule.exports.default();
 	await punctuationPlugin.loadSettings();
 	assert.equal(punctuationPlugin.settings.punctuationAutoApply, false, "La ponctuation doit proposer ses corrections par défaut");
+	assert.equal(punctuationPlugin.settings.apostrophesAutoApply, true, "Le plugin compilé ne valide pas les apostrophes par défaut");
 	punctuationPlugin.settings.punctuationAutoApply = true;
 	let punctuationNote = "– Bonjour! Oui? Il dit: «bonjour»; 40 Mo. Il avance — doucement —. Il recule — lentement — puis repart.";
 	const expectedPunctuationNote = "—\u00a0Bonjour\u00a0! Oui\u00a0? Il dit\u00a0: «\u00a0bonjour\u00a0»\u00a0; 40\u00a0Mo. Il avance –\u00a0doucement. Il recule –\u00a0lentement\u00a0– puis repart.";

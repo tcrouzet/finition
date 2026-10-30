@@ -65,7 +65,7 @@ Le modèle public **CamemBERT** se charge dans les réglages. Des modèles perso
 
 **Ponctuations** harmonise les espaces insécables, les apostrophes, les tirets et les lignes vides. Elle remplace `...` par `…`. Une fin de paragraphe clôt implicitement le suivi des guillemets. Le code, les liens et les horaires sont préservés.
 
-Cette commande apparaît en tête des correcteurs dans le menu ♫ et traite toute la note. Par défaut, elle affiche les corrections à accepter ou refuser une par une, avec le même aperçu que les autres corrections. Dans **Réglages → Finition → Ponctuation**, deux interrupteurs permettent de valider automatiquement les **apostrophes** et les **autres ponctuations**, indépendamment du mode debug. Les espaces insécables sont ajoutées entre un nombre et une unité reconnue dans le [dictionnaire d’unités](plugin/data/units.json), jamais avant un nombre seul. Celles déjà présentes dans le texte sont conservées.
+Cette commande apparaît en tête des correcteurs dans le menu ♫ et traite toute la note. Dans **Réglages → Finition → Ponctuation**, deux interrupteurs règlent la validation automatique : **apostrophes ON par défaut**, **autres ponctuations OFF par défaut**, indépendamment du mode debug. Les corrections non automatiques sont à accepter ou refuser une par une, avec le même aperçu que les autres corrections. Les espaces insécables sont ajoutées entre un nombre et une unité reconnue dans le [dictionnaire d’unités](plugin/data/units.json), jamais avant un nombre seul. Celles déjà présentes dans le texte sont conservées.
 
 ## Dictionnaires
 
