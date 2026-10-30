@@ -16,7 +16,7 @@ Les mots qu’on répète sans les entendre, les phrases qui prennent toujours l
 
 Obsidian **1.14 ou ultérieur** est requis. Le plugin est gratuit ; les fonctions IA sont facultatives.
 
-Pour commencer avec les répétitions, ouvrir **Réglages → Finition → Corrections**, puis **Charger** en face de **Dictionnaire Finition**. Les autres dictionnaires et moteurs se téléchargent depuis leurs sections des réglages. Une fonction grisée indique qu’une ressource manque encore.
+Pour commencer avec les répétitions, ouvrir **Réglages → Finition → Corrections**, puis **Charger** en face de **Dictionnaire Finition**. Les autres dictionnaires et moteurs se téléchargent depuis leurs sections des réglages. Cliquer sur une fonction grisée du menu ♫ ouvre directement les réglages où charger la ressource manquante.
 
 ## Relire en couleurs
 
@@ -63,9 +63,9 @@ Le modèle public **CamemBERT** se charge dans les réglages. Des modèles perso
 
 ### Soigner la ponctuation
 
-**Ponctuations** harmonise les espaces insécables, les apostrophes, les tirets et les lignes vides, y compris les espaces entre un nombre et son unité. Elle remplace `...` par `…`. Une fin de paragraphe clôt implicitement le suivi des guillemets. Le code, les liens et les horaires sont préservés.
+**Ponctuations** harmonise les espaces insécables, les apostrophes, les tirets et les lignes vides. Elle remplace `...` par `…`. Une fin de paragraphe clôt implicitement le suivi des guillemets. Le code, les liens et les horaires sont préservés.
 
-Cette commande apparaît en tête des correcteurs dans le menu ♫ et traite toute la note. Par défaut, elle affiche les corrections à accepter ou refuser une par une, avec le même aperçu que les autres corrections. Pour tout appliquer immédiatement, activer **Réglages → Finition → Ponctuation → Ponctuation validée automatiquement**.
+Cette commande apparaît en tête des correcteurs dans le menu ♫ et traite toute la note. Par défaut, elle affiche les corrections à accepter ou refuser une par une, avec le même aperçu que les autres corrections. Dans **Réglages → Finition → Ponctuation**, deux interrupteurs permettent de valider automatiquement les **apostrophes** et les **autres ponctuations**, indépendamment du mode debug. Les espaces insécables sont ajoutées entre un nombre et une unité reconnue dans le [dictionnaire d’unités](plugin/data/units.json), jamais avant un nombre seul. Celles déjà présentes dans le texte sont conservées.
 
 ## Dictionnaires
 

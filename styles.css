@@ -430,6 +430,10 @@ body.is-mobile .finition-synonyms-insert {
  * (rouge = texte original à retirer, vert = texte proposé, inséré comme
  * widget — pas du texte réel du document). Voir ai/ai-extension.ts.
  */
+.finition-resource-required {
+	color: var(--text-muted);
+}
+
 .finition-ai-del {
 	text-decoration: line-through;
 	color: #c0392b;

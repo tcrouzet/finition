@@ -2,6 +2,7 @@ import { linkRanges, mergeRanges } from "../markdown-links";
 import { markdownExclusionRanges } from "../markdown-tags";
 import { SENTENCE_SEPARATOR_RE } from "./clause-split";
 import { preserveNonbreakingSpaces } from "../ai/diff";
+import units from "../data/units.json";
 
 /**
  * Correction déterministe des espaces insécables et des tirets, selon le
@@ -22,7 +23,7 @@ import { preserveNonbreakingSpaces } from "../ai/diff";
  *    paragraphe, un pour le séparer du suivant) — SAUF entre deux entrées
  *    d'une liste (-, *, +, ou numérotée), où un seul saut de ligne est
  *    conservé (pas de ligne vide entre les entrées).
- * 7. Espace insécable entre un nombre et une unité ou une durée (Mo, kg, ans…).
+ * 7. Espace insécable entre un nombre et une unité présente dans le dictionnaire.
  *
  * Les zones suivantes sont protégées (jamais modifiées) : blocs de code
  * (```...```), code inline (`...`), liens Markdown [texte](url), liens
@@ -124,10 +125,18 @@ function fixApostrophes(text: string): string {
 	return text.replace(/'/g, "’");
 }
 
-function fixUnitSpacing(text: string): string {
-	const spaced = text.replace(/(\d)[\u00a0\u202f \t]*([kKMGTPE]?o|[kmcdµμn]?m[²³]?|[kmcµμn]?g|[mcdµμ]?[lL]|[kMG]?Hz|[kMG]?Wh?|[kMG]?J|[hkM]?Pa|ms|min|s|h|K|°[CF])(?![\p{L}\p{M}\p{N}_])/gu, "$1\u00a0$2");
-	return spaced.replace(/(^|[^\p{L}\p{M}\p{N}_])(\d+(?:[.,]\d+)?)[\u00a0\u202f \t]*(millisecondes?|secondes?|minutes?|heures?|jours?|semaines?|mois|trimestres?|semestres?|ans?|années?|décennies?|siècles?|millénaires?|(?:micro|milli|centi|déci|déca|hecto|kilo)?(?:grammes?|mètres?|litres?)|tonnes?)(?![\p{L}\p{M}\p{N}_])/giu, "$1$2\u00a0$3");
+export function fixApostrophesProtected(text: string): string {
+	const protectedText = protectSpans(text);
+	return protectedText.restore(fixApostrophes(protectedText.text));
 }
+
+const unitPattern = (entries: string[], flags: string) => {
+	const alternatives = [...entries].sort((a, b) => b.length - a.length)
+		.map(unit => unit.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+	return new RegExp(`(^|[^\\p{L}\\p{M}\\p{N}_])(\\d+(?:[.,]\\d+)?(?:[eE][+-]?\\d+)?)[ \\t\\u00a0\\u202f]*(${alternatives})(?![\\p{L}\\p{M}\\p{N}_/²³’'-])`, flags);
+};
+const symbolUnits = unitPattern(units.symbols, "gu");
+const namedUnits = unitPattern(units.names, "giu");
 
 const LIST_ITEM_START_RE = /[ \t]*(?:[-*+]|\d+[.)])[ \t]+/;
 
@@ -160,15 +169,15 @@ export function fixBlankLines(text: string): string {
 }
 
 /** Règles de ponctuation inline (espaces, tirets, apostrophes), sur le texte passé tel quel (typiquement une sélection). */
-export function fixPunctuationSpacing(text: string): string {
+export function fixPunctuationSpacing(text: string, replaceApostrophes = true): string {
 	const { text: protectedText, restore } = protectSpans(text);
 	let result = protectedText.replace(/\.{3,}/g, "…");
 	result = fixGuillemets(result);
 	result = fixDoublePunctuation(result);
 	result = fixLineStartDashes(result);
 	result = fixInciseDashes(result);
-	result = fixApostrophes(result);
-	result = fixUnitSpacing(result);
+	if (replaceApostrophes) result = fixApostrophes(result);
+	result = result.replace(symbolUnits, "$1$2\u00a0$3").replace(namedUnits, "$1$2\u00a0$3");
 	return preserveNonbreakingSpaces(text, restore(result));
 }
 

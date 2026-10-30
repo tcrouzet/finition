@@ -66,14 +66,17 @@ export async function resourceFixture(seed = true) {
 	return { adapter, revisions, readSource, writes };
 }
 
-export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin, getMenu: () => Array<{ title: string; disabled: boolean; checked: boolean; click: () => Promise<void> }>, setHandler: (handler: (request: { url: string; method?: string; body?: string }) => Promise<{ status: number; arrayBuffer: ArrayBuffer }>) => void): Promise<void> {
+export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin, getMenu: () => Array<{ title: string; titleNode?: DocumentFragment; disabled: boolean; checked: boolean; click: () => Promise<void> }>, setHandler: (handler: (request: { url: string; method?: string; body?: string }) => Promise<{ status: number; arrayBuffer: ArrayBuffer }>) => void): Promise<void> {
 	const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
+	const missing = (item: ReturnType<typeof getMenu>[number] | undefined) => Boolean(item?.titleNode?.querySelector(".finition-resource-required"));
 	check(resourceEngines.join("|") === "grammalecte|finition-corrector", "Catalogue des moteurs locaux incorrect");
 	check(Object.values(resourceFiles).flat().every(file => /\.(?:json|bin|txt|md)$/u.test(file)), "Le téléchargement contient autre chose que des données");
 	check(resourceFiles["finition-corrector"].every(file => !file.startsWith("electra/")), "Un modèle privé serait distribué");
 	check(resourcePacks.every(engine => resourceFiles[engine].every(file => resourceSource(engine, file).startsWith(file.endsWith(".bin") ? "scripts/neural/" : "resources/"))), "Données publiques et binaires de préparation mélangés");
 	const fixture = await resourceFixture(false);
 	const plugin = new Plugin({ vault: { adapter: fixture.adapter }, workspace: { iterateAllLeaves() {}, getActiveViewOfType: () => null } } as unknown as App, { id: "finition", name: "Finition", version: "0.4.3", minAppVersion: "1.0.0", description: "", author: "", dir: "test-plugin" });
+	const openedTabs: string[] = [];
+	Object.assign(plugin.app, { setting: { open() {}, openTabById(id: string) { openedTabs.push(id); } } });
 	const internal = plugin as unknown as { showModeMenu: (event: MouseEvent) => void };
 	await plugin.loadSettings();
 	await plugin.saveData({ ...plugin.settings, spellingEngine: "removed-engine", resourcePacks: { grammalecte: fixture.revisions.grammalecte, "removed-engine": "0".repeat(64) } });
@@ -91,15 +94,16 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	internal.showModeMenu(new MouseEvent("click"));
 	check(!getMenu().some(item => item.title === "Structure"), "Structure est visible sans mode debug");
 	plugin.settings.debugMode = true;
-	check(menus().every(item => item.disabled), "Installation vide : menus actifs");
-	check(["Répétitions", "Stéréotypes", "Copules"].every(title => getMenu().find(item => item.title === title)?.disabled), "Un surlignage lexical est disponible sans dictionnaire");
+	check(menus().every(item => missing(item) && !item.disabled), "Installation vide : menus actifs");
+	check(["Répétitions", "Stéréotypes", "Copules"].every(title => missing(getMenu().find(item => item.title === title))), "Un surlignage lexical est disponible sans dictionnaire");
 	for (const mode of ["repetition", "stereotype", "copules"] as const) {
 		await plugin.setMode(mode);
 		check(plugin.settings.mode !== mode, "Un surlignage lexical s’active sans dictionnaire");
 	}
-	check(["Atténuations", "Monotonies", "Charnières"].every(title => !getMenu().find(item => item.title === title)?.disabled), "Une analyse sans lexique est grisée");
+	check(["Atténuations", "Monotonies", "Charnières"].every(title => !missing(getMenu().find(item => item.title === title))), "Une analyse sans lexique est grisée");
 	const container = document.body.createDiv();
 	const tab = new FinitionSettingTab(plugin.app, plugin);
+	Object.assign(plugin, { settingsTab: tab });
 	tab.containerEl = container;
 	tab.update();
 	const row = (name: string) => Array.from(container.querySelectorAll(".setting-item")).find(row => row.querySelector(".setting-item-name")?.textContent === name);
@@ -113,6 +117,23 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 		const deadline = performance.now() + 1000;
 		while (!condition()) { check(performance.now() < deadline, "Les réglages de correction ne se stabilisent pas"); await new Promise(requestAnimationFrame); }
 	};
+	for (const [name, key] of [["Apostrophes validées automatiquement", "apostrophesAutoApply"], ["Autres ponctuations validées automatiquement", "punctuationAutoApply"]] as const) {
+		const toggle = row(name)?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+		check(toggle && !toggle.checked, "Un interrupteur de validation indépendant manque ou est activé par défaut");
+		toggle!.click();
+		await settled(() => plugin.settings[key]);
+		await plugin.loadSettings();
+		check(plugin.settings[key] && plugin.settings.debugMode, "Le choix de validation ne persiste pas ou change le mode debug");
+	}
+	for (const [title, section] of [["Tricolons", "Corrections"], ["Synonymes", "Synonymes"], ["Étymologie", "Étymologie"], ["Citations", "Citations"]]) {
+		internal.showModeMenu(new MouseEvent("click"));
+		const item = getMenu().find(item => item.title === title)!;
+		check(missing(item) && !item.disabled, "Une ressource absente doit rester grisée et cliquable");
+		await item.click();
+		await settled(() => Boolean(container.querySelector<HTMLDetailsElement>(`details[data-section="${section}"]`)?.open));
+		check(openedTabs.at(-1) === "finition", "Le menu de téléchargement n’ouvre pas les réglages de Finition");
+		check(container.querySelector(`details[data-section="${section}"] button`)?.textContent === "Charger", "La section ouverte ne propose pas de charger sa ressource");
+	}
 	const choose = async (value: string) => {
 		const dropdown = value === "fr-classic" || value === "fr-reform" ? grammar : corrector;
 		const select = dropdown();
@@ -137,7 +158,7 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 		check(items.length === 2, "Choix des deux moteurs absent du menu musique");
 		return items;
 	};
-	check(engines().every(item => item.disabled && !item.checked), "Moteur absent sélectionnable dans le menu musique");
+	check(engines().every(item => missing(item) && !item.disabled && !item.checked), "Moteur absent sélectionnable dans le menu musique");
 	await engines().find(item => item.title === "Neuronal")!.click();
 	check(plugin.settings.spellingEngine === "grammalecte" && !plugin.settings.spellingNeural, "Un moteur absent peut être activé");
 	await plugin.setMode("ternary");
@@ -156,8 +177,8 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	await settled(() => row("Dictionnaire Finition")?.querySelector<HTMLButtonElement>("button")?.textContent === "Recharger" && !row("Dictionnaire Finition")?.querySelector<HTMLButtonElement>("button")?.disabled);
 	check(requests === 3 && plugin.hasLexicon && !plugin.hasLinguisticResources, "Le dictionnaire seul installe un correcteur ou reste indisponible");
 	internal.showModeMenu(new MouseEvent("click"));
-	check(["Répétitions", "Stéréotypes"].every(title => !getMenu().find(item => item.title === title)?.disabled), "Les surlignages lexicaux restent grisés après installation");
-	check(menus().every(item => item.disabled), "Le dictionnaire seul active les analyses syntaxiques");
+	check(["Répétitions", "Stéréotypes"].every(title => !missing(getMenu().find(item => item.title === title))), "Les surlignages lexicaux restent grisés après installation");
+	check(menus().every(item => missing(item) && !item.disabled), "Le dictionnaire seul active les analyses syntaxiques");
 	check(plugin.lexicon.size === 0, "Les analyses lexicales sont chargées avant leur utilisation");
 	requests = 0;
 	row("Grammalecte")!.querySelector<HTMLButtonElement>("button")!.click();
@@ -174,12 +195,12 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	await plugin.loadSettings();
 	check(plugin.settings.grammalecteDictionary === "fr-classic", "Le retour au dictionnaire classique n’est pas persisté");
 
-	check(menus().every(item => !item.disabled), "Installation réussie : menus encore grisés");
-	check(!engines().find(item => item.title === "Grammalecte")?.disabled && engines().find(item => item.title === "Neuronal")?.disabled, "Disponibilité des moteurs du menu incorrecte");
+	check(menus().every(item => !missing(item) && !item.disabled), "Installation réussie : menus encore grisés");
+	check(!missing(engines().find(item => item.title === "Grammalecte")) && missing(engines().find(item => item.title === "Neuronal")), "Disponibilité des moteurs du menu incorrecte");
 	await plugin.setMode("ternary");
 	check(plugin.settings.mode === "ternary", "Tricolons reste inaccessible avec un dictionnaire");
 	await plugin.setSpellingEngine("finition-corrector");
-	check(plugin.settings.mode === "ternary" && plugin.settings.analysisEngine === "grammalecte" && menus().every(item => !item.disabled), "Changer de correcteur désactive le dictionnaire d’analyse ou Tricolons");
+	check(plugin.settings.mode === "ternary" && plugin.settings.analysisEngine === "grammalecte" && menus().every(item => !missing(item) && !item.disabled), "Changer de correcteur désactive le dictionnaire d’analyse ou Tricolons");
 	const missingAnalysis = await plugin.setAnalysisEngine("finition-corrector").then(() => false, () => true);
 	check(missingAnalysis && plugin.settings.analysisEngine === "grammalecte", "Un dictionnaire d’analyse absent peut être sélectionné");
 	await plugin.setSpellingEngine("grammalecte");
@@ -210,9 +231,9 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	check(unavailable.includes("404") && plugin.hasLinguisticResources, "Une erreur réseau désactive le moteur installé");
 	fixture.writes.delete(commonPath);
 	await plugin.loadLinguisticResources();
-	check(menus().every(item => item.disabled), "Un pack incomplet laisse les modes actifs");
+	check(menus().every(item => missing(item) && !item.disabled), "Un pack incomplet laisse les modes actifs");
 	check(!plugin.hasLexicon && plugin.lexicon.size === 0, "Un lexique absent reste actif ou en mémoire");
-	check(engines().every(item => item.disabled), "Un pack incomplet reste sélectionnable dans le menu musique");
+	check(engines().every(item => missing(item) && !item.disabled), "Un pack incomplet reste sélectionnable dans le menu musique");
 	tab.update();
 	check(corrector().options.length === 0 && corrector().disabled && grammar().options.length === 0 && grammar().disabled, "Un pack incomplet reste sélectionnable dans les réglages");
 	check([...fixture.writes.keys()].every(path => path.startsWith("test-plugin/data/resources/") || path === commonPath), "Une installation écrit hors des caches de données autorisés");

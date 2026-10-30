@@ -8,6 +8,15 @@ import { stripHTMLTags } from "../plugin/ai/annotations";
 const apply = (source: string, groups: DiffGroup[]) => [...groups].reverse().reduce((text, group) => text.slice(0, group.delFrom) + (group.insText ?? "") + text.slice(group.delTo), source);
 
 export function checkAIDiff(): void {
+	for (const [source, expected] of [
+		["Saison 1, épisode 2, en 2026 : 25 tonnes.", "Saison 1, épisode 2, en 2026\u00a0: 25\u00a0tonnes."],
+		["25 tonnes, 27 ans, 40Mo.", "25\u00a0tonnes, 27\u00a0ans, 40\u00a0Mo."],
+		["1. Un titre\n\n  2. Une liste\nTrois\n4 choses.", "1. Un titre\n\n  2. Une liste\nTrois\n4 choses."],
+		["Mot 123, valeur3, `à 3` et [3 choses](https://example.org/3).", "Mot 123, valeur3, `à 3` et [3 choses](https://example.org/3)."],
+		["100 personnes, chapitre 2, saison 1, 25 pages.", "100 personnes, chapitre 2, saison 1, 25 pages."],
+		["Le 2 m’a dit que le 3 s’est levé. 25 mo, 25 MO.", "Le 2 m’a dit que le 3 s’est levé. 25 mo, 25 MO."],
+		["3,5kg, 20 km/h, 1 m², 5 kWh, 25 °C, 20 % et 5 €.", "3,5\u00a0kg, 20\u00a0km/h, 1\u00a0m², 5\u00a0kWh, 25\u00a0°C, 20\u00a0% et 5\u00a0€."],
+	] as const) assert.equal(fixPunctuationSpacing(source), expected, "Les insécables doivent relier un nombre à une unité du dictionnaire uniquement");
 	const linked = "Une fote. " + "mot ".repeat(700) + "[lien](https://example.org) " + "mot ".repeat(700) + "Une fote.";
 	assert.equal(apply(linked, protectLinks(linked).diff(linked.replace("[lien](https://example.org)", "lien").replaceAll("fote", "faute"))), linked.replaceAll("fote", "faute"), "Le comparateur perd les corrections d’un long tronçon contenant un lien");
 	for (const separator of ["\n\n", "\r\n\r\n", "\n \t\n", "\n\u00a0\n", "\n\u202f\n"]) {
@@ -31,7 +40,7 @@ export function checkAIDiff(): void {
 		assert.equal(protectLinks(source).diff(revised).length, 0, "Des blancs de début de paragraphe produisent une poubelle sans texte visible");
 	}
 	assert.equal(apply("fote.", protectLinks("fote.").diff(" faute.")), "faute.", "Une correction de mot ajoute un blanc au début du paragraphe");
-	assert.equal(apply("25 tonnes.", protectLinks("25 tonnes.").diff("25 tonnes.")), "25\u00a0tonnes.", "Le filtrage des blancs supprime une vraie correction intérieure");
+	assert.equal(apply("25 tonnes.", protectLinks("25 tonnes.").diff("25 tonnes.")), "25\u00a0tonnes.", "Le retour IA doit relier le nombre à une unité reconnue");
 	for (const invisible of ["\u2060", "\u200e", "\u200f", "\u200b", "\ufeff", "\u00a0", "\u202f", "\u2009"]) {
 		const source = "Premier paragraphe.\n\nDeuxième paragraphe.";
 		const revised = `${invisible} Premier paragraphe.\n\n${invisible} Deuxième paragraphe.`;
@@ -96,7 +105,7 @@ export function checkAIDiff(): void {
 		const expected = `${number}\u00a0${unit}`;
 		for (const space of ["", " ", "\t", "\u00a0", "\u202f"]) {
 			const preserved = space === "\u202f" ? `${number}\u202f${unit}` : expected;
-			assert.equal(fixPunctuationSpacing(`${number}${space}${unit}`), preserved, "Ponctuations n’ajoute pas l’insécable ou modifie celle de l’auteur avant une durée");
+			assert.equal(fixPunctuationSpacing(`${number}${space}${unit}`), preserved, "Ponctuations ne relie pas une durée à son nombre");
 			assert.equal(cleanTypography(`${number}${space}${unit}`), preserved, "La normalisation IA perd l’insécable avant une durée");
 		}
 		assert.equal(protectLinks(expected).diff(`${number} ${unit}`).length, 0);

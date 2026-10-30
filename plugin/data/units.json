@@ -1,0 +1,43 @@
+{
+  "symbols": [
+    "m", "km", "hm", "dam", "dm", "cm", "mm", "µm", "μm", "nm",
+    "m²", "km²", "hm²", "dm²", "cm²", "mm²", "ha",
+    "m³", "km³", "dm³", "cm³", "mm³",
+    "L", "l", "hL", "hl", "daL", "dal", "dL", "dl", "cL", "cl", "mL", "ml", "µL", "µl", "μL", "μl",
+    "g", "kg", "hg", "dag", "dg", "cg", "mg", "µg", "μg", "ng", "t",
+    "s", "ms", "µs", "μs", "ns", "min", "h", "j",
+    "m/s", "m/s²", "km/h", "g/L", "g/l", "mg/L", "mg/l", "kg/m³",
+    "Hz", "kHz", "MHz", "GHz", "THz",
+    "Pa", "hPa", "kPa", "MPa", "bar", "mbar",
+    "K", "°C", "°F", "°", "rad", "sr",
+    "N", "kN", "J", "kJ", "MJ", "GJ", "cal", "kcal",
+    "W", "mW", "kW", "MW", "GW", "Wh", "kWh", "MWh", "GWh",
+    "V", "mV", "kV", "A", "mA", "µA", "μA", "Ah", "mAh",
+    "Ω", "kΩ", "MΩ", "C", "F", "µF", "μF", "nF", "pF", "H", "mH", "S", "T", "Wb",
+    "mol", "mmol", "cd", "lm", "lx", "Bq", "kBq", "MBq", "Gy", "Sv", "mSv", "µSv", "μSv", "kat",
+    "o", "Ko", "Mo", "Go", "To", "Po", "Eo", "Kio", "Mio", "Gio", "Tio", "Pio",
+    "bit", "kbit", "Mbit", "Gbit", "Tbit", "bit/s", "kbit/s", "Mbit/s", "Gbit/s", "Mo/s", "Go/s",
+    "%", "‰", "€", "$", "£", "¥", "EUR", "USD", "GBP", "CHF", "CAD"
+  ],
+  "names": [
+    "mètre", "mètres", "kilomètre", "kilomètres", "hectomètre", "hectomètres", "décamètre", "décamètres",
+    "décimètre", "décimètres", "centimètre", "centimètres", "millimètre", "millimètres", "micromètre", "micromètres", "nanomètre", "nanomètres",
+    "mètre carré", "mètres carrés", "kilomètre carré", "kilomètres carrés", "centimètre carré", "centimètres carrés",
+    "mètre cube", "mètres cubes", "centimètre cube", "centimètres cubes", "are", "ares", "hectare", "hectares",
+    "litre", "litres", "hectolitre", "hectolitres", "décalitre", "décalitres", "décilitre", "décilitres", "centilitre", "centilitres", "millilitre", "millilitres", "microlitre", "microlitres",
+    "gramme", "grammes", "kilogramme", "kilogrammes", "hectogramme", "hectogrammes", "décagramme", "décagrammes",
+    "décigramme", "décigrammes", "centigramme", "centigrammes", "milligramme", "milligrammes", "microgramme", "microgrammes", "nanogramme", "nanogrammes", "tonne", "tonnes",
+    "seconde", "secondes", "milliseconde", "millisecondes", "microseconde", "microsecondes", "nanoseconde", "nanosecondes",
+    "minute", "minutes", "heure", "heures", "jour", "jours", "semaine", "semaines", "mois", "trimestre", "trimestres", "semestre", "semestres",
+    "an", "ans", "année", "années", "décennie", "décennies", "siècle", "siècles", "millénaire", "millénaires",
+    "hertz", "kilohertz", "mégahertz", "gigahertz", "pascal", "pascals", "hectopascal", "hectopascals", "bar", "bars",
+    "kelvin", "kelvins", "degré", "degrés", "degré Celsius", "degrés Celsius", "degré Fahrenheit", "degrés Fahrenheit",
+    "radian", "radians", "stéradian", "stéradians", "newton", "newtons", "joule", "joules", "kilojoule", "kilojoules", "calorie", "calories", "kilocalorie", "kilocalories",
+    "watt", "watts", "kilowatt", "kilowatts", "mégawatt", "mégawatts", "gigawatt", "gigawatts", "kilowattheure", "kilowattheures",
+    "volt", "volts", "ampère", "ampères", "ohm", "ohms", "coulomb", "coulombs", "farad", "farads", "henry", "henrys", "siemens", "tesla", "teslas", "weber", "webers",
+    "mole", "moles", "candela", "candelas", "lumen", "lumens", "lux", "becquerel", "becquerels", "gray", "grays", "sievert", "sieverts", "katal", "katals",
+    "octet", "octets", "kilooctet", "kilooctets", "mégaoctet", "mégaoctets", "gigaoctet", "gigaoctets", "téraoctet", "téraoctets", "pétaoctet", "pétaoctets",
+    "kibioctet", "kibioctets", "mébioctet", "mébioctets", "gibioctet", "gibioctets", "tébioctet", "tébioctets", "bit", "bits",
+    "euro", "euros", "centime", "centimes", "dollar", "dollars", "livre sterling", "livres sterling", "franc suisse", "francs suisses", "yen", "yens"
+  ]
+}

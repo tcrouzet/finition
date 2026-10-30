@@ -131,6 +131,8 @@ async function main() {
 				  return element;
 				};
 				HTMLElement.prototype.createEl = function(tag, options) { return this.appendChild(configure(document.createElement(tag), options)); };
+				DocumentFragment.prototype.createEl = HTMLElement.prototype.createEl;
+				DocumentFragment.prototype.appendText = function(text) { this.append(text); };
 				HTMLElement.prototype.createSpan = function(options) { return this.createEl("span", options); };
 				globalThis.createEl = (tag, options) => configure(document.createElement(tag), options);
 				globalThis.createSpan = options => configure(document.createElement("span"), options);
@@ -220,7 +222,7 @@ async function main() {
 				  get items() { return this.entries.flatMap(item => item.submenu ? item.submenu.items : [item]); }
 				  addItem(callback) {
 				    const item = { title: "", checked: false, click: () => {},
-				      setTitle(title) { this.title = title; return this; }, setIcon() { return this; },
+				      setTitle(title) { this.titleNode = typeof title === "string" ? null : title; this.title = typeof title === "string" ? title : title.textContent; return this; }, setIcon() { return this; },
 				      setSubmenu() { return this.submenu = new Menu(); },
 				      setChecked(checked) { this.checked = checked; return this; }, setDisabled(disabled) { this.disabled = disabled; return this; }, onClick(click) { this.click = click; return this; } };
 				    callback(item); this.entries.push(item);

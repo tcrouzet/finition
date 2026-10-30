@@ -77,6 +77,7 @@ async function main() {
 	const menuActions = new Map<string, () => void | Promise<void>>();
 	class MarkdownView {}
 	class Plugin {
+		manifest = { id: "finition" };
 		app = { workspace: { getActiveViewOfType: () => null } };
 		saved: Partial<FinitionSettings> | null = null;
 		async loadData() { return this.saved; }
@@ -88,7 +89,7 @@ async function main() {
 			const parent = this.parent;
 			let title = "";
 			const item = {
-				setTitle(value: string) { title = value; menuTitles.push(value); menuParents.set(value, parent); return this; },
+				setTitle(value: string | { textContent: string }) { title = typeof value === "string" ? value : value.textContent; menuTitles.push(title); menuParents.set(title, parent); return this; },
 				setSubmenu() { return new Menu(title); },
 				setIcon() { return this; }, setChecked(value: boolean) { menuChecked.set(title, value); return this; }, setDisabled(value: boolean) { menuDisabled.set(menuTitles[menuTitles.length - 1], value); return this; }, onClick(callback: () => void | Promise<void>) { menuActions.set(title, callback); return this; },
 			};
@@ -104,7 +105,7 @@ async function main() {
 	} });
 	sandbox.window = sandbox;
 	sandbox.createFragment = () => ({ textContent: "", append(...nodes: Array<string | { textContent: string }>) { this.textContent += nodes.map(node => typeof node === "string" ? node : node.textContent).join(""); } });
-	sandbox.createSpan = () => ({ textContent: "" });
+	sandbox.createSpan = (options?: { text?: string }) => ({ textContent: options?.text ?? "" });
 	sandbox.createEl = (_tag: string, options: { cls?: string; attr?: Record<string, string> }) => {
 		let click = (_event: MouseEvent) => {};
 		const button = { className: options.cls ?? "", textContent: "", dataset: {} as Record<string, string>, attributes: { ...options.attr },
@@ -347,6 +348,11 @@ async function main() {
 	assert.equal(plugin.settings.mode, "ternary");
 	assert.equal(plugin.saved.mode, "ternary");
 	assert.equal(plugin.settings.debugMode, false);
+	assert.equal(plugin.settings.apostrophesAutoApply, false);
+	plugin.settings.apostrophesAutoApply = true;
+	await plugin.saveData(plugin.settings);
+	await plugin.loadSettings();
+	assert.equal(plugin.settings.apostrophesAutoApply, true, "Le choix de validation des apostrophes est perdu au rechargement");
 	assert.equal(plugin.settings.codexModel, "", "Sans choix explicite, le modèle configuré dans Codex doit être conservé");
 	assert.equal(plugin.settings.singleNoteOpen, false, "Une seule note ouverte doit être désactivé par défaut");
 	assert.equal(plugin.settings.showLeftSidebarToggle, true, "Le bouton de barre latérale doit être proposé par défaut");
@@ -370,14 +376,21 @@ async function main() {
 	plugin.showModeMenu({});
 	assert.ok(!menuTitles.some((title) => title.startsWith("Tic IA")));
 	assert.ok(menuTitles.includes("Tricolons") && !menuTitles.includes("Structure"));
-	assert.equal(menuDisabled.get("Tricolons"), true);
+	assert.equal(menuDisabled.get("Tricolons"), false);
 	assert.ok(menuTitles.includes("Synonymes IA"));
 	assert.deepEqual(menuTitles.filter(title => !menuParents.get(title)), ["Surlignages", "Dictionnaires", "Ponctuations", "Grammalecte", "Neuronal", "Corrections IA", "Paramètres", "Reset"]);
 	assert.ok(!menuTitles.includes("Statistiques"));
 	assert.deepEqual(menuTitles.filter(title => menuParents.get(title) === "Surlignages"), ["Répétitions", "Atténuations", "Stéréotypes", "Monotonies", "Tricolons", "Cadences", "Charnières", "Formes", "Copules"]);
-	assert.equal(menuDisabled.get("Copules"), true, "Copules doit demander le lexique");
+	assert.equal(menuDisabled.get("Copules"), false, "Copules doit demander le lexique");
 	assert.deepEqual(menuTitles.filter(title => menuParents.get(title) === "Dictionnaires"), ["Synonymes", "Synonymes IA", "Flexions", "Définitions", "Antonymes", "Phonétique", "Rimes", "Conjugaisons", "Étymologie", "Citations"]);
-	assert.equal(menuDisabled.get("Flexions"), true, "Flexions doit demander le lexique actif");
+	assert.equal(menuDisabled.get("Flexions"), false, "Flexions doit demander le lexique actif");
+	const openedSettings: string[] = [];
+	Object.assign(plugin.app, { setting: { open() { openedSettings.push("open"); }, openTabById(id: string) { openedSettings.push(id); } } });
+	for (const title of ["Répétitions", "Tricolons", "Copules", "Flexions", "Synonymes", "Définitions", "Citations", "Grammalecte", "Neuronal"]) {
+		await menuActions.get(title)!();
+		assert.deepEqual(openedSettings.splice(0), ["open", "finition"], `Le menu ${title} n’ouvre pas les réglages de téléchargement`);
+		assert.match(notices.at(-1) ?? "", /Charger/, "Le menu indisponible ne demande pas le chargement des ressources");
+	}
 	plugin.settings.debugMode = true;
 	await plugin.saveData(plugin.settings);
 	await plugin.loadSettings();
@@ -385,8 +398,8 @@ async function main() {
 	plugin.showModeMenu({});
 	assert.ok(menuTitles.includes("Structure"));
 	assert.equal(menuTitles[menuTitles.indexOf("Structure") + 1], "Statistiques");
-	assert.equal(menuDisabled.get("Statistiques"), true);
-	assert.equal(menuDisabled.get("Structure"), true);
+	assert.equal(menuDisabled.get("Statistiques"), false);
+	assert.equal(menuDisabled.get("Structure"), false);
 	plugin.settings.debugMode = false;
 	menuTitles.length = 0;
 	plugin.showModeMenu({});
@@ -447,7 +460,7 @@ async function main() {
 		const redMarkers = new Map<number, { dataset: { finitionAiGroup: string; finitionAiAction: string } }>();
 		const greenMarkers = new Map<number, { dataset: Record<string, string> }>();
 		const buttonsBefore = buttons.length;
-		sandbox.createSpan = () => ({ dataset: {}, setAttribute() {}, textContent: "" });
+		sandbox.createSpan = (options?: { text?: string }) => ({ dataset: {}, setAttribute() {}, textContent: options?.text ?? "" });
 		instance.decorations.between(0, source.length, (from, to, decoration) => {
 			const spec = decoration.spec as { class?: string; attributes?: Record<string, string>; widget?: { toDOM: () => { textContent: string; dataset: Record<string, string> } } };
 			if (spec.class === "finition-ai-del") {
@@ -597,14 +610,19 @@ async function main() {
 	await punctuationAction();
 	assert.equal(punctuationPlugin.aiGroups.length, 0, "Un second clic ne retire pas les propositions de ponctuation");
 	assert.equal(punctuationNote, originalPunctuation, "Retirer les propositions applique la ponctuation");
-	punctuationPlugin.settings.debugMode = true;
-	const revealsBeforeDebug = punctuationRevealed.length;
-	await punctuationAction();
-	assert.equal(punctuationNote, "Saison\u00a01. Attends… 27\u00a0ans\u00a0!\n\nSuite.", "Le mode debug doit appliquer directement la ponctuation même si la validation automatique est désactivée");
-	assert.equal(punctuationPlugin.aiGroups.length, 0, "Le mode debug affiche des propositions de ponctuation");
-	assert.equal(punctuationRevealed.length, revealsBeforeDebug, "Le mode debug cherche une proposition à valider");
-	assert.equal(punctuationPlugin.settings.punctuationAutoApply, false, "Le mode debug modifie le choix de validation hors debug");
-	punctuationPlugin.settings.debugMode = false;
+	for (const debugMode of [false, true]) for (const apostrophes of [false, true]) for (const punctuation of [false, true]) {
+		punctuationPlugin.aiGroups = [];
+		Object.assign(punctuationPlugin.settings, { debugMode, apostrophesAutoApply: apostrophes, punctuationAutoApply: punctuation });
+		punctuationNote = "C'est la saison 1!\n";
+		const source = punctuationNote;
+		await punctuationAction();
+		const applied = `${apostrophes ? "C’est" : "C'est"} la saison 1${punctuation ? "\u00a0" : ""}!\n`;
+		assert.equal(punctuationNote, applied, "Les deux validations automatiques ne sont pas indépendantes du debug et l’une de l’autre");
+		assert.equal(apply(punctuationNote, punctuationPlugin.aiGroups), "C’est la saison 1\u00a0!\n", "Les propositions restantes ne complètent pas les corrections automatiques");
+		assert.equal(punctuationPlugin.aiGroups.length === 0, apostrophes && punctuation, "Le menu ne propose pas les corrections à valider");
+		assert.equal(source.endsWith("\n"), punctuationNote.endsWith("\n"));
+	}
+	Object.assign(punctuationPlugin.settings, { debugMode: false, apostrophesAutoApply: false, punctuationAutoApply: false });
 	process.stdout.write("Ponctuations : menu de main.js, caractères U+00A0, tirets, point fermant et second clic vérifiés\n");
 	for (const link of ["[signal](https://example.org/signal)", "https://example.org/signal", "![signal](signal.png)", "[[Note|signal]]", "<a href='https://example.org/signal'>signal</a>", "<signal@example.org>", "[signal][ref]\n\n[ref]: https://example.org/signal"]) {
 		const text = `😀 signal ${link}\n\nsignal`;

@@ -77,6 +77,16 @@ export class FinitionSettingTab extends PluginSettingTab {
 		return details.createDiv({ cls: "finition-settings-section-body" });
 	}
 
+	revealSection(title: string): void {
+		this.openSections.add(title);
+		const section = Array.from(this.containerEl.querySelectorAll<HTMLDetailsElement>("details[data-section]"))
+			.find(details => details.dataset.section === title);
+		if (section) {
+			section.open = true;
+			window.setTimeout(() => { if (section.isConnected) section.scrollIntoView({ block: "start" }); }, 0);
+		}
+	}
+
 	private async downloadResources(pack: ResourcePack, label: string): Promise<boolean> {
 		const controller = new AbortController();
 		const notice = new LoadingNotice(label, () => controller.abort());
@@ -285,8 +295,14 @@ export class FinitionSettingTab extends PluginSettingTab {
 	}
 	private displayPunctuation(containerEl: HTMLElement): void {
 		containerEl = this.section(containerEl, "Ponctuation");
-		new Setting(containerEl).setName("Ponctuation validée automatiquement")
-			.setDesc("Activé : applique toutes les corrections. Désactivé : propose chaque correction à accepter ou refuser. En mode debug, application toujours automatique.")
+		new Setting(containerEl).setName("Apostrophes validées automatiquement")
+			.setDesc("Remplace directement les apostrophes droites par des apostrophes typographiques. Sinon, demande validation.")
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.apostrophesAutoApply).onChange(async value => {
+				this.plugin.settings.apostrophesAutoApply = value;
+				await this.plugin.saveSettings();
+			}));
+		new Setting(containerEl).setName("Autres ponctuations validées automatiquement")
+			.setDesc("Applique directement les autres corrections de ponctuation. Sinon, demande validation. Indépendant du mode debug.")
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.punctuationAutoApply).onChange(async value => {
 				this.plugin.settings.punctuationAutoApply = value;
 				await this.plugin.saveSettings();
@@ -1157,7 +1173,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 	getSettingDefinitions(): SettingDefinitionRender[] {
 		return [
 			...this.generalDefinitions(),
-			this.sectionDefinition("Ponctuation", ["Ponctuation validée automatiquement", "Validation", "Automatique"], container => this.displayPunctuation(container)),
+			this.sectionDefinition("Ponctuation", ["Apostrophes validées automatiquement", "Autres ponctuations validées automatiquement", "Validation", "Automatique"], container => this.displayPunctuation(container)),
 			this.sectionDefinition("Corrections", ["Lexique", "Charger un lexique", ...(this.plugin.lexiconDictionaries?.options.map(option => option.name) ?? []), "Dictionnaire Finition", "Moteur d’analyse", "Neuronal", "Structure", "Tricolons", "Grammalecte", "Correcteur neuronal par défaut", "CamemBERT", "Charger un modèle neuronal", "Dictionnaire personnel", ...this.plugin.neuralModelOptions.map(option => option.name)], container => this.displayCorrections(container)),
 			this.sectionDefinition("Corrections IA", ["Clé API Anthropic", "Clé API OpenAI", "Serveur local", "Modèle local", "Modèle Codex", "Modèle par défaut", "Identifiant du modèle personnalisé", "Taille des tronçons (caractères)", "Prompt enregistré", "Prompt de révision", "Modèle pour ce prompt", "Identifiant du modèle pour ce prompt", "Enregistrer sous ce nom"], container => this.displayAICorrections(container)),
 			this.sectionDefinition("Synonymes", ["Dictionnaire", "Finition", "Charger un dictionnaire", ...this.plugin.synonymDictionaryOptions.map(option => option.name)], container => this.displaySynonyms(container)),

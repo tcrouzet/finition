@@ -99,6 +99,7 @@ export interface FinitionSettings {
 	singleNoteOpen: boolean;
 	debugMode: boolean;
 	punctuationAutoApply: boolean;
+	apostrophesAutoApply: boolean;
 	span: number; // empan de répétition, en caractères
 	// Longueur minimale (en caractères) d'un mot pour être compté comme
 	// répétition : un mot de longueur <= ce seuil n'est jamais surligné,
@@ -252,6 +253,7 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	singleNoteOpen: false,
 	debugMode: false,
 	punctuationAutoApply: false,
+	apostrophesAutoApply: false,
 	span: 1500,
 	repetitionMinLength: 2,
 	repetitionCountDisplay: "count",

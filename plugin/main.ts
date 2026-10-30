@@ -12,7 +12,7 @@
  */
 
 import { FileSystemAdapter, Menu, MarkdownView, Notice, Plugin, setIcon } from "obsidian";
-import type { TFile } from "obsidian";
+import type { MenuItem, TFile } from "obsidian";
 import { EditorView } from "@codemirror/view";
 import { lockAINote } from "./ai/note-lock";
 import {
@@ -42,7 +42,7 @@ import { reviseChunkWithRetryOpenAI } from "./ai/openai";
 import { cancelCodex, reviseChunkWithCodex } from "./ai/codex";
 import { aiModelName, getAIConnection } from "./ai/provider";
 import { cancelSynonyms, runSynonyms } from "./ai/synonyms";
-import { fixPunctuationSpacing, fixBlankLinesProtected } from "./modes/punctuation";
+import { fixPunctuationSpacing, fixBlankLinesProtected, fixApostrophesProtected } from "./modes/punctuation";
 import { GrammalecteEngine, GrammalecteError } from "./modes/grammalecte";
 import { FinitionCorrectorEngine } from "./modes/finition-corrector";
 import type { LexicalData } from "./modes/finition-corrector";
@@ -109,6 +109,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	private documentCountCache: { text: string; words: number; characters: number } | null = null;
 	updateSingleNote: () => void = () => {};
 	private analysisNavigation: AnalysisNavigation | null = null;
+	private settingsTab: FinitionSettingTab | null = null;
 	private updateLeftSidebarToggle: () => void = () => {};
 	private ticIAPercentage: HTMLElement | null = null;
 	private ticIAStats = new WeakMap<EditorView, { doc: EditorView["state"]["doc"]; tagged: number; total: number; pending: boolean }>();
@@ -172,7 +173,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.registerEditorExtension(finitionAIExtension(this));
 		this.registerEditorExtension(finitionGrammalecteExtension(this));
 		this.registerEditorExtension(correctionGutter(this));
-		this.addSettingTab(new FinitionSettingTab(this.app, this));
+		this.settingsTab = new FinitionSettingTab(this.app, this);
+		this.addSettingTab(this.settingsTab);
 		registerNoteReset(this, file => this.changeAnalysisNote(file));
 		this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
 			if (this.analysisProgress?.view !== this.app.workspace.getActiveViewOfType(MarkdownView)) this.finishAnalysisProgress();
@@ -275,6 +277,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		if (!["none", "words", "characters", "both"].includes(this.settings.documentCountDisplay)) this.settings.documentCountDisplay = "none";
 		if (this.settings.repetitionCountDisplay !== "percent") this.settings.repetitionCountDisplay = "count";
 		this.settings.punctuationAutoApply = this.settings.punctuationAutoApply === true;
+		this.settings.apostrophesAutoApply = this.settings.apostrophesAutoApply === true;
 		this.settings.hideBacklinksCount = this.settings.hideBacklinksCount === true;
 		this.settings.singleNoteOpen = this.settings.singleNoteOpen === true;
 		this.settings.showLeftSidebarToggle = this.settings.showLeftSidebarToggle !== false;
@@ -640,31 +643,36 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.refreshAllEditors();
 	}
 
+	private resourceMenuItem(item: MenuItem, title: string, available: boolean, section: string, action: () => unknown): MenuItem {
+		const label = available ? title : createFragment();
+		if (typeof label !== "string") label.append(createSpan({ cls: "finition-resource-required", text: title }));
+		return item.setTitle(label).setDisabled(false).onClick(() => {
+			if (available) return action();
+			this.openSettingsTab(section);
+			new Notice(`Chargez les ressources dans « ${section} » avec le bouton Charger.`);
+		});
+	}
+
 	private showModeMenu(evt: MouseEvent): void {
 		const menu = new Menu();
 
 		menu.addItem(item => {
 			item.setTitle("Surlignages").setIcon("highlighter");
 			const submenu = (item as typeof item & { setSubmenu(): Menu }).setSubmenu();
-			for (const { mode, name, icon } of analysisModes) submenu.addItem(item => item
-				.setTitle(name).setIcon(icon)
-				.setDisabled(!this.isModeAvailable(mode))
-				.setChecked(this.settings.mode === mode)
-				.onClick(() => this.setMode(mode)));
+			for (const { mode, name, icon } of analysisModes) submenu.addItem(item =>
+				this.resourceMenuItem(item, name, this.isModeAvailable(mode), "Corrections", () => this.setMode(mode))
+					.setIcon(icon).setChecked(this.settings.mode === mode));
 		});
 
 		menu.addItem(item => {
 			item.setTitle("Dictionnaires").setIcon("book-open");
 			const submenu = (item as typeof item & { setSubmenu(): Menu }).setSubmenu();
-			submenu.addItem(item => item.setTitle("Synonymes").setIcon("book-open")
-				.setDisabled(!this.hasSynonyms)
-				.onClick(() => this.runSynonymsLocal()));
+			submenu.addItem(item => this.resourceMenuItem(item, "Synonymes", this.hasSynonyms, "Synonymes", () => this.runSynonymsLocal()).setIcon("book-open"));
 			submenu.addItem(item => item.setTitle("Synonymes IA").setIcon("book-open")
 				.onClick(() => runSynonyms(this.app, this.settings)));
-			submenu.addItem(item => item.setTitle("Flexions").setIcon("book-open")
-				.setDisabled(!this.hasLexicon).onClick(() => this.runFamily()));
-			for (const kind of dictionaryCommands) submenu.addItem(item => item.setTitle(dictionaryLabels[kind]).setIcon("book-open")
-				.setDisabled(!this.wordDictionaries?.has(kind)).onClick(() => this.runWordDictionary(kind)));
+			submenu.addItem(item => this.resourceMenuItem(item, "Flexions", this.hasLexicon, "Corrections", () => this.runFamily()).setIcon("book-open"));
+			for (const kind of dictionaryCommands) submenu.addItem(item =>
+				this.resourceMenuItem(item, dictionaryLabels[kind], Boolean(this.wordDictionaries?.has(kind)), dictionaryLabels[kind], () => this.runWordDictionary(kind)).setIcon("book-open"));
 		});
 
 		menu.addSeparator();
@@ -675,12 +683,9 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 		for (const engine of resourceEngines) {
 			const installed = this.isLinguisticEngineInstalled(engine);
-			menu.addItem(item => item
-				.setTitle(resourceLabels[engine])
+			menu.addItem(item => this.resourceMenuItem(item, resourceLabels[engine], installed, "Corrections", () => this.runSpellingEngine(engine))
 				.setIcon(engine === "grammalecte" ? "book-open" : "brain")
-				.setDisabled(!installed)
-				.setChecked(installed && this.settings.spellingEngine === engine && this.grammalecteErrors.length > 0)
-				.onClick(() => this.runSpellingEngine(engine)));
+				.setChecked(installed && this.settings.spellingEngine === engine && this.grammalecteErrors.length > 0));
 		}
 
 		menu.addItem((item) =>
@@ -691,16 +696,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				.onClick(() => this.toggleOrthoTypoIA())
 		);
 
-		if (this.settings.debugMode) menu.addItem((item) =>
-			item
-				.setTitle("Structure")
-				.setIcon("list-tree")
-				.setDisabled(!this.hasAnalysisResources)
-				.onClick(() => this.runStructureReport())
-		);
-		if (this.settings.debugMode) menu.addItem(item => item.setTitle("Statistiques").setIcon("chart-no-axes-column")
-			.setDisabled(!this.hasLexicon || !this.isLinguisticEngineInstalled("grammalecte"))
-			.onClick(() => this.runStatisticsReport()));
+		if (this.settings.debugMode) menu.addItem(item =>
+			this.resourceMenuItem(item, "Structure", this.hasAnalysisResources, "Corrections", () => this.runStructureReport()).setIcon("list-tree"));
+		if (this.settings.debugMode) menu.addItem(item =>
+			this.resourceMenuItem(item, "Statistiques", this.hasLexicon && this.isLinguisticEngineInstalled("grammalecte"), "Corrections", () => this.runStatisticsReport()).setIcon("chart-no-axes-column"));
 
 		menu.addSeparator();
 
@@ -720,7 +719,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	/** Ouvre directement l'onglet de réglages du plugin Finition. */
-	private openSettingsTab(): void {
+	private openSettingsTab(section?: string): void {
 		// API non officiellement typée par obsidian.d.ts mais stable et
 		// largement utilisée par l'écosystème des plugins tiers pour ouvrir
 		// directement SA PROPRE page de réglages (évite de passer par
@@ -730,6 +729,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		};
 		appWithSettings.setting.open();
 		appWithSettings.setting.openTabById(this.manifest.id);
+		if (section) this.settingsTab?.revealSection(section);
 	}
 
 	/**
@@ -882,8 +882,9 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) return;
 		const editor = view.editor;
-		const automatically = this.settings.debugMode || this.settings.punctuationAutoApply;
-		if (!automatically && this.correctionSource === "punctuation" && this.aiGroups.length) {
+		const automatically = this.settings.punctuationAutoApply;
+		const apostrophesAutomatically = this.settings.apostrophesAutoApply;
+		if (!(automatically && apostrophesAutomatically) && this.correctionSource === "punctuation" && this.aiGroups.length) {
 			await this.resetAnalysis();
 			return;
 		}
@@ -891,24 +892,27 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		const reset = this.resetAnalysis(), request = this.spellingRequest;
 		await reset;
 		if (request !== this.spellingRequest || this.app.workspace.getActiveViewOfType(MarkdownView) !== view || editor.getValue() !== original) return;
-		let fixed = fixPunctuationSpacing(original);
-		fixed = fixBlankLinesProtected(fixed);
+		let applied = apostrophesAutomatically ? fixApostrophesProtected(original) : original;
+		if (automatically) applied = fixBlankLinesProtected(fixPunctuationSpacing(applied, false));
+		const fixed = fixBlankLinesProtected(fixPunctuationSpacing(applied));
+		if (applied !== original) {
+			const selections = editor.listSelections();
+			const scroll = editor.getScrollInfo();
+			editor.setValue(applied);
+			editor.setSelections(selections);
+			editor.scrollTo(scroll.left, scroll.top);
+		}
 
-		if (fixed !== original && !automatically) {
+		if (fixed !== applied) {
 			this.aiSourcePath = view.file?.path ?? null;
 			this.correctionSource = "punctuation";
-			this.aiGroups = diffToGroups(original, fixed).map(group => ({ ...group, id: this.nextAiGroupId++ }));
+			this.aiGroups = diffToGroups(applied, fixed).map(group => ({ ...group, id: this.nextAiGroupId++ }));
 			this.aiGroupsVersion++;
 			this.updateStatusBarIcon();
 			this.refreshAllEditors();
 			this.revealCorrection(view, this.aiGroups[0].delFrom);
 			new Notice(`Ponctuation : ${this.aiGroups.length} correction(s) à valider.`);
-		} else if (fixed !== original) {
-			const selections = editor.listSelections();
-			const scroll = editor.getScrollInfo();
-			editor.setValue(fixed);
-			editor.setSelections(selections);
-			editor.scrollTo(scroll.left, scroll.top);
+		} else if (applied !== original) {
 			new Notice("Ponctuation : corrections appliquées.");
 		} else {
 			new Notice("Ponctuation : rien à corriger.");
@@ -1316,16 +1320,16 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			return;
 		}
 		if (engine ? !this.isLinguisticEngineInstalled(engine) : !this.hasLinguisticResources) { new Notice("Téléchargez un moteur linguistique dans les paramètres de Finition."); return; }
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (!view) return;
-		const editor = view.editor;
-		const document = editor.getValue();
-		const from = editor.posToOffset(editor.getCursor("from"));
-		const to = editor.posToOffset(editor.getCursor("to"));
 		if (engine) {
 			if (engine === "finition-corrector") this.settings.spellingNeural = true;
 			this.configureSpellingEngine(engine);
 		}
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view) { if (engine) await this.saveSettings(); return; }
+		const editor = view.editor;
+		const document = editor.getValue();
+		const from = editor.posToOffset(editor.getCursor("from"));
+		const to = editor.posToOffset(editor.getCursor("to"));
 		const reset = this.resetAnalysis();
 		const request = this.spellingRequest;
 
