@@ -237,11 +237,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.addCommand({
 			id: "structure-report",
 			name: "Structure",
-			checkCallback: (checking) => {
-				if (!this.settings.debugMode || !this.hasAnalysisResources) return false;
-				if (!checking) void this.runStructureReport();
-				return true;
-			},
+			callback: () => this.runStructureReport(),
 		});
 		this.addCommand({ id: "statistics-report", name: "Statistiques", checkCallback: checking => {
 			if (!this.settings.debugMode || !this.hasLexicon || !this.isLinguisticEngineInstalled("grammalecte")) return false;
@@ -705,14 +701,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		if (this.settings.debugMode) menu.addItem(item =>
 			this.resourceMenuItem(item, "Statistiques", this.hasLexicon && this.isLinguisticEngineInstalled("grammalecte"), "Corrections", () => this.runStatisticsReport()).setIcon("chart-no-axes-column"));
 
-		menu.addSeparator();
-
-		menu.addItem((item) =>
-			item
-				.setTitle("Paramètres")
-				.setIcon("settings")
-				.onClick(() => this.openSettingsTab())
-		);
+		if (this.settings.debugMode) {
+			menu.addSeparator();
+			menu.addItem(item => item.setTitle("Paramètres").setIcon("settings").onClick(() => this.openSettingsTab()));
+		}
 
 		if (this.hasActiveAnalysis) {
 			menu.addSeparator();
@@ -1389,6 +1381,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 	private async createDebugNote(view: Pick<MarkdownView, "file">, content: string, prefix: string | ((name: string, timestamp: string) => string)): Promise<TFile | null> {
 		if (!this.settings.debugMode) return null;
+		return this.createReportNote(view, content, prefix);
+	}
+
+	private async createReportNote(view: Pick<MarkdownView, "file">, content: string, prefix: string | ((name: string, timestamp: string) => string)): Promise<TFile> {
 		if (!hasResponseText(content)) throw new Error("Aucun texte à enregistrer : note horodatée non créée.");
 		const source = view.file;
 		const folder = source?.parent?.path && source.parent.path !== "/" ? `${source.parent.path}/` : "";
@@ -1445,10 +1441,13 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	 */
 
 	private async runStructureReport(): Promise<void> {
-		if (!this.settings.debugMode) return;
 		const view = requireCurrentNote(this.app);
 		if (!view) return;
-		if (!this.hasAnalysisResources) { new Notice("Téléchargez un moteur linguistique dans les paramètres de Finition."); return; }
+		if (!this.hasAnalysisResources) {
+			this.openSettingsTab("Corrections");
+			new Notice("Téléchargez un moteur linguistique dans les paramètres de Finition.");
+			return;
+		}
 		const text = view.editor.getValue();
 
 		const notice = new LoadingNotice("Structure : chargement du moteur linguistique…");
@@ -1463,7 +1462,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 			const content = buildStructureReport(text, getCategory);
 
-			const file = await this.createDebugNote(view, content, "Structure — ");
+			const file = await this.createReportNote(view, content, "Structure — ");
 			notice.hide();
 			if (file && !notice.cancelled) await this.app.workspace.getLeaf(true).openFile(file);
 		} catch (e) {

@@ -416,17 +416,20 @@ async function main() {
 	assert.ok(menuTitles.includes("Tricolons") && !menuTitles.includes("Structure"));
 	assert.equal(menuDisabled.get("Tricolons"), false);
 	assert.ok(menuTitles.includes("Synonymes IA"));
-	assert.deepEqual(menuTitles.filter(title => !menuParents.get(title)), ["Surlignages", "Dictionnaires", "Ponctuations", "Grammalecte", "Neuronal", "Corrections IA", "Paramètres", "Reset"]);
+	assert.deepEqual(menuTitles.filter(title => !menuParents.get(title)), ["Surlignages", "Dictionnaires", "Ponctuations", "Grammalecte", "Neuronal", "Corrections IA", "Reset"]);
 	assert.ok(!menuTitles.includes("Statistiques"));
 	assert.deepEqual(menuTitles.filter(title => menuParents.get(title) === "Surlignages"), ["Répétitions", "Atténuations", "Stéréotypes", "Monotonies", "Tricolons", "Cadences", "Charnières", "Formes", "Copules"]);
 	assert.equal(menuDisabled.get("Copules"), false, "Copules doit demander le lexique");
 	assert.deepEqual(menuTitles.filter(title => menuParents.get(title) === "Dictionnaires"), ["Synonymes", "Synonymes IA", "Flexions", "Définitions", "Antonymes", "Phonétique", "Rimes", "Conjugaisons", "Étymologie", "Citations"]);
 	assert.equal(menuDisabled.get("Flexions"), false, "Flexions doit demander le lexique actif");
 	const openedSettings: string[] = [];
+	const revealedSections: string[] = [];
 	Object.assign(plugin.app, { setting: { open() { openedSettings.push("open"); }, openTabById(id: string) { openedSettings.push(id); } } });
+	Object.assign(plugin, { settingsTab: { revealSection: (section: string) => revealedSections.push(section) } });
 	for (const title of ["Répétitions", "Tricolons", "Copules", "Flexions", "Synonymes", "Définitions", "Citations", "Grammalecte", "Neuronal"]) {
 		await menuActions.get(title)!();
 		assert.deepEqual(openedSettings.splice(0), ["open", "finition"], `Le menu ${title} n’ouvre pas les réglages de téléchargement`);
+		assert.equal(revealedSections.pop(), ["Synonymes", "Définitions", "Citations"].includes(title) ? title : "Corrections", `Le menu ${title} n’ouvre pas la bonne section`);
 		assert.match(notices.at(-1) ?? "", /Charger/, "Le menu indisponible ne demande pas le chargement des ressources");
 	}
 	plugin.settings.debugMode = true;
@@ -435,6 +438,7 @@ async function main() {
 	menuTitles.length = 0;
 	plugin.showModeMenu({});
 	assert.ok(menuTitles.includes("Structure"));
+	assert.ok(menuTitles.includes("Paramètres"), "Paramètres doit rester visible dans le menu debug");
 	assert.equal(menuTitles[menuTitles.indexOf("Structure") + 1], "Statistiques");
 	assert.equal(menuDisabled.get("Statistiques"), false);
 	assert.equal(menuDisabled.get("Structure"), false);
@@ -442,8 +446,12 @@ async function main() {
 	menuTitles.length = 0;
 	plugin.showModeMenu({});
 	assert.ok(!menuTitles.includes("Structure"));
+	assert.ok(!menuTitles.includes("Paramètres"), "Paramètres ne doit pas encombrer le menu hors debug");
 	assert.ok(!menuTitles.includes("Statistiques"));
+	Object.assign(plugin.app.workspace, { getActiveViewOfType: () => Object.assign(new MarkdownView(), { editor: { getValue: () => "Une phrase." } }) });
 	await plugin.runStructureReport();
+	assert.deepEqual(openedSettings.splice(0), ["open", "finition"]);
+	assert.equal(revealedSections.pop(), "Corrections", "Structure sans moteur doit ouvrir les réglages de téléchargement");
 	Object.defineProperty(plugin, "hasLinguisticResources", { value: true });
 	Object.defineProperty(plugin, "hasAnalysisResources", { value: true });
 	menuTitles.length = 0;
@@ -455,7 +463,7 @@ async function main() {
 	plugin.showModeMenu({});
 	assert.ok(menuTitles.includes("Structure"));
 	assert.equal(menuDisabled.get("Structure"), false);
-	process.stdout.write("Menu: Structure réservé au mode debug ; disponibilité liée aux ressources ; réglage persisté\n");
+	process.stdout.write("Menu : Paramètres et Structure réservés au debug ; ressources dirigées vers leur section\n");
 	const apply = (text: string, groups: DiffGroup[]) => [...groups].reverse().reduce((result, group) => result.slice(0, group.delFrom) + (group.insText ?? "") + result.slice(group.delTo), text);
 	const sequence = "Suite à un collègue, je réponds.";
 	const sequenceGroups = api.protectLinks(sequence).diff("A la suite d'un collègue, je réponds.");
@@ -988,7 +996,7 @@ async function main() {
 	await menuActions.get("Reset")!();
 	assert.equal(cancelledNotice.hidden, true, "Reset ne ferme pas la roue IA");
 	aiPlugin.showModeMenu({});
-	assert.equal(menuTitles.at(-1), "Paramètres", "Reset reste affiché après annulation");
+	assert.equal(menuTitles.at(-1), "Corrections IA", "Reset ou Paramètres reste affiché après annulation hors debug");
 	const nextAnalysis = aiPlugin.runOrthoTypoIA();
 	await waitFor(() => responses.length === 2);
 	assert.equal(responses.length, 2);
@@ -1261,6 +1269,15 @@ async function main() {
 	assert.equal(statsPlugin.settings.analysisEngine, "finition-corrector");
 	assert.equal(statsPlugin.settings.debugMode, true);
 	Object.defineProperty(statsPlugin, "hasAnalysisResources", { value: true });
+	Object.assign(statsPlugin, { ensureSpellingEngine: async () => ({ getCategories: async () => ({}) }) });
+	for (const debugMode of [false, true]) {
+		statsPlugin.settings.debugMode = debugMode;
+		const before: number = notes.size;
+		await statsPlugin.runStructureReport();
+		assert.equal(notes.size, before + 1, "Structure doit créer son rapport avec ou sans mode debug");
+		assert.match(opened.at(-1)!, /^Dossier\/Structure — Article /);
+		assert.equal(statsPlugin.settings.debugMode, debugMode, "Structure ne doit pas modifier le réglage debug");
+	}
 	for (const command of ["runStatisticsReport", "runStructureReport"] as const) {
 		let release!: (categories: Record<string, string>) => void;
 		let waiting = false;

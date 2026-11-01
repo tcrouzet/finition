@@ -400,7 +400,8 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 		plugin.settings.debugMode = debug;
 		(plugin as unknown as { showModeMenu: (event: MouseEvent) => void }).showModeMenu(new MouseEvent("click"));
 		for (const item of getMenu()) command(item.title);
-		check(command("Structure").checkCallback!(true) === debug, "Structure ne respecte pas le mode debug dans la palette");
+		check(typeof command("Structure").callback === "function" && !command("Structure").checkCallback, "Structure doit toujours être disponible dans la palette");
+		check(getMenu().some(item => item.title === "Paramètres") === debug, "Paramètres doit être réservé au menu debug");
 	}
 	for (const [name, mode] of [["Répétitions", "repetition"], ["Atténuations", "hedging"], ["Stéréotypes", "stereotype"], ["Monotonies", "burstiness"], ["Tricolons", "ternary"], ["Cadences", "cadence"], ["Charnières", "hinges"], ["Formes", "formes"], ["Copules", "copules"]] as const) {
 		plugin.settings.mode = "none";

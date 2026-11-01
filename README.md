@@ -40,7 +40,7 @@ Le bloc YAML en tête de note et les tags `#mot` ou `#thème/sous-thème` sont e
 
 ### Structure et statistiques
 
-Pour regarder le texte de plus près, activer **Mode debug** dans les réglages :
+**Structure** est disponible dans la palette de commandes, avec ou sans **Mode debug**. Activer ce mode dans les réglages ajoute **Structure**, **Statistiques** et **Paramètres** au menu ♫.
 
 - **Structure** crée une note d’analyse phrase par phrase : cadratifs, sujets, verbes, compléments et groupes de trois.
 - Les verbes négatifs y sont représentés par **NE PAS VERBE**, y compris avec « plus », « jamais » ou « rien ».
