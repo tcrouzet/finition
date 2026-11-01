@@ -1,4 +1,4 @@
-import type { App } from "obsidian";
+import { MarkdownView, type App } from "obsidian";
 import type FinitionPlugin from "../main";
 import type { FinitionCorrectorEngine } from "../plugin/modes/finition-corrector";
 import type { GrammalecteEngine } from "../plugin/modes/grammalecte";
@@ -62,8 +62,8 @@ export async function checkFinitionCorrector(Plugin: typeof FinitionPlugin, getC
 	const fixture = await resourceFixture();
 	let documentText = "Une bonjor.";
 	let report = "";
-	const view = { editor: { getValue: () => documentText, getSelection: () => "", listSelections: () => [{ anchor: { line: 0, ch: 0 }, head: { line: 0, ch: 0 } }], getCursor: () => ({ line: 0, ch: 0 }), posToOffset: () => 0 } };
-	const plugin = new Plugin({ workspace: { iterateAllLeaves() {}, getLeaf: () => ({ async openFile() {} }), getActiveViewOfType: () => activeView ? view : null }, vault: { adapter: fixture.adapter, getAbstractFileByPath: () => null, async read() { return report; }, async create(_path: string, content: string) { report = content; return {}; } } } as unknown as App, { id: "finition", name: "Finition", version: "0.0.0", minAppVersion: "1.0.0", description: "", author: "", dir: "test-plugin" });
+	const view = Object.assign(Object.create(MarkdownView.prototype) as MarkdownView, { editor: { getValue: () => documentText, getSelection: () => "", listSelections: () => [{ anchor: { line: 0, ch: 0 }, head: { line: 0, ch: 0 } }], getCursor: () => ({ line: 0, ch: 0 }), posToOffset: () => 0 } });
+	const plugin = new Plugin({ workspace: { iterateAllLeaves() {}, getLeaf: () => ({ async openFile() {} }), getActiveViewOfType: () => null, getMostRecentLeaf: () => activeView ? { view } : null }, vault: { adapter: fixture.adapter, getAbstractFileByPath: () => null, async read() { return report; }, async create(_path: string, content: string) { report = content; return {}; } } } as unknown as App, { id: "finition", name: "Finition", version: "0.0.0", minAppVersion: "1.0.0", description: "", author: "", dir: "test-plugin" });
 	const internal = plugin as unknown as { ensureSpellingEngine: () => Promise<FinitionCorrectorEngine>; pendingCategoryWords: Set<string>; resolvePendingWordCategories: () => Promise<void>; runStructureReport: () => Promise<void>; showModeMenu: (event: MouseEvent) => void };
 	await plugin.loadSettings();
 	check(plugin.settings.spellingEngine === "grammalecte", "Réglages existants : défaut modifié");
@@ -191,8 +191,9 @@ export async function checkFinitionCorrector(Plugin: typeof FinitionPlugin, getC
 		check(plugin.grammalecteErrors.some(error => error.sValue === "bonjor"), "Corrections décoché : le clic doit relancer l’analyse");
 		internal.showModeMenu(new MouseEvent("click"));
 		activeView = false;
+		const previousErrors = plugin.grammalecteErrors;
 		await getCorrectionItem().click();
-		check(plugin.grammalecteErrors.length === 0, "Impossible d’effacer les suggestions après fermeture de la note");
+		check(plugin.grammalecteErrors === previousErrors, "Une commande sans note efface les suggestions conservées");
 		activeView = true;
 		internal.showModeMenu(new MouseEvent("click"));
 		await getCorrectionItem("grammalecte").click();

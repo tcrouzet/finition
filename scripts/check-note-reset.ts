@@ -11,19 +11,22 @@ import type FinitionPlugin from "../plugin/main";
 export async function checkNoteReset(): Promise<void> {
 	const compiled = await build({ stdin: { contents: 'export * from "./plugin/ui/note-reset"; export * from "./plugin/note-analysis"; export * from "./plugin/editor-extension"; export * from "./plugin/ai/ai-extension"; export * from "./plugin/grammalecte-extension"; export { DEFAULT_SETTINGS } from "./plugin/types";', resolveDir: process.cwd() }, bundle: true, platform: "node", format: "cjs", loader: { ".md": "text" }, write: false, external: ["obsidian"] });
 	const notices: string[] = [], module = { exports: {} };
+	class MarkdownView {}
 	const editorInfoField = StateField.define<{ file: Pick<TFile, "path"> | null }>({ create: () => ({ file: null }), update: value => value });
 	runInNewContext(compiled.outputFiles[0].text, { module, require: (name: string) => {
 		assert.equal(name, "obsidian");
-		return { editorInfoField, Notice: class { constructor(message: string) { notices.push(message); } } };
+		return { editorInfoField, MarkdownView, Notice: class { constructor(message: string) { notices.push(message); } } };
 	}, window: { setTimeout, clearTimeout } });
 	const api = module.exports as typeof import("../plugin/ui/note-reset") & typeof import("../plugin/note-analysis") & typeof import("../plugin/editor-extension") & typeof import("../plugin/ai/ai-extension") & typeof import("../plugin/grammalecte-extension") & Pick<typeof import("../plugin/types"), "DEFAULT_SETTINGS">;
 	const { registerNoteReset, NoteAnalyses } = api;
 	const first = { path: "premiere.md" }, second = { path: "seconde.md" };
 	let active: typeof first | null = first;
+	const markdown = Object.assign(new MarkdownView(), { editor: {} });
+	Object.defineProperty(markdown, "file", { get: () => active });
 	const events = new Map<string, () => void>();
 	const refs: EventRef[] = [];
 	const plugin = {
-		app: { workspace: { getActiveFile: () => active, on: (event: string, callback: () => void) => { events.set(event, callback); return { event } as unknown as EventRef; } } },
+		app: { workspace: { getActiveViewOfType: () => null, getMostRecentLeaf: () => active ? { view: markdown } : null, on: (event: string, callback: () => void) => { events.set(event, callback); return { event } as unknown as EventRef; } } },
 		registerEvent: (ref: EventRef) => refs.push(ref),
 	} as unknown as Pick<Plugin, "app" | "registerEvent">;
 	let resets = 0, rejectReset = false;

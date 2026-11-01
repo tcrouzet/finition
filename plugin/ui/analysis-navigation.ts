@@ -1,6 +1,7 @@
 import { Decoration, type DecorationSet, EditorView } from "@codemirror/view";
 import { StateEffect, StateField } from "@codemirror/state";
-import { MarkdownView, Plugin, setIcon } from "obsidian";
+import { Plugin, setIcon } from "obsidian";
+import { getCurrentNote } from "../current-note";
 import type { FinitionMode, FinitionRuntime, Highlight } from "../types";
 import { addDocumentNavigation } from "./document-navigation";
 
@@ -133,7 +134,7 @@ export class AnalysisNavigation {
 	}
 
 	private activeView(): EditorView | undefined {
-		const markdown = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+		const markdown = getCurrentNote(this.plugin.app);
 		const view = (markdown?.editor as { cm?: EditorView } | undefined)?.cm;
 		return view?.dom.isConnected ? view : undefined;
 	}

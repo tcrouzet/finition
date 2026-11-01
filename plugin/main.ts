@@ -12,6 +12,7 @@
  */
 
 import { addIcon, FileSystemAdapter, Menu, MarkdownView, Notice, Plugin, setIcon } from "obsidian";
+import { getCurrentNote, requireCurrentNote } from "./current-note";
 import type { MenuItem, TFile } from "obsidian";
 import { EditorView } from "@codemirror/view";
 import { lockAINote } from "./ai/note-lock";
@@ -168,7 +169,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		await this.loadLexiconData(["repetition", "stereotype", "copules"].includes(this.settings.mode));
 		this.applyPalette();
 		this.setupStatusBarItem();
-		this.noteAnalyses.activate(this.app.workspace.getActiveFile()).mode = this.settings.mode;
+		this.noteAnalyses.activate(getCurrentNote(this.app)?.file ?? null).mode = this.settings.mode;
 		this.registerEditorExtension(finitionEditorExtension(this));
 		this.registerEditorExtension(navigationFocus);
 		this.registerEditorExtension(finitionAIExtension(this));
@@ -179,7 +180,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.addSettingTab(this.settingsTab);
 		registerNoteReset(this, file => this.changeAnalysisNote(file));
 		this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
-			if (this.analysisProgress?.view !== this.app.workspace.getActiveViewOfType(MarkdownView)) this.finishAnalysisProgress();
+			if (this.analysisProgress?.view !== getCurrentNote(this.app)) this.finishAnalysisProgress();
 			this.updateStatusBarIcon();
 		}));
 		this.registerEvent(this.app.workspace.on("editor-change", () => this.updateDocumentCounts()));
@@ -205,7 +206,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.addCommand({ id: "settings", name: "Paramètres", callback: () => this.openSettingsTab() });
 		this.addCommand({ id: "reset", name: "Reset", checkCallback: checking => {
 			if (!this.hasActiveAnalysis) return false;
-			if (!checking) void this.resetAnalysis();
+			if (!checking && requireCurrentNote(this.app)) void this.resetAnalysis();
 			return true;
 		} });
 
@@ -513,7 +514,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	updateDocumentCounts(): void {
 		if (!this.documentCountEl) return;
 		const display = this.settings.documentCountDisplay;
-		const markdown = display === "none" ? null : this.app.workspace.getActiveViewOfType(MarkdownView);
+		const markdown = display === "none" ? null : getCurrentNote(this.app);
 		this.documentCountEl.hidden = !markdown;
 		if (!markdown) { this.documentCountCache = null; return; }
 		const text = markdown.editor.getValue();
@@ -541,7 +542,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	private activeTicIAStats() {
-		const markdown = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const markdown = getCurrentNote(this.app);
 		const view = (markdown?.editor as { cm?: EditorView } | undefined)?.cm;
 		if (!view) return undefined;
 		const stats = this.ticIAStats.get(view);
@@ -550,6 +551,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 	/** Change de mode, en désactivant systématiquement les autres (exclusif). */
 	async setMode(mode: FinitionMode): Promise<void> {
+		const view = requireCurrentNote(this.app);
+		if (!view) return;
 		if (this.settings.mode !== mode && !this.isModeAvailable(mode)) {
 			new Notice("Chargez le dictionnaire ou le moteur requis dans les paramètres de Finition.");
 			return;
@@ -558,7 +561,6 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		const reset = this.resetAnalysis();
 		const request = this.spellingRequest;
 		if (deactivate) { await reset; return; }
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		const notice = this.startAnalysisProgress(analysisModes.find(item => item.mode === mode)?.name ?? "Analyse", view, mode);
 		let activated = false;
 		try {
@@ -570,7 +572,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				await this.loadLexiconData(true);
 				if (!this.lexicon.size) return;
 			}
-			if (request !== this.spellingRequest || view !== this.app.workspace.getActiveViewOfType(MarkdownView)) return;
+			if (request !== this.spellingRequest || view !== getCurrentNote(this.app)) return;
 			this.settings.mode = mode;
 			await this.saveSettings();
 			if (request !== this.spellingRequest) return;
@@ -714,7 +716,9 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 		if (this.hasActiveAnalysis) {
 			menu.addSeparator();
-			menu.addItem(item => item.setTitle("Reset").setIcon("rotate-ccw").onClick(() => this.resetAnalysis()));
+			menu.addItem(item => item.setTitle("Reset").setIcon("rotate-ccw").onClick(() => {
+				if (requireCurrentNote(this.app)) return this.resetAnalysis();
+			}));
 		}
 
 		menu.showAtMouseEvent(evt);
@@ -747,6 +751,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	 * sinon, lance une nouvelle analyse (coché).
 	 */
 	private async toggleOrthoTypoIA(): Promise<void> {
+		if (!requireCurrentNote(this.app)) return;
 		if (this.aiGroups.length > 0 && this.correctionSource !== "punctuation") {
 			await this.resetAnalysis();
 			return;
@@ -761,7 +766,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	private async runOrthoTypoIA(): Promise<void> {
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const view = requireCurrentNote(this.app);
 		if (!view) return;
 		const editor = view.editor;
 
@@ -796,7 +801,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		let revealed = false;
 		let unlock: (() => void) | undefined;
 		const isCurrent = () => {
-			if (request !== this.spellingRequest || this.app.workspace.getActiveViewOfType(MarkdownView) !== view) return false;
+			if (request !== this.spellingRequest || getCurrentNote(this.app) !== view) return false;
 			if (document === editor.getValue()) return true;
 			new Notice("Corrections IA : le texte a changé, l’analyse a été interrompue. Relance-la pour traiter toute la note.", 8000);
 			return false;
@@ -881,7 +886,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 	/** Calcule la ponctuation sur toute la note, avec validation selon le réglage. */
 	private async runPunctuationFix(): Promise<void> {
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const view = requireCurrentNote(this.app);
 		if (!view) return;
 		const editor = view.editor;
 		const automatically = this.settings.punctuationAutoApply;
@@ -893,7 +898,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		const original = editor.getValue();
 		const reset = this.resetAnalysis(), request = this.spellingRequest;
 		await reset;
-		if (request !== this.spellingRequest || this.app.workspace.getActiveViewOfType(MarkdownView) !== view || editor.getValue() !== original) return;
+		if (request !== this.spellingRequest || getCurrentNote(this.app) !== view || editor.getValue() !== original) return;
 		let applied = apostrophesAutomatically ? fixApostrophesProtected(original) : original;
 		if (automatically) applied = fixBlankLinesProtected(fixPunctuationSpacing(applied, false));
 		const fixed = fixBlankLinesProtected(fixPunctuationSpacing(applied));
@@ -1152,6 +1157,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.personalSynonymsAvailable = available.some(entry => entry.id === this.settings.synonymDictionaryPath);
 	}
 	async runSynonymsLocal(): Promise<void> {
+		if (!requireCurrentNote(this.app)) return;
 		if (!this.hasSynonyms) { new Notice("Synonyme : télécharge un dictionnaire dans les réglages de Finition."); return; }
 		this.synonymsDictionary ??= new SynonymsDictionary(() => this.settings.synonymDictionaryPath
 			? this.app.vault.adapter.readBinary(personalSynonymPath(this.settings.synonymDictionaryPath))
@@ -1317,6 +1323,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	private async runGrammalecte(engine?: ResourceEngine): Promise<void> {
+		const view = requireCurrentNote(this.app);
+		if (!view) return;
 		if ((!engine || engine === this.settings.spellingEngine) && this.grammalecteErrors.length > 0) {
 			await this.resetAnalysis();
 			return;
@@ -1326,8 +1334,6 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			if (engine === "finition-corrector") this.settings.spellingNeural = true;
 			this.configureSpellingEngine(engine);
 		}
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (!view) { if (engine) await this.saveSettings(); return; }
 		const editor = view.editor;
 		const document = editor.getValue();
 		const from = editor.posToOffset(editor.getCursor("from"));
@@ -1340,7 +1346,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		const notice = this.startAnalysisProgress(label, view);
 		let revealed = false;
 		const publish = (rawErrors: GrammalecteError[]): boolean => {
-			if (request !== this.spellingRequest || document !== editor.getValue() || this.app.workspace.getActiveViewOfType(MarkdownView) !== view) return false;
+			if (request !== this.spellingRequest || document !== editor.getValue() || getCurrentNote(this.app) !== view) return false;
 			const dictionary = parseGrammalecteDictionary(this.settings.grammalecteCustomDictionary);
 			// Les noms propres et mots inconnus ajoutés au dictionnaire
 			// personnel ne doivent plus jamais être soulignés — uniquement
@@ -1403,8 +1409,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 	private async runStatisticsReport(): Promise<void> {
 		if (!this.settings.debugMode) return;
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (!view) { new Notice("Statistiques : aucune note active."); return; }
+		const view = requireCurrentNote(this.app);
+		if (!view) return;
 		if (!this.isLinguisticEngineInstalled("grammalecte")) { new Notice("Installez Grammalecte dans les paramètres de Finition."); return; }
 		if (!this.hasLexicon) { new Notice("Chargez le dictionnaire Finition dans les paramètres."); return; }
 		const text = view.editor.getValue();
@@ -1440,18 +1446,9 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 	private async runStructureReport(): Promise<void> {
 		if (!this.settings.debugMode) return;
+		const view = requireCurrentNote(this.app);
+		if (!view) return;
 		if (!this.hasAnalysisResources) { new Notice("Téléchargez un moteur linguistique dans les paramètres de Finition."); return; }
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (!view) {
-			// Garde auparavant silencieuse : aucune erreur console, aucun
-			// message — ressemblait exactement à "rien ne se passe" alors
-			// qu'il n'y avait tout simplement pas de note Markdown active au
-			// moment du clic/raccourci (focus ailleurs, palette de
-			// commandes qui vient de se refermer sans avoir redonné le
-			// focus à l'éditeur, etc.).
-			new Notice("Structure : aucune note active. Clique d’abord dans le texte, puis relance.", 6000);
-			return;
-		}
 		const text = view.editor.getValue();
 
 		const notice = new LoadingNotice("Structure : chargement du moteur linguistique…");
@@ -1517,7 +1514,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			const view = leaf.view;
 			if (view instanceof MarkdownView) {
 				const cm = (view.editor as unknown as { cm?: EditorView }).cm;
-				cm?.dispatch(clearNavigationFocus && view === this.app.workspace.getActiveViewOfType(MarkdownView) ? { effects: setNavigationFocus.of(null) } : {});
+				cm?.dispatch(clearNavigationFocus && view === getCurrentNote(this.app) ? { effects: setNavigationFocus.of(null) } : {});
 			}
 		});
 	}

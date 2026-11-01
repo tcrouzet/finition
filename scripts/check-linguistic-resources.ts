@@ -1,4 +1,4 @@
-import type { App, DataAdapter } from "obsidian";
+import { MarkdownView, type App, type DataAdapter } from "obsidian";
 import type FinitionPlugin from "../main";
 import { FinitionSettingTab } from "../plugin/settings-tab";
 import { resourceAssetName, resourceFiles, resourceSource, resourceEngines, resourcePacks, grammarFiles } from "../plugin/linguistic-files";
@@ -74,7 +74,9 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	check(resourceFiles["finition-corrector"].every(file => !file.startsWith("electra/")), "Un modèle privé serait distribué");
 	check(resourcePacks.every(engine => resourceFiles[engine].every(file => resourceSource(engine, file).startsWith(file.endsWith(".bin") ? "scripts/neural/" : "resources/"))), "Données publiques et binaires de préparation mélangés");
 	const fixture = await resourceFixture(false);
-	const plugin = new Plugin({ vault: { adapter: fixture.adapter }, workspace: { iterateAllLeaves() {}, getActiveViewOfType: () => null } } as unknown as App, { id: "finition", name: "Finition", version: "0.4.3", minAppVersion: "1.0.0", description: "", author: "", dir: "test-plugin" });
+	const view = Object.assign(Object.create(MarkdownView.prototype) as MarkdownView, { editor: { getValue: () => "", getCursor: () => ({ line: 0, ch: 0 }), posToOffset: () => 0 } });
+	const workspace = { iterateAllLeaves() {}, getActiveViewOfType: () => null, getMostRecentLeaf: () => ({ view }) };
+	const plugin = new Plugin({ vault: { adapter: fixture.adapter }, workspace } as unknown as App, { id: "finition", name: "Finition", version: "0.4.3", minAppVersion: "1.0.0", description: "", author: "", dir: "test-plugin" });
 	const openedTabs: string[] = [];
 	Object.assign(plugin.app, { setting: { open() {}, openTabById(id: string) { openedTabs.push(id); } } });
 	const internal = plugin as unknown as { showModeMenu: (event: MouseEvent) => void };
@@ -244,7 +246,8 @@ export async function checkLinguisticInstallation(Plugin: typeof FinitionPlugin,
 	await retained.refresh(previous.revisions);
 	check(retained.available("grammalecte") && (await retained.read("grammalecte", "phonet_data.json")).byteLength > 0, "Un pack téléchargé avant le déplacement n’est plus lisible");
 	const complete = await resourceFixture();
-	const choice = new Plugin({ vault: { adapter: complete.adapter }, workspace: { iterateAllLeaves() {}, getActiveViewOfType: () => null } } as unknown as App, { id: "finition", name: "Finition", version: "0.4.3", minAppVersion: "1.0.0", description: "", author: "", dir: "test-plugin" });
+	const choice = new Plugin({ vault: { adapter: complete.adapter }, workspace } as unknown as App, { id: "finition", name: "Finition", version: "0.4.3", minAppVersion: "1.0.0", description: "", author: "", dir: "test-plugin" });
+	Object.assign(choice, { ensureSpellingEngine: async () => ({ parse: async () => [] }) });
 	await choice.loadSettings();
 	choice.settings.resourcePacks = { ...complete.revisions };
 	delete choice.settings.resourcePacks.lexique;

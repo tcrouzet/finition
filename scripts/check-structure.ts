@@ -51,7 +51,7 @@ async function main() {
 	const dataSources = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "plugin/data"], { encoding: "utf8" }).split("\0").filter(file => file && existsSync(file));
 	assert.ok(dataSources.every(file => file.endsWith(".json")), "Les sources de plugin/data doivent être uniquement des JSON d’analyse");
 	const modules = await build({
-		stdin: { contents: "export { undo, redo } from \"@codemirror/commands\"; export { synonymContext, parseSynonyms } from \"./plugin/ai/synonyms\"; export * from \"./plugin/ui/left-sidebar-toggle\"; export * from \"./plugin/ui/analysis-navigation\"; export * from \"./plugin/ui/single-note\"; export * from \"./plugin/modes/formes\"; export { DEFAULT_SETTINGS, FORM_TYPES } from \"./plugin/types\"; export { default as gzipData } from \"./plugin/vendor/grammalecte/gc_rules_graph.js?gzip\"; export { EditorState } from \"@codemirror/state\"; export * from \"./plugin/ai/ai-extension\"; export * from \"./plugin/ai/protected-links\"; export * from \"./plugin/markdown-links\"; export * from \"./plugin/ai/clean\"; export * from \"./plugin/modes/punctuation\"; export * from \"./plugin/modes/repetition\"; export * from \"./plugin/modes/stereotype\"; export * from \"./plugin/modes/clause-split\"; export * from \"./plugin/modes/structure-report\"; export * from \"./plugin/modes/statistics\"; export * from \"./plugin/modes/structure-signature\"; export * from \"./plugin/modes/ternary\"; export * from \"./plugin/modes/tic-ia\"; export { engineScripts } from \"./plugin/modes/grammalecte-resources\"; export { default as FinitionPlugin } from \"./main\";", resolveDir: process.cwd() },
+		stdin: { contents: "export * from \"./plugin/current-note\"; export { undo, redo } from \"@codemirror/commands\"; export { synonymContext, parseSynonyms, runSynonyms } from \"./plugin/ai/synonyms\"; export * from \"./plugin/ui/left-sidebar-toggle\"; export * from \"./plugin/ui/analysis-navigation\"; export * from \"./plugin/ui/single-note\"; export * from \"./plugin/modes/formes\"; export { DEFAULT_SETTINGS, FORM_TYPES } from \"./plugin/types\"; export { default as gzipData } from \"./plugin/vendor/grammalecte/gc_rules_graph.js?gzip\"; export { EditorState } from \"@codemirror/state\"; export * from \"./plugin/ai/ai-extension\"; export * from \"./plugin/ai/protected-links\"; export * from \"./plugin/markdown-links\"; export * from \"./plugin/ai/clean\"; export * from \"./plugin/modes/punctuation\"; export * from \"./plugin/modes/repetition\"; export * from \"./plugin/modes/stereotype\"; export * from \"./plugin/modes/clause-split\"; export * from \"./plugin/modes/structure-report\"; export * from \"./plugin/modes/statistics\"; export * from \"./plugin/modes/structure-signature\"; export * from \"./plugin/modes/ternary\"; export * from \"./plugin/modes/tic-ia\"; export { engineScripts } from \"./plugin/modes/grammalecte-resources\"; export { default as FinitionPlugin } from \"./main\";", resolveDir: process.cwd() },
 		bundle: true, platform: "node", format: "cjs", write: false, loader: { ".md": "text" }, external: ["obsidian"], plugins: [rawAssets],
 	});
 	const notices: string[] = [];
@@ -120,6 +120,9 @@ async function main() {
 	sandbox.document = { body: { classList: { toggle() {} }, style: { setProperty() {} } } };
 	const api = module.exports as {
 		synonymContext: typeof import("../plugin/ai/synonyms").synonymContext;
+		runSynonyms: typeof import("../plugin/ai/synonyms").runSynonyms;
+		getCurrentNote: typeof import("../plugin/current-note").getCurrentNote;
+		requireCurrentNote: typeof import("../plugin/current-note").requireCurrentNote;
 		parseSynonyms: typeof import("../plugin/ai/synonyms").parseSynonyms;
 		AnalysisNavigation: typeof import("../plugin/ui/analysis-navigation").AnalysisNavigation;
 		navigationFocus: typeof import("../plugin/ui/analysis-navigation").navigationFocus;
@@ -171,12 +174,47 @@ async function main() {
 			showModeMenu: (event: unknown) => void;
 			runStructureReport: () => Promise<void>;
 			runStatisticsReport: () => Promise<void>;
+			runSynonymsLocal: () => Promise<void>;
+			runFamily: () => Promise<void>;
+			runWordDictionary: (kind: "definitions") => Promise<void>;
 			runOrthoTypoIA: () => Promise<void>;
 			runGrammalecte: () => Promise<void>;
+			runPunctuationFix: () => Promise<void>;
 			createDebugNote: (view: unknown, content: string, prefix: string) => Promise<{ path: string } | null>;
 		};
 	};
 	await checkSingleNote(api.registerSingleNote);
+	const firstNote = Object.assign(new MarkdownView(), { editor: {} });
+	const recentNote = Object.assign(new MarkdownView(), { editor: {} });
+	let focusedNote: typeof firstNote | null = firstNote;
+	let recentView: unknown = recentNote;
+	const noteApp = { workspace: { getActiveViewOfType: () => focusedNote, getMostRecentLeaf: () => ({ view: recentView }) } } as unknown as import("obsidian").App;
+	assert.equal(api.getCurrentNote(noteApp), firstNote, "La note active doit rester prioritaire sur une autre note récente");
+	focusedNote = null;
+	assert.equal(api.getCurrentNote(noteApp), recentNote, "Le focus hors éditeur doit conserver la note affichée");
+	recentView = { getViewType: () => "canvas" };
+	const noticeCount = notices.length;
+	assert.equal(api.getCurrentNote(noteApp), null, "Un volet non Markdown ne doit pas choisir une ancienne note");
+	assert.equal(notices.length, noticeCount, "La lecture de la note courante ne doit pas produire de notification de fond");
+	assert.equal(api.requireCurrentNote(noteApp), null);
+	assert.equal(notices.length, noticeCount + 1);
+	assert.match(notices.at(-1)!, /aucune note accessible/);
+	const noNotePlugin = new api.FinitionPlugin();
+	await noNotePlugin.loadSettings();
+	noNotePlugin.settings.debugMode = true;
+	Object.assign(noNotePlugin.app.workspace, { getActiveViewOfType: () => null, getMostRecentLeaf: () => null });
+	const emptyCommands = [
+		() => noNotePlugin.setMode("hinges"), () => noNotePlugin.runOrthoTypoIA(), () => noNotePlugin.runGrammalecte(), () => noNotePlugin.runPunctuationFix(),
+		() => noNotePlugin.runStructureReport(), () => noNotePlugin.runStatisticsReport(), () => noNotePlugin.runSynonymsLocal(),
+		() => noNotePlugin.runFamily(), () => noNotePlugin.runWordDictionary("definitions"), () => api.runSynonyms(noNotePlugin.app as unknown as import("obsidian").App, noNotePlugin.settings),
+	];
+	for (const command of emptyCommands) {
+		const before = notices.length;
+		await command();
+		assert.equal(notices.length, before + 1, "Une commande sans note doit afficher une seule erreur");
+		assert.match(notices.at(-1)!, /aucune note accessible/, "Les commandes doivent utiliser le même contrôle de note courante");
+	}
+	process.stdout.write("Note courante : priorité, focus hors éditeur, volet non Markdown et erreur commune aux commandes vérifiés\n");
 	assert.deepEqual(Array.from(api.parseSynonyms("\u2060- \u2060 vif\n\u200b- \u00a0prompt\n- vif")), ["vif", "prompt"], "Synonymes IA conserve des invisibles ou perd une proposition");
 	const synonymDocument = "---\ntitle: confidentiel\n---\n\nUn pas rapide #secret/privé.\n\nSuite.";
 	const synonymFrom = synonymDocument.indexOf("rapide");
@@ -221,7 +259,7 @@ async function main() {
 	modePlugin.grammalecteErrors = [{ nStart: 0, nEnd: 1, sRuleId: "test", sType: "orthographe", sMessage: "Faute", aSuggestions: [] }];
 	const modeEditor = { state: api.EditorState.create({ doc: "texte" }) } as EditorView;
 	const modeView = Object.assign(new MarkdownView(), { editor: { cm: modeEditor } });
-	Object.assign(modePlugin.app.workspace, { getActiveViewOfType: () => modeView, iterateAllLeaves() {} });
+	Object.assign(modePlugin.app.workspace, { getActiveViewOfType: () => null, getMostRecentLeaf: () => ({ view: modeView }), iterateAllLeaves() {} });
 	Object.defineProperty(modePlugin, "hasLexicon", { value: true });
 	let finishLexicon = () => {};
 	let lexiconLoads = 0;
@@ -575,14 +613,14 @@ async function main() {
 	let punctuationSelections = [{ anchor: { line: 0, ch: 12 }, head: punctuationCursor }];
 	let punctuationScroll = { top: 480, left: 12 };
 	const punctuationRevealed: number[] = [], punctuationScrolled: number[] = [];
-	const punctuationView = { file: { path: "ponctuation.md" }, editor: {
+	const punctuationView = Object.assign(new MarkdownView(), { file: { path: "ponctuation.md" }, editor: {
 		getValue: () => punctuationNote, setValue: (value: string) => { punctuationNote = value; punctuationSelections = []; punctuationScroll = { top: 0, left: 0 }; },
 		getCursor: () => punctuationCursor, offsetToPos: (ch: number) => ({ line: 0, ch }), setCursor: (position: { ch: number }) => punctuationRevealed.push(position.ch),
 		scrollIntoView: (range: { from: { ch: number } }, center: boolean) => { assert.equal(center, true); punctuationScrolled.push(range.from.ch); },
 		listSelections: () => punctuationSelections, setSelections: (value: typeof punctuationSelections) => { punctuationSelections = value; },
 		getScrollInfo: () => punctuationScroll, scrollTo: (left: number, top: number) => { punctuationScroll = { left, top }; },
-	} };
-	Object.assign(punctuationPlugin.app.workspace, { getActiveViewOfType: () => punctuationView, iterateAllLeaves() {} });
+	} });
+	Object.assign(punctuationPlugin.app.workspace, { getActiveViewOfType: () => null, getMostRecentLeaf: () => ({ view: punctuationView }), iterateAllLeaves() {} });
 	punctuationPlugin.showModeMenu({});
 	const punctuationAction = menuActions.get("Ponctuations");
 	assert.ok(punctuationAction, "La commande Ponctuations est absente du menu compilé");
@@ -712,12 +750,12 @@ async function main() {
 	const notes = new Map<string, string>();
 	const opened: string[] = [];
 	const aiRevealed: number[] = [], aiScrolled: number[] = [];
-	const sourceView = { file: { path: "Dossier/Article.md", basename: "Article", parent: { path: "Dossier" } }, editor: {
+	const sourceView = Object.assign(new MarkdownView(), { file: { path: "Dossier/Article.md", basename: "Article", parent: { path: "Dossier" } }, editor: {
 		getValue: () => sourceText, getSelection: () => sourceText.slice(aiFrom, aiTo), somethingSelected: () => aiFrom !== (aiTo ?? sourceText.length),
 		getCursor: () => ({ line: 0, ch: aiFrom }), posToOffset: (position: { ch: number }) => position.ch,
 		offsetToPos: (ch: number) => ({ line: 0, ch }), setCursor: (position: { ch: number }) => aiRevealed.push(position.ch),
 		scrollIntoView: (range: { from: { ch: number } }, center: boolean) => { assert.equal(center, true); aiScrolled.push(range.from.ch); },
-	} };
+	} });
 	Object.assign(aiPlugin.app, { vault: {
 		getAbstractFileByPath: (path: string) => notes.has(path) ? { path } : null,
 		async create(path: string, content: string) {
@@ -733,7 +771,7 @@ async function main() {
 			return content;
 		},
 	}, workspace: {
-		getActiveViewOfType: () => sourceView, iterateAllLeaves() {},
+		getActiveViewOfType: () => null, getMostRecentLeaf: () => ({ view: sourceView }), iterateAllLeaves() {},
 		getLeaf: () => ({ async openFile(file: { path: string }) { opened.push(file.path); } }),
 	} });
 	const scopeSource = "Avant 😀 une fote.\n\nMilieu une fote.\n\nAprès une fote.";

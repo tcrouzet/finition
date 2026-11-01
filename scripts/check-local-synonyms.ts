@@ -21,7 +21,7 @@ export async function checkLocalSynonyms(Plugin: typeof FinitionPlugin, getMenu:
 	};
 	const markdown = Object.assign(Object.create(MarkdownView.prototype) as MarkdownView, { editor, file: { path: "test.md" } });
 	let active: MarkdownView | null = markdown;
-	const plugin = new Plugin({ vault: { adapter: fixture.adapter }, workspace: { getActiveViewOfType: () => active, iterateAllLeaves() {} } } as unknown as App, { id: "finition", name: "Finition", version: "0.4.3", minAppVersion: "1.0.0", description: "", author: "", dir: "test-plugin" });
+	const plugin = new Plugin({ vault: { adapter: fixture.adapter }, workspace: { getActiveViewOfType: () => null, getMostRecentLeaf: () => active ? { view: active } : null, iterateAllLeaves() {} } } as unknown as App, { id: "finition", name: "Finition", version: "0.4.3", minAppVersion: "1.0.0", description: "", author: "", dir: "test-plugin" });
 	await plugin.loadSettings();
 	await plugin.loadLinguisticResources();
 	check(plugin.synonymDictionaryOptions.length === 0 && plugin.settings.synonymDictionaries.length === 0, "Des dictionnaires sont proposés avant installation");

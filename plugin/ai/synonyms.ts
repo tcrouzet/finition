@@ -1,4 +1,5 @@
-import { App, MarkdownView, Notice } from "obsidian";
+import { App, Notice } from "obsidian";
+import { getCurrentNote, requireCurrentNote } from "../current-note";
 import type { FinitionSettings } from "../types";
 import { SynonymsModal } from "../ui/synonyms-modal";
 import { createRemarkInsertion } from "../ui/insert-remark";
@@ -51,8 +52,8 @@ export function parseSynonyms(text: string): string[] {
 }
 
 export async function runSynonyms(app: App, settings: FinitionSettings): Promise<void> {
-	const view = app.workspace.getActiveViewOfType(MarkdownView);
-	if (!view) { new Notice("Synonymes IA : ouvre une note et sélectionne un texte."); return; }
+	const view = requireCurrentNote(app);
+	if (!view) return;
 	const editor = view.editor;
 	if (editor.listSelections().length !== 1 || !editor.getSelection().trim()) {
 		new Notice("Synonymes IA : sélectionne un texte continu.");
@@ -86,7 +87,7 @@ export async function runSynonyms(app: App, settings: FinitionSettings): Promise
 		const synonyms = parseSynonyms(result.text);
 		if (!synonyms.length) throw new Error("Aucun synonyme dans la réponse.");
 		new SynonymsModal(app, view, document.slice(from, to), synonyms, (synonym) => {
-			if (app.workspace.getActiveViewOfType(MarkdownView) !== view || view.file !== file || view.editor !== editor || editor.getValue() !== document) {
+			if (getCurrentNote(app) !== view || view.file !== file || view.editor !== editor || editor.getValue() !== document) {
 				new Notice("La note ou le texte a changé. Relance la recherche.");
 				return false;
 			}

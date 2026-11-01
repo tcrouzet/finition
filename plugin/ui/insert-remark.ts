@@ -1,4 +1,5 @@
 import { App, MarkdownView, Notice } from "obsidian";
+import { getCurrentNote } from "../current-note";
 import { splitIntoChunks } from "../ai/chunk";
 
 export function createRemarkInsertion(app: App, view: MarkdownView): (text: string) => boolean {
@@ -6,7 +7,7 @@ export function createRemarkInsertion(app: App, view: MarkdownView): (text: stri
 	const from = editor.posToOffset(editor.getCursor("from")), to = editor.posToOffset(editor.getCursor("to"));
 	const paragraph = splitIntoChunks(document, 0).find(chunk => to <= chunk.end);
 	return text => {
-		if (app.workspace.getActiveViewOfType(MarkdownView) !== view || view.file !== file || view.editor !== editor || editor.getValue() !== document) {
+		if (getCurrentNote(app) !== view || view.file !== file || view.editor !== editor || editor.getValue() !== document) {
 			new Notice("La note ou le texte a changé. Relance la recherche pour insérer la liste.");
 			return false;
 		}

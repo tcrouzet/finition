@@ -1,4 +1,5 @@
 import { App, Component, MarkdownView, Modal, setIcon } from "obsidian";
+import { getCurrentNote } from "../current-note";
 import { synonymKey, type SynonymGroup } from "../synonyms";
 
 type DisplayGroup = Omit<SynonymGroup, "sources">;
@@ -12,7 +13,7 @@ export class SynonymsModal extends Modal {
 		this.shouldRestoreSelection = false;
 		const editor = view.editor, file = view.file;
 		this.restoreFocus = () => {
-			if (app.workspace.getActiveViewOfType(MarkdownView) === view && view.file === file && view.editor === editor) editor.focus();
+			if (getCurrentNote(app) === view && view.file === file && view.editor === editor) editor.focus();
 		};
 	}
 

@@ -51,7 +51,7 @@ export async function checkSynonyms(setHandler: (handler: (request: Request) => 
 	};
 	const markdown = Object.assign(Object.create(MarkdownView.prototype) as MarkdownView, { editor, file: { path: "test.md" } });
 	let active: MarkdownView | null = markdown;
-	const app = { workspace: { getActiveViewOfType: () => active } } as unknown as App;
+	const app = { workspace: { getActiveViewOfType: () => null, getMostRecentLeaf: () => active ? { view: active } : null } } as unknown as App;
 	const settings = { ...DEFAULT_SETTINGS, aiModel: "claude-test", aiApiKey: "test-anthropic", openaiApiKey: "test-openai", aiMaxTokens: 1234 };
 	setHandler(() => ({ status: 200, json: { content: [{ type: "text", text: "- vif\n- véloce" }] } }));
 	const before = requests.length;

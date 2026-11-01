@@ -1,4 +1,5 @@
 import { App, MarkdownView, Modal, Notice, setIcon } from "obsidian";
+import { getCurrentNote, requireCurrentNote } from "../current-note";
 import { dictionaryKeys, isSynonymWord, SynonymsDictionary, type DictionaryLemmas, type SynonymGroup } from "../synonyms";
 import type { DictionaryRow } from "../dictionaries";
 import { SynonymsModal } from "./synonyms-modal";
@@ -13,8 +14,9 @@ export async function runLocalSynonyms(app: App, dictionary: SynonymsDictionary)
 }
 
 export async function runLocalWordLookup(app: App, title: string, lookup: (word: string) => Promise<{ groups?: SynonymGroup[]; rows?: DictionaryRow[]; description?: string; citationLexicon?: DictionaryLemmas }>): Promise<void> {
-	const view = app.workspace.getActiveViewOfType(MarkdownView);
-	if (!view || view.editor.listSelections().length !== 1 || !isSynonymWord(view.editor.getSelection())) {
+	const view = requireCurrentNote(app);
+	if (!view) return;
+	if (view.editor.listSelections().length !== 1 || !isSynonymWord(view.editor.getSelection())) {
 		new Notice(`${title} : sélectionne un seul mot.`);
 		return;
 	}
@@ -38,7 +40,7 @@ export async function runLocalWordLookup(app: App, title: string, lookup: (word:
 			return;
 		}
 		new SynonymsModal(app, view, selected, words, word => {
-			if (app.workspace.getActiveViewOfType(MarkdownView) !== view || view.file !== file || view.editor !== editor || editor.getValue() !== document) {
+			if (getCurrentNote(app) !== view || view.file !== file || view.editor !== editor || editor.getValue() !== document) {
 				new Notice("La note ou le texte a changé. Relance la recherche.");
 				return false;
 			}
@@ -60,7 +62,7 @@ class WordInformationModal extends Modal {
 		super(app);
 		this.shouldRestoreSelection = false;
 		const editor = view.editor, file = view.file;
-		this.restoreFocus = () => { if (app.workspace.getActiveViewOfType(MarkdownView) === view && view.editor === editor && view.file === file) editor.focus(); };
+		this.restoreFocus = () => { if (getCurrentNote(app) === view && view.editor === editor && view.file === file) editor.focus(); };
 	}
 	open(): void {
 		super.open();
