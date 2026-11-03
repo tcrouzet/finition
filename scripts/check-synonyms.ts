@@ -51,8 +51,9 @@ export async function checkSynonyms(setHandler: (handler: (request: Request) => 
 	};
 	const markdown = Object.assign(Object.create(MarkdownView.prototype) as MarkdownView, { editor, file: { path: "test.md" } });
 	let active: MarkdownView | null = markdown;
-	const app = { workspace: { getActiveViewOfType: () => null, getMostRecentLeaf: () => active ? { view: active } : null } } as unknown as App;
-	const settings = { ...DEFAULT_SETTINGS, aiModel: "claude-test", aiApiKey: "test-anthropic", openaiApiKey: "test-openai", aiMaxTokens: 1234 };
+	const keys = new Map([["anthropic-ref", "test-anthropic"], ["openai-ref", "test-openai"]]);
+	const app = { workspace: { getActiveViewOfType: () => null, getMostRecentLeaf: () => active ? { view: active } : null }, secretStorage: { getSecret: (id: string) => keys.get(id) ?? null } } as unknown as App;
+	const settings = { ...DEFAULT_SETTINGS, aiModel: "claude-test", anthropicSecretId: "anthropic-ref", openaiSecretId: "openai-ref", aiMaxTokens: 1234 };
 	setHandler(() => ({ status: 200, json: { content: [{ type: "text", text: "- vif\n- véloce" }] } }));
 	const before = requests.length;
 	await runSynonyms(app, settings);
@@ -209,7 +210,7 @@ export async function checkSynonyms(setHandler: (handler: (request: Request) => 
 		check(requests.length === calls && notices.at(-1)?.includes("hors des liens") && editor.getValue() === text, "Une recherche IA soumet une URL ou un libellé de lien");
 	}
 	reset();
-	settings.openaiApiKey = "";
+	settings.openaiSecretId = "";
 	await runSynonyms(app, settings);
 	check(requests.length === calls, "Appel sans clé API");
 	view.dispatch({ selection: { anchor: 0 } });
@@ -219,7 +220,7 @@ export async function checkSynonyms(setHandler: (handler: (request: Request) => 
 	settings.localAIServer = "http://localhost:11434/v1/";
 	settings.localAIModel = "modele-local:test";
 	settings.aiModel = "claude-test";
-	settings.openaiApiKey = "test-openai";
+	settings.openaiSecretId = "openai-ref";
 	setHandler(request => {
 		equal(request.url, "http://localhost:11434/v1/chat/completions", "Serveur local prioritaire");
 		check(!("Authorization" in request.headers) && !("x-api-key" in request.headers), "Une clé cloud est envoyée au serveur local");
@@ -233,7 +234,7 @@ export async function checkSynonyms(setHandler: (handler: (request: Request) => 
 	document.querySelector<HTMLButtonElement>(".finition-synonym-replace")!.click();
 	equal(editor.getValue(), text.replace("rapide", "vif"), "Remplacement par un synonyme local");
 	reset();
-	settings.aiApiKey = settings.openaiApiKey = "";
+	settings.anthropicSecretId = settings.openaiSecretId = "";
 	await runSynonyms(app, settings);
 	check(document.querySelector(".finition-synonyms"), "Le serveur local exige une clé cloud");
 	modals.at(-1)!.close();
@@ -249,7 +250,7 @@ export async function checkSynonyms(setHandler: (handler: (request: Request) => 
 	await runSynonyms(app, settings);
 	check(requests.length === localCalls + 1 && notices.at(-1)?.includes("Connexion locale refusée") && !document.querySelector(".finition-synonyms"), "La panne locale est masquée ou ouvre une liste");
 	settings.localAIServer = "";
-	settings.aiApiKey = "test-anthropic";
+	settings.anthropicSecretId = "anthropic-ref";
 	setHandler(request => {
 		equal(request.url, "https://api.anthropic.com/v1/messages", "Le champ Serveur local vide ne rétablit pas Claude");
 		return { status: 200, json: { content: [{ type: "text", text: "- prompt" }] } };

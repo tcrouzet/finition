@@ -1,4 +1,4 @@
-import { App, ColorComponent, DropdownComponent, Notice, PluginSettingTab, Setting } from "obsidian";
+import { App, ColorComponent, DropdownComponent, Notice, PluginSettingTab, SecretComponent, Setting } from "obsidian";
 import type { SettingDefinitionRender } from "obsidian";
 import { LoadingNotice } from "./ui/loading-message";
 import type { ResourcePack } from "./linguistic-files";
@@ -476,7 +476,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 		const apiKeyDesc = createFragment();
 		apiKeyDesc.appendChild(
 			document.createTextNode(
-				"Pour utiliser Claude avec Corrections IA et Synonymes IA. Stockée en clair dans data.json. Inutile avec un serveur local. "
+				"Pour utiliser Claude avec Corrections IA et Synonymes IA. Choisir ou créer une clé dans le gestionnaire de secrets d’Obsidian. Inutile avec un serveur local. "
 			)
 		);
 		const apiKeyLink = createEl("a");
@@ -489,16 +489,12 @@ export class FinitionSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Clé API Anthropic")
 			.setDesc(apiKeyDesc)
-			.addText((text) => {
-				text.inputEl.type = "password";
-				text
-					.setPlaceholder("Clé secrète Anthropic")
-					.setValue(this.plugin.settings.aiApiKey)
-					.onChange(async (value) => {
-						this.plugin.settings.aiApiKey = value.trim();
-						await this.plugin.saveSettings();
-					});
-			});
+			.addComponent(el => new SecretComponent(this.app, el)
+				.setValue(this.plugin.settings.anthropicSecretId)
+				.onChange(async id => {
+					this.plugin.settings.anthropicSecretId = id ?? "";
+					await this.plugin.saveSettings();
+				}));
 
 		const openaiKeyDesc = createFragment();
 		openaiKeyDesc.appendChild(
@@ -514,16 +510,12 @@ export class FinitionSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Clé API OpenAI")
 			.setDesc(openaiKeyDesc)
-			.addText((text) => {
-				text.inputEl.type = "password";
-				text
-					.setPlaceholder("Clé secrète OpenAI")
-					.setValue(this.plugin.settings.openaiApiKey)
-					.onChange(async (value) => {
-						this.plugin.settings.openaiApiKey = value.trim();
-						await this.plugin.saveSettings();
-					});
-			});
+			.addComponent(el => new SecretComponent(this.app, el)
+				.setValue(this.plugin.settings.openaiSecretId)
+				.onChange(async id => {
+					this.plugin.settings.openaiSecretId = id ?? "";
+					await this.plugin.saveSettings();
+				}));
 
 		new Setting(containerEl)
 			.setName("Serveur local")

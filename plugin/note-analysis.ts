@@ -4,7 +4,7 @@ import { editorInfoField, type TFile } from "obsidian";
 import type { AIGroup } from "./ai/ai-extension";
 import type { GrammalecteError } from "./modes/grammalecte";
 import type { FinitionMode } from "./types";
-import { resetCorrectionHistory } from "./ai/correction-history";
+import { mapAIGroups, resetCorrectionHistory } from "./ai/correction-history";
 
 export interface NoteAnalysis {
 	mode: FinitionMode;
@@ -51,7 +51,7 @@ export class NoteAnalyses {
 		if (state.document && !changedNote && !update?.docChanged) return state;
 		if (state.document && state.document !== document && !state.document.eq(document)) {
 			if (update?.docChanged && state.document.eq(update.startState.doc)) {
-				state.aiGroups = state.aiGroups.map(group => ({ ...group, delFrom: update.changes.mapPos(group.delFrom, 1), delTo: update.changes.mapPos(group.delTo, -1) })).filter(group => group.delFrom <= group.delTo);
+				state.aiGroups = mapAIGroups(state.aiGroups, update.changes);
 				state.grammalecteErrors = state.grammalecteErrors.map(error => ({ ...error, nStart: update.changes.mapPos(error.nStart, 1), nEnd: update.changes.mapPos(error.nEnd, -1) })).filter(error => error.nStart < error.nEnd);
 			} else {
 				// Un texte modifié hors de l’éditeur invalide les positions sauvegardées.

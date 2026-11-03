@@ -17,7 +17,7 @@
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
 import { RangeSetBuilder, type Range, type Text } from "@codemirror/state";
 import { editorInfoField, setIcon } from "obsidian";
-import { applyCorrectionHistory, correctionHistory, resolveCorrection } from "./correction-history";
+import { applyCorrectionHistory, correctionHistory, mapAIGroups, resolveCorrection } from "./correction-history";
 import { closeParagraphPreview, paragraphPreview } from "./paragraph-preview";
 import { whitespaceDisplay } from "./whitespace-display";
 
@@ -170,13 +170,7 @@ export function finitionAIExtension(host: AIGroupHost) {
 					// Remappe les suggestions restantes après une édition
 					// (validation d'une autre suggestion, frappe manuelle...) :
 					// sans ça leurs positions deviendraient fausses.
-					this.host.aiGroups = this.host.aiGroups
-						.map((g) => ({
-							...g,
-							delFrom: update.changes.mapPos(g.delFrom, 1),
-							delTo: update.changes.mapPos(g.delTo, -1),
-						}))
-						.filter((g) => g.delFrom <= g.delTo);
+					this.host.aiGroups = mapAIGroups(this.host.aiGroups, update.changes);
 				}
 				applyCorrectionHistory(this.host, update.transactions ?? [], this.view.state.doc);
 				if (update.docChanged || previousHost !== this.host || this.lastVersion !== this.host.aiGroupsVersion) {

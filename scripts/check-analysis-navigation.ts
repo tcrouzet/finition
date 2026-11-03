@@ -143,15 +143,13 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	check(previous!.dataset.icon === "arrow-left" && next!.dataset.icon === "arrow-right" && document.querySelectorAll(".finition-document-navigation").length === 2, "Les flèches horizontales doivent remplacer l’ancien mécanisme, sans doublon");
 	const activate = async (mode: FinitionMode, expected: number, first: number) => {
 		document.querySelector<HTMLElement>("#result")!.dataset.stage = mode;
-		view.dispatch({ selection: { anchor: view.state.doc.length, head: view.state.doc.length - 1 } });
-		const selection = view.state.selection.main;
-		const scrollTop = view.scrollDOM.scrollTop;
+		view.dispatch({ selection: { anchor: view.state.doc.length, head: first } });
 		await plugin.setMode(mode);
 		document.querySelector<HTMLElement>("#result")!.dataset.stage = `${mode}: mode activé`;
 		await waitFor(() => counter!.textContent === String(expected), `Activation ${mode} : compteur incorrect`);
 		await turn();
 		check(view.dom.querySelector(".finition-navigation-focused"), `Activation ${mode} : aucune occurrence initialement repérée`);
-		check(view.state.selection.main.eq(selection) && view.scrollDOM.scrollTop === scrollTop, `Activation ${mode} : sélection ou défilement déplacé`);
+		check(view.state.selection.main.empty && view.state.selection.main.head === first && view.hasFocus, `Activation ${mode} : premier résultat de la sélection inaccessible`);
 		view.dispatch({ selection: { anchor: view.state.doc.length } });
 		next!.click();
 		check(view.state.selection.main.head === first && view.hasFocus, `Navigation ${mode} : première occurrence inaccessible`);
@@ -318,7 +316,7 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	check(view.dom.querySelector(".finition-navigation-focused"), "Le premier résultat doit être repéré avant la fin de l’analyse");
 	internal.updateAnalysisHighlights(view, ranges, false);
 	await turn();
-	check(counter!.textContent === "1" && view.state.selection.main.head === view.state.doc.length, "La résolution asynchrone déplace le curseur");
+	check(counter!.textContent === "1" && view.state.selection.main.head === 2, "La résolution asynchrone ne conserve pas le premier résultat");
 	next!.click();
 	check(view.state.selection.main.head === 2, "La flèche ne rejoint pas le résultat asynchrone");
 	const other = new EditorView({ parent: document.body.createDiv(), state: EditorState.create({ doc: "Autre note." }) });
@@ -352,10 +350,9 @@ export async function checkAnalysisNavigation(menuOpened: () => number, getMenu:
 	const firstError = misspelled.indexOf("fote"), lastError = misspelled.lastIndexOf("fote");
 	plugin.grammalecteErrors = [firstError, lastError].map(nStart => ({ nStart, nEnd: nStart + 4, sType: "orthographe", sMessage: "Orthographe", sRuleId: "test", aSuggestions: ["faute"], sValue: "fote" }));
 	plugin.grammalecteErrorsVersion++;
-	const spellingPosition = view.state.selection.main.head;
 	plugin.refreshAllEditors();
 	await waitFor(() => counter!.textContent === "2" && !next!.hidden && !next!.disabled, "Grammalecte : compteur et flèche absents");
-	check(view.state.selection.main.head === spellingPosition, "L’affichage des corrections déplace le curseur");
+	await waitFor(() => view.state.selection.main.head === firstError, "L’affichage des corrections doit atteindre la première faute");
 	check(showMenu().at(-1)?.title === "Reset", "Reset absent pour les corrections seules");
 	check(next!.getAttribute("aria-label") === "Faute suivante", "Grammalecte : flèche sans libellé adapté");
 	check(previous!.getAttribute("aria-label") === "Faute précédente", "Grammalecte : flèche précédente sans libellé adapté");

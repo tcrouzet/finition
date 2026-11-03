@@ -190,12 +190,14 @@ async function main() {
 				  onChange(callback) { this.selectEl.addEventListener("change", () => callback(this.selectEl.value)); return this; }
 				}
 				export class Setting {
+				  components = [];
 				  constructor(parent) { this.settingEl = parent.createDiv({ cls: "setting-item" }); this.nameEl = this.settingEl.createDiv({ cls: "setting-item-name" }); this.descEl = this.settingEl.createDiv(); this.controlEl = this.settingEl.createDiv(); }
 				  setName(name) { this.nameEl.textContent = name; return this; }
 				  setDesc(text) { this.descEl.replaceChildren(text); return this; }
 				  setClass(name) { this.settingEl.classList.add(name); return this; }
 				  setHeading() { this.settingEl.classList.add("setting-item-heading"); return this; }
 				  addDropdown(callback) { callback(new DropdownComponent(this.controlEl)); return this; }
+				  addComponent(callback) { this.components.push(callback(this.controlEl)); return this; }
 				  addText(callback) {
 				    const input = this.controlEl.createEl("input", { attr: { type: "text" } });
 				    callback({ inputEl: input, setValue(value) { input.value = value; return this; }, setPlaceholder(value) { input.placeholder = value; return this; }, setDisabled(value) { input.disabled = value; return this; }, onChange(action) { input.addEventListener("input", () => action(input.value)); return this; } }); return this;
@@ -212,6 +214,10 @@ async function main() {
 				    const button = this.controlEl.createEl("button");
 				    callback({ setButtonText(text) { button.textContent = text; return this; }, setDisabled(value) { button.disabled = value; return this; }, setDestructive() { return this; }, setCta() { button.classList.add("mod-cta"); return this; }, setTooltip(text) { button.title = text; return this; }, onClick(action) { button.addEventListener("click", action); return this; } }); return this;
 				  }
+				}
+				export class SecretComponent {
+				  setValue(value) { this.value = value; return this; }
+				  onChange(callback) { this.change = callback; return this; }
 				}
 				export const normalizePath = (path) => path;
 				export const requests = []; let requestHandler = null;

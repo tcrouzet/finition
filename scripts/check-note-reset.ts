@@ -111,6 +111,14 @@ export async function checkNoteReset(): Promise<void> {
 	assert.equal(changed.aiGroups.length + changed.grammalecteErrors.length, 0, "Une modification extérieure conserve des positions périmées");
 	assert.equal(changed.mode, "hinges", "Une modification extérieure désactive le surlignage");
 	assert.equal(analyses.current.mode, "formes", "La vérification d’une note modifie l’analyse d’une autre");
+	const removed = new NoteAnalyses();
+	const deletion = removed.activate(firstFile);
+	deletion.aiGroups = [{ id: 1, delFrom: 4, delTo: 9, delText: "faute", insText: null }];
+	const beforeDeletion = view(firstFile, "Une faute.");
+	removed.forView(beforeDeletion);
+	const deleted = beforeDeletion.state.update({ changes: { from: 4, to: 9 } });
+	removed.forView({ state: deleted.state } as EditorView, { docChanged: true, startState: deleted.startState, changes: deleted.changes } as ViewUpdate);
+	assert.equal(deletion.aiGroups.length, 0, "Un passage supprimé garde une suggestion invisible et un œil sans correction");
 	const renderings = new NoteAnalyses();
 	const firstRendering = renderings.activate(firstFile);
 	firstRendering.mode = "hinges";

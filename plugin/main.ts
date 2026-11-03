@@ -55,7 +55,8 @@ import { buildStatisticsReport, statisticsWords } from "./modes/statistics";
 import { dictionaryFile, personalDictionaryFile, personalDictionaryPath } from "./lexicon/shared";
 import { structureCategoryWords } from "./modes/structure-signature";
 import { LoadingNotice } from "./ui/loading-message";
-import { AnalysisNavigation, navigationFocus, setNavigationFocus } from "./ui/analysis-navigation";
+import { AnalysisNavigation, navigationFocus, revealAnalysisResult, setNavigationFocus } from "./ui/analysis-navigation";
+import { migrateAISecrets } from "./ai/secrets";
 import { countDocument, formatDocumentCount } from "./ui/document-count";
 import { registerSingleNote } from "./ui/single-note";
 import { registerNoteReset } from "./ui/note-reset";
@@ -269,7 +270,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 	async loadSettings(): Promise<void> {
 		const saved = (await this.loadData()) as Partial<FinitionSettings> | null;
+		const secretsMigrated = saved ? migrateAISecrets(saved, this.app.secretStorage) : false;
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, saved ?? {});
+		this.settings.anthropicSecretId = typeof this.settings.anthropicSecretId === "string" ? this.settings.anthropicSecretId.trim() : "";
+		this.settings.openaiSecretId = typeof this.settings.openaiSecretId === "string" ? this.settings.openaiSecretId.trim() : "";
 		this.settings.codexModel = typeof this.settings.codexModel === "string" ? this.settings.codexModel.trim() : "";
 		this.settings.localAIServer = typeof this.settings.localAIServer === "string" ? this.settings.localAIServer.trim() : "";
 		this.settings.localAIModel = typeof this.settings.localAIModel === "string" ? this.settings.localAIModel.trim() : "";
@@ -304,7 +308,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		// défaut elles-mêmes pour le reste de la session. On clone donc
 		// systématiquement les entrées pour obtenir un tableau indépendant.
 		this.settings.savedPrompts = (this.settings.savedPrompts ?? []).map((p) => ({ ...p }));
-		let needsPersist = this.ensureBuiltinPrompts() || unknownEngine || Object.keys(previousPacks).length !== Object.keys(this.settings.resourcePacks).length;
+		let needsPersist = this.ensureBuiltinPrompts() || unknownEngine || Object.keys(previousPacks).length !== Object.keys(this.settings.resourcePacks).length || secretsMigrated;
 		if (this.settings.mode === "tic-ia") {
 			this.settings.mode = "ternary";
 			needsPersist = true;
@@ -752,6 +756,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	private revealCorrection(view: MarkdownView, offset: number): void {
+		const cm = (view.editor as { cm?: EditorView }).cm;
+		if (cm?.dom?.isConnected) { revealAnalysisResult(cm, { from: offset, to: offset }); return; }
 		const position = view.editor.offsetToPos(offset);
 		view.editor.setCursor(position);
 		view.editor.scrollIntoView({ from: position, to: position }, true);
@@ -764,7 +770,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 		const selected = editor.somethingSelected();
 		let connection: ReturnType<typeof getAIConnection>;
-		try { connection = getAIConnection(this.settings); }
+		try { connection = getAIConnection(this.settings, this.app.secretStorage); }
 		catch (error) {
 			new Notice(`Corrections IA : ${error instanceof Error ? error.message : String(error)}`);
 			return;
@@ -888,6 +894,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			return;
 		}
 		const original = editor.getValue();
+		const selection = (editor as { cm?: EditorView }).cm?.state.selection.main;
 		const reset = this.resetAnalysis(), request = this.spellingRequest;
 		await reset;
 		if (request !== this.spellingRequest || getCurrentNote(this.app) !== view || editor.getValue() !== original) return;
@@ -909,7 +916,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			this.aiGroupsVersion++;
 			this.updateStatusBarIcon();
 			this.refreshAllEditors();
-			this.revealCorrection(view, this.aiGroups[0].delFrom);
+			const first = this.aiGroups.find(group => !selection || selection.empty || group.delFrom >= selection.from && group.delFrom < selection.to);
+			if (first) this.revealCorrection(view, first.delFrom);
 			new Notice(`Ponctuation : ${this.aiGroups.length} correction(s) à valider.`);
 		} else if (applied !== original) {
 			new Notice("Ponctuation : corrections appliquées.");

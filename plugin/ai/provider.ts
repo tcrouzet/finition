@@ -1,4 +1,5 @@
 import type { FinitionSettings } from "../types";
+import type { SecretStorage } from "obsidian";
 import { CODEX_MODEL } from "./codex";
 import modelPresets from "./models.json";
 
@@ -16,7 +17,7 @@ export function detectProvider(model: string): AIProvider {
 	return "anthropic";
 }
 
-export function getAIConnection(settings: FinitionSettings): { provider: AIProvider; apiKey: string; model: string; baseUrl?: string } {
+export function getAIConnection(settings: FinitionSettings, secrets: Pick<SecretStorage, "getSecret">): { provider: AIProvider; apiKey: string; model: string; baseUrl?: string } {
 	if (settings.aiModel === CODEX_MODEL) return { provider: "codex", apiKey: "", model: settings.codexModel.trim() };
 	if (settings.localAIServer.trim()) {
 		let url: URL;
@@ -32,7 +33,8 @@ export function getAIConnection(settings: FinitionSettings): { provider: AIProvi
 		return { provider: "openai", apiKey: "", model, baseUrl: url.href.replace(/\/$/u, "") };
 	}
 	const provider = detectProvider(settings.aiModel);
-	const apiKey = provider === "openai" ? settings.openaiApiKey : settings.aiApiKey;
-	if (!apiKey) throw new Error(`renseigne ta clé API ${provider === "openai" ? "OpenAI" : "Anthropic"} dans Réglages → Finition.`);
+	const id = provider === "openai" ? settings.openaiSecretId : settings.anthropicSecretId;
+	const apiKey = id ? secrets.getSecret(id) : null;
+	if (!apiKey) throw new Error(`choisis une clé API ${provider === "openai" ? "OpenAI" : "Anthropic"} dans Réglages → Finition → Corrections IA.`);
 	return { provider, apiKey, model: settings.aiModel };
 }

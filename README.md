@@ -88,7 +88,7 @@ Chaque dictionnaire public se télécharge avec **Charger** dans sa section des 
 
 ## Une IA, si vous la souhaitez
 
-Les fonctions locales n’exigent aucune clé API. Pour utiliser une IA, renseigner une clé **Anthropic** ou **OpenAI** et choisir le modèle dans **Réglages → Finition → Corrections IA**. Ces appels peuvent être payants auprès du fournisseur choisi.
+Les fonctions locales n’exigent aucune clé API. Pour utiliser une IA, sélectionner ou créer un secret **Anthropic** ou **OpenAI** et choisir le modèle dans **Réglages → Finition → Corrections IA**. Les clés sont gérées par le gestionnaire de secrets d’Obsidian ; les anciennes clés de Finition y sont transférées automatiquement au chargement du plugin. Sur un autre appareil, les clés doivent être configurées dans son gestionnaire. Ces appels peuvent être payants auprès du fournisseur choisi.
 
 Les modèles proposés sont définis dans [`plugin/ai/models.json`](plugin/ai/models.json) : `value` contient l’identifiant du modèle, `label` son nom affiché. Le premier est le défaut des nouvelles installations. Après modification du JSON, reconstruire le plugin avec `npm run build` ; les choix déjà enregistrés sont conservés.
 
@@ -111,7 +111,7 @@ Les consignes de relecture sont personnalisables et peuvent être enregistrées 
 
 Après téléchargement des dictionnaires et modèles, les surlignages, les correcteurs locaux et les dictionnaires fonctionnent hors ligne. Les ressources viennent de GitHub ; aucune note n’y est envoyée.
 
-Les fonctions IA s’exécutent uniquement sur demande. **Corrections IA** envoie la sélection, ou toute la note sans sélection, au fournisseur choisi ou au serveur configuré ; **Synonymes IA** envoie aussi les paragraphes voisins pour tenir compte du contexte. Avec un serveur et un modèle exécutés sur votre machine, le texte reste local. Si vous indiquez un serveur distant ou un modèle cloud via Ollama, le texte peut quitter votre machine. Les clés API sont conservées dans les réglages du plugin.
+Les fonctions IA s’exécutent uniquement sur demande. **Corrections IA** envoie la sélection, ou toute la note sans sélection, au fournisseur choisi ou au serveur configuré ; **Synonymes IA** envoie aussi les paragraphes voisins pour tenir compte du contexte. Avec un serveur et un modèle exécutés sur votre machine, le texte reste local. Si vous indiquez un serveur distant ou un modèle cloud via Ollama, le texte peut quitter votre machine. Finition conserve seulement les identifiants des secrets dans ses réglages ; les clés API restent dans le gestionnaire d’Obsidian.
 
 Avec Codex, le texte fourni est transmis au service configuré dans Codex : ce choix n’est pas une IA hors ligne. Finition lance une conversation éphémère hors du coffre, avec les outils et intégrations désactivés et un environnement en lecture seule. Le plugin ne modifie ni la connexion ni la configuration enregistrée de Codex ; les propositions restent soumises à votre validation dans Finition.
 

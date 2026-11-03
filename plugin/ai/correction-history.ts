@@ -1,6 +1,11 @@
-import { StateEffect, Transaction, type TransactionSpec, type Text } from "@codemirror/state";
+import { StateEffect, Transaction, type ChangeDesc, type TransactionSpec, type Text } from "@codemirror/state";
 import { history, invertedEffects, isolateHistory } from "@codemirror/commands";
 import type { AIGroup, AIGroupHost } from "./ai-extension";
+
+export function mapAIGroups(groups: AIGroup[], changes: ChangeDesc): AIGroup[] {
+	return groups.map(group => ({ ...group, delFrom: changes.mapPos(group.delFrom, 1), delTo: changes.mapPos(group.delTo, -1) }))
+		.filter(group => group.delFrom < group.delTo || group.delFrom === group.delTo && Boolean(group.insText));
+}
 
 const epochs = new WeakMap<AIGroupHost, object>();
 const epoch = (host: AIGroupHost): object => {

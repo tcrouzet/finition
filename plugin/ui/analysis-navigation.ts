@@ -21,6 +21,11 @@ export const navigationFocus = StateField.define<DecorationSet>({
 	provide: field => EditorView.decorations.from(field),
 });
 
+export function revealAnalysisResult(view: EditorView, highlight: Pick<Highlight, "from" | "to">): void {
+	view.dispatch({ selection: { anchor: highlight.from }, effects: [EditorView.scrollIntoView(highlight.from, { y: "center" }), setNavigationFocus.of(highlight)] });
+	view.focus();
+}
+
 interface AnalysisSnapshot {
 	doc: EditorView["state"]["doc"];
 	mode: FinitionMode | "grammalecte";
@@ -63,7 +68,7 @@ export class AnalysisNavigation {
 				const highlights = direction === "next" ? matches : [...matches].reverse();
 				const highlight = highlights.find(({ from }) => direction === "next" ? from > position : from < position) ?? highlights[0];
 				snapshot.initialized = true;
-				this.goTo(view, highlight);
+				revealAnalysisResult(view, highlight);
 			});
 			return button;
 		});
@@ -126,11 +131,12 @@ export class AnalysisNavigation {
 		const view = this.activeView();
 		const snapshot = this.current(view);
 		if (!view || !snapshot || snapshot.initialized || !snapshot.highlights.length) return;
-		const position = view.state.selection.main.head;
-		const distance = (highlight: Pick<Highlight, "from" | "to">) => Math.max(highlight.from - position, position - highlight.to + 1, 0);
-		const closest = snapshot.highlights.reduce((best, highlight) => distance(highlight) < distance(best) ? highlight : best);
+		const selection = view.state.selection.main;
+		const matches = selection.empty ? snapshot.highlights : snapshot.highlights.filter(highlight => highlight.from >= selection.from && highlight.from < selection.to);
+		if (!matches.length) return;
+		const first = matches.reduce((best, highlight) => highlight.from < best.from ? highlight : best);
 		snapshot.initialized = true;
-		view.dispatch({ effects: setNavigationFocus.of(closest) });
+		revealAnalysisResult(view, first);
 	}
 
 	private activeView(): EditorView | undefined {
@@ -149,10 +155,5 @@ export class AnalysisNavigation {
 
 	private mode(view: EditorView | undefined): FinitionMode {
 		return view && this.plugin.getNoteAnalysis ? this.plugin.getNoteAnalysis(view).mode : this.plugin.settings.mode;
-	}
-
-	private goTo(view: EditorView, highlight: Pick<Highlight, "from" | "to">): void {
-		view.dispatch({ selection: { anchor: highlight.from }, effects: [EditorView.scrollIntoView(highlight.from, { y: "center" }), setNavigationFocus.of(highlight)] });
-		view.focus();
 	}
 }

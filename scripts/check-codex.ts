@@ -84,7 +84,8 @@ export async function checkCodex(): Promise<void> {
 	}, createFragment: () => ({ textContent: "", append(...nodes: Array<string | { textContent: string }>) { this.textContent += nodes.map(node => typeof node === "string" ? node : node.textContent).join(""); } }), createSpan: () => ({ textContent: "" }), createEl: () => ({ textContent: "", addEventListener(_event: string, callback: (event: MouseEvent) => void) { stopButtons.push(() => callback({ preventDefault() {}, stopPropagation() {} } as MouseEvent)); } }) });
 	const api = module.exports as typeof import("../plugin/ai/codex") & typeof import("../plugin/ai/provider") & typeof import("../plugin/ai/synonyms") & Pick<typeof import("../plugin/types"), "DEFAULT_SETTINGS">;
 	const options = { system: "Corrige seulement le texte.", userText: "Une fote, un œil." };
-	const connection = api.getAIConnection({ ...api.DEFAULT_SETTINGS, aiModel: api.CODEX_MODEL, localAIServer: "http://localhost:11434", aiApiKey: "secret-anthropic", openaiApiKey: "secret-openai" });
+	const secretStorage = { getSecret: (id: string) => id === "test" ? "test-key" : null };
+	const connection = api.getAIConnection({ ...api.DEFAULT_SETTINGS, aiModel: api.CODEX_MODEL, localAIServer: "http://localhost:11434", anthropicSecretId: "secret-anthropic", openaiSecretId: "secret-openai" }, secretStorage);
 	assert.equal(connection.provider, "codex", "Le choix explicite de Codex doit prendre le pas sur le serveur local");
 	assert.equal(connection.apiKey, "");
 	assert.equal(api.detectProvider(api.CODEX_MODEL), "codex");
@@ -116,7 +117,7 @@ export async function checkCodex(): Promise<void> {
 		assert.ok(children.at(-1)!.closed);
 	}
 	scenario = "success";
-	const selectedConnection = api.getAIConnection({ ...api.DEFAULT_SETTINGS, aiModel: api.CODEX_MODEL, codexModel: " codex-b " });
+	const selectedConnection = api.getAIConnection({ ...api.DEFAULT_SETTINGS, aiModel: api.CODEX_MODEL, codexModel: " codex-b " }, secretStorage);
 	assert.equal(selectedConnection.model, "codex-b");
 	await api.reviseChunkWithCodex("Une fote.", "Corrige.", selectedConnection);
 	assert.equal(requests.filter(request => request.method === "thread/start").at(-1)!.params.model, "codex-b", "Les corrections doivent transmettre le choix exact de modèle à Codex");
@@ -150,10 +151,10 @@ export async function checkCodex(): Promise<void> {
 	const source = "Avant.\n\nUn pas rapide.\n\nAprès.";
 	const from = source.indexOf("rapide"), to = from + "rapide".length;
 	const view = { file: { path: "note.md" }, editor: { getValue: () => source, getSelection: () => "rapide", listSelections: () => [{}], getCursor: (side: string) => ({ ch: side === "from" ? from : to }), posToOffset: (position: { ch: number }) => position.ch } };
-	const app = { workspace: { getActiveViewOfType: () => view } } as unknown as import("obsidian").App;
+	const app = { workspace: { getActiveViewOfType: () => view }, secretStorage } as unknown as import("obsidian").App;
 	scenario = "failed";
 	for (const [model, server, localModel, label] of [[api.CODEX_MODEL, "", "", "Codex"], ["claude-modele-test", "", "", "claude-modele-test"], ["gpt-modele-test", "", "", "gpt-modele-test"], ["claude-modele-test", "http://localhost:11434", "local-test", "local-test"]]) {
-		const waiting = api.runSynonyms(app, { ...api.DEFAULT_SETTINGS, aiModel: model, codexModel: "codex-a", localAIServer: server, localAIModel: localModel, aiApiKey: "test", openaiApiKey: "test" });
+		const waiting = api.runSynonyms(app, { ...api.DEFAULT_SETTINGS, aiModel: model, codexModel: "codex-a", localAIServer: server, localAIModel: localModel, anthropicSecretId: "test", openaiSecretId: "test" });
 		const progress = progressNotices.at(-1)!;
 		assert.ok(progress.spinning && !progress.hidden, "Synonymes IA doit afficher une roue pendant la recherche");
 		assert.ok(progress.message.includes(label), `Le modèle ${label} doit être affiché dès le lancement`);
@@ -168,7 +169,7 @@ export async function checkCodex(): Promise<void> {
 	replyHttp = () => new Promise(resolve => { releaseHttp = () => resolve({ status: 200, text: "", json: { choices: [{ message: { content: "- vif" } }] } }); });
 	let outdatedStop: (() => void) | undefined;
 	for (const cancel of [() => api.cancelSynonyms(), () => stopButtons.at(-1)!()]) {
-		const delayed = api.runSynonyms(app, { ...api.DEFAULT_SETTINGS, aiModel: "gpt-test", openaiApiKey: "test" });
+		const delayed = api.runSynonyms(app, { ...api.DEFAULT_SETTINGS, aiModel: "gpt-test", openaiSecretId: "test" });
 		const delayedProgress = progressNotices.at(-1)!;
 		assert.equal(delayedProgress.hidden, false);
 		outdatedStop?.();
@@ -197,7 +198,7 @@ export async function checkCodex(): Promise<void> {
 	platform.isDesktop = false;
 	assert.equal(await api.findCodex(), null);
 	assert.match((await api.callCodex(options)).error!, /ordinateur/);
-	await api.runSynonyms({ workspace: { getActiveViewOfType: () => view } } as unknown as import("obsidian").App, { ...api.DEFAULT_SETTINGS, aiModel: api.CODEX_MODEL, aiApiKey: "", openaiApiKey: "" });
+	await api.runSynonyms({ workspace: { getActiveViewOfType: () => view } } as unknown as import("obsidian").App, { ...api.DEFAULT_SETTINGS, aiModel: api.CODEX_MODEL, anthropicSecretId: "", openaiSecretId: "" });
 	assert.match(notices.at(-1)!, /Codex.*ordinateur/, "Synonymes IA doit appeler Codex sans exiger de clé API ni basculer vers une API");
 	assert.equal(launches, before, "Aucun processus ne doit démarrer sur mobile ou sans Codex");
 	assert.equal(timers.size, 0, "Les temporisations ne doivent pas survivre à la requête");

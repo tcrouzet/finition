@@ -60,7 +60,7 @@ export async function runSynonyms(app: App, settings: FinitionSettings): Promise
 		return;
 	}
 	let connection: ReturnType<typeof getAIConnection>;
-	try { connection = getAIConnection(settings); }
+	try { connection = getAIConnection(settings, app.secretStorage); }
 	catch (error) {
 		new Notice(`Synonymes IA : ${error instanceof Error ? error.message : String(error)}`);
 		return;

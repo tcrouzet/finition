@@ -156,10 +156,7 @@ export interface FinitionSettings {
 	palette: string[];
 
 	// --- Révision IA (Claude) ----------------------------------------------
-	// Clé API Anthropic, stockée en clair dans data.json comme la quasi-
-	// totalité des plugins IA de l'écosystème Obsidian (pas de coffre-fort
-	// chiffré natif disponible pour un plugin tiers).
-	aiApiKey: string;
+	anthropicSecretId: string;
 	aiModel: string;
 	codexModel: string;
 	localAIServer: string;
@@ -185,11 +182,7 @@ export interface FinitionSettings {
 	// modèle dédié : charger ce prompt laisse `aiModel` (le modèle par
 	// défaut réglé plus bas) inchangé.
 	savedPrompts: SavedPrompt[];
-	// Clé API OpenAI, utilisée à la place d'Anthropic quand aiModel pointe
-	// vers un modèle GPT (voir isOpenAIModel() dans ai/provider.ts). Un seul
-	// champ "Modèle" au total : c'est le nom du modèle choisi qui détermine
-	// quel fournisseur (et donc quelle clé) est utilisé.
-	openaiApiKey: string;
+	openaiSecretId: string;
 
 	// --- Grammalecte (orthographe / grammaire) ------------------------------
 	analysisEngine: "grammalecte" | "finition-corrector";
@@ -274,7 +267,7 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	formExclamationColorIndex: 12,
 	formEllipsisColorIndex: 15,
 	palette: DEFAULT_PALETTE,
-	aiApiKey: "",
+	anthropicSecretId: "",
 	aiModel: AI_MODEL_PRESETS[0].value,
 	codexModel: "",
 	localAIServer: "",
@@ -288,7 +281,7 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	aiPrompt: BUILTIN_PROMPTS[0].prompt,
 	activePromptName: BUILTIN_PROMPTS[0].name,
 	savedPrompts: [...BUILTIN_PROMPTS],
-	openaiApiKey: "",
+	openaiSecretId: "",
 	analysisEngine: "grammalecte",
 	spellingEngine: "grammalecte",
 	spellingNeural: false,

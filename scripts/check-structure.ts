@@ -18,6 +18,7 @@ import { checkSharedLexicon } from "./check-shared-lexicon";
 import { decodeDictionary } from "../plugin/lexicon/shared";
 import { adaptRepetitions } from "../plugin/lexicon/repetition-adapter";
 import type { FinitionSettings } from "../plugin/types";
+import { migrateAISecrets } from "../plugin/ai/secrets";
 import { checkForms } from "./check-formes";
 import modelPresets from "../plugin/ai/models.json";
 import { checkSingleNote } from "./check-single-note";
@@ -34,6 +35,19 @@ import { checkNoteReset } from "./check-note-reset";
 import { checkAIDiff } from "./check-ai-diff";
 
 async function main() {
+	const secrets = new Map<string, string>([["finition-anthropic", "already-used"]]);
+	const storage = { getSecret: (id: string) => secrets.get(id) ?? null, setSecret: (id: string, value: string) => { secrets.set(id, value); } };
+	const legacy = { anthropicSecretId: "", openaiSecretId: "", aiApiKey: "legacy-anthropic", openaiApiKey: "legacy-openai" };
+	assert.equal(migrateAISecrets(legacy, storage), true);
+	assert.equal(legacy.anthropicSecretId, "finition-anthropic-2", "Une migration ne doit pas écraser un secret existant");
+	assert.equal(storage.getSecret(legacy.anthropicSecretId), "legacy-anthropic");
+	assert.equal(storage.getSecret(legacy.openaiSecretId), "legacy-openai");
+	assert.ok(!("aiApiKey" in legacy) && !("openaiApiKey" in legacy), "Les anciennes clés restent dans les réglages");
+	assert.ok(!JSON.stringify(legacy).includes("legacy-"), "Une clé réelle reste sérialisée avec les réglages");
+	assert.equal(migrateAISecrets(legacy, storage), false, "La migration doit être idempotente");
+	const failedMigration = { aiApiKey: "not-saved" };
+	assert.throws(() => migrateAISecrets(failedMigration, { getSecret: () => null, setSecret() {} }), /Impossible de transférer/);
+	assert.equal(failedMigration.aiApiKey, "not-saved", "Une migration échouée ne doit pas perdre la clé d’origine");
 	checkAIDiff();
 	assert.deepEqual(computeHingeHighlights("Et mais et OU où", ["et", "mais", "ou", "où"]).map(highlight => highlight.lemma), ["et", "mais", "et", "ou", "où"], "Chaque charnière doit garder son identité, sans distinguer les majuscules");
 	assert.deepEqual(computeHedgingHighlights("D'après moi, d’après moi.", ["d’après moi"]).map(highlight => highlight.lemma), ["d’après moi", "d’après moi"], "Casse et apostrophes ne doivent pas séparer la même atténuation");
@@ -78,7 +92,8 @@ async function main() {
 	class MarkdownView {}
 	class Plugin {
 		manifest = { id: "finition" };
-		app = { workspace: { getActiveViewOfType: () => null } };
+		private secrets = new Map<string, string>([["test", "test"]]);
+		app = { workspace: { getActiveViewOfType: () => null }, secretStorage: { getSecret: (id: string) => this.secrets.get(id) ?? null, setSecret: (id: string, value: string) => { this.secrets.set(id, value); } } };
 		saved: Partial<FinitionSettings> | null = null;
 		async loadData() { return this.saved; }
 		async saveData(settings: FinitionSettings) { this.saved = settings; }
@@ -657,6 +672,12 @@ async function main() {
 	await punctuationAction();
 	assert.equal(punctuationPlugin.aiGroups.length, 0, "Un second clic ne retire pas les propositions de ponctuation");
 	assert.equal(punctuationNote, originalPunctuation, "Retirer les propositions applique la ponctuation");
+	punctuationNote = "Avant! Ici!";
+	Object.assign(punctuationView.editor, { cm: { state: api.EditorState.create({ doc: punctuationNote, selection: { anchor: punctuationNote.length, head: punctuationNote.indexOf("Ici") } }) } });
+	await punctuationAction();
+	assert.equal(punctuationRevealed.at(-1), punctuationNote.lastIndexOf("!"), "Ponctuation doit atteindre la première correction dans la sélection");
+	Object.assign(punctuationView.editor, { cm: undefined });
+	await punctuationAction();
 	for (const debugMode of [false, true]) for (const apostrophes of [false, true]) for (const punctuation of [false, true]) {
 		punctuationPlugin.aiGroups = [];
 		Object.assign(punctuationPlugin.settings, { debugMode, apostrophesAutoApply: apostrophes, punctuationAutoApply: punctuation });
@@ -749,8 +770,8 @@ async function main() {
 	const aiPlugin = new api.FinitionPlugin();
 	await aiPlugin.loadSettings();
 	aiPlugin.settings.aiModel = "gpt-test";
-	aiPlugin.settings.openaiApiKey = "test";
-	aiPlugin.settings.aiApiKey = "test";
+	aiPlugin.settings.openaiSecretId = "test";
+	aiPlugin.settings.anthropicSecretId = "test";
 	let sourceText = "J’ai des mots.";
 	let aiFrom = 0, aiTo: number | undefined;
 	let failWrite = false;
@@ -1116,7 +1137,7 @@ async function main() {
 				},
 			});
 		}
-		aiPlugin.settings.aiApiKey = aiPlugin.settings.openaiApiKey = "";
+		aiPlugin.settings.anthropicSecretId = aiPlugin.settings.openaiSecretId = "";
 		await aiPlugin.runOrthoTypoIA();
 		assert.ok(aiPlugin.aiGroups.length, "La correction locale exige une clé API cloud");
 		for (const [status, reply, message] of [[404, { error: "Modèle absent" }, "Modèle absent"], [200, { invalid: true }, "aucun contenu"]] as const) {
