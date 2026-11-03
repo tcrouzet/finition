@@ -174,9 +174,26 @@ export async function checkDocumentNavigation(Navigation: typeof AnalysisNavigat
 	navigation.updateCorrections(view, [], "grammalecte");
 	assert.equal(count.textContent, "3", "Un autre correcteur vide ne doit pas effacer la navigation IA");
 	navigation.updateCorrections(view, [], "ai");
+	navigation.reset();
 	editor.dispatch({ selection: { anchor: 23, head: 9 } });
 	navigation.updateCorrections(view, marks, "ai"); await turn();
 	assert.equal(editor.state.selection.main.head, 10, "Les corrections IA doivent commencer au premier résultat de la sélection");
+	editor.dispatch({ changes: { from: 0, to: 6 }, selection: { anchor: 0 } });
+	navigation.updateCorrections(view, [{ from: 4, to: 5 }, { from: 14, to: 15 }], "ai");
+	for (const [index, letter] of ["N", "o"].entries()) {
+		editor.dispatch({ changes: { from: index, insert: letter }, selection: { anchor: index + 1 } });
+		navigation.updateCorrections(view, [{ from: 5 + index, to: 6 + index }, { from: 15 + index, to: 16 + index }], "ai");
+		await turn();
+		assert.equal(editor.state.selection.main.head, index + 1, "Couper puis réécrire ne doit pas projeter le curseur vers une correction");
+	}
+	assert.ok(editor.state.doc.toString().startsWith("No"), "Les lettres réécrites doivent rester à l’emplacement choisi");
+	navigation.updateCorrections(view, [], "ai");
+	const remaining = [{ from: 6, to: 7 }, { from: 16, to: 17 }];
+	navigation.updateCorrections(view, remaining, "ai"); await turn();
+	assert.equal(editor.state.selection.main.head, 2, "Réafficher des corrections après une édition ne doit pas réactiver le saut initial");
+	navigation.reset();
+	navigation.updateCorrections(view, remaining, "ai"); await turn();
+	assert.equal(editor.state.selection.main.head, 6, "Une nouvelle analyse doit encore atteindre sa première correction");
 	navigation.updateCorrections(view, [], "ai");
 	editor.dispatch({ selection: { anchor: 0 } });
 	active = null; events.get("active-leaf-change")!();

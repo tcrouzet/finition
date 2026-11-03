@@ -84,7 +84,7 @@ export class AnalysisNavigation {
 		if (this.disposed) return;
 		const previous = this.snapshots.get(view);
 		const mode = this.mode(view);
-		const initialized = previous?.initialized === true && previous.doc === view.state.doc && previous.mode === mode;
+		const initialized = previous?.initialized === true && previous.mode === mode;
 		this.snapshots.set(view, { doc: view.state.doc, mode, highlights, pending, initialized, wordCount });
 		this.refresh();
 	}
@@ -93,9 +93,20 @@ export class AnalysisNavigation {
 		if (this.disposed) return;
 		const snapshots = this.correctionSnapshots[source];
 		const previous = snapshots.get(view);
-		const initialized = highlights.length > 0 && previous?.initialized === true && previous.doc === view.state.doc;
+		const initialized = previous?.initialized === true;
 		snapshots.set(view, { doc: view.state.doc, mode: source, highlights, pending: false, initialized });
 		this.refresh();
+	}
+
+	reset(): void {
+		const view = this.activeView();
+		if (view) {
+			this.snapshots.delete(view);
+			this.correctionSnapshots.ai.delete(view);
+			this.correctionSnapshots.grammalecte.delete(view);
+		}
+		if (this.initialTimer !== null) window.clearTimeout(this.initialTimer);
+		this.initialTimer = null;
 	}
 
 	refresh(): void {

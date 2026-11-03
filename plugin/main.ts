@@ -645,6 +645,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.grammalecteErrors = [];
 		this.grammalecteErrorsVersion++;
 		this.clearAISuggestions();
+		this.analysisNavigation?.reset();
 		await this.saveSettings();
 		if (request !== this.spellingRequest) return;
 		this.updateStatusBarIcon();
