@@ -35,6 +35,7 @@ export interface AIGroupHost {
 	aiGroups: AIGroup[];
 	aiGroupsVersion: number;
 	aiSourcePath: string | null;
+	updateAICorrectionHighlights?: (view: EditorView, highlights: Array<{ from: number; to: number }>) => void;
 }
 
 class CorrectionWidget extends WidgetType {
@@ -145,6 +146,7 @@ export function finitionAIExtension(host: AIGroupHost) {
 				};
 				view.dom.addEventListener("click", this.handleClick);
 				view.dom.addEventListener("keydown", this.handleKeyDown, true);
+				this.publishHighlights();
 			}
 
 			destroy(): void {
@@ -156,6 +158,11 @@ export function finitionAIExtension(host: AIGroupHost) {
 				return this.host.aiSourcePath !== null && this.view.state.field(editorInfoField, false)?.file?.path === this.host.aiSourcePath;
 			}
 
+			private publishHighlights(): void {
+				host.updateAICorrectionHighlights?.(this.view, this.sourceView
+					? this.host.aiGroups.map(group => ({ from: group.delFrom, to: group.delTo })) : []);
+			}
+
 			update(update: ViewUpdate): void {
 				const wasSource = this.sourceView;
 				const previousHost = this.host;
@@ -164,6 +171,7 @@ export function finitionAIExtension(host: AIGroupHost) {
 				if (!this.sourceView) {
 					this.decorations = Decoration.none;
 					this.lastVersion = -1;
+					this.publishHighlights();
 					return;
 				}
 				if (update.docChanged && wasSource && !host.getNoteAnalysis) {
@@ -177,6 +185,7 @@ export function finitionAIExtension(host: AIGroupHost) {
 					this.lastVersion = this.host.aiGroupsVersion;
 					this.decorations = buildAIDecorations(this.host.aiGroups, this.view.state.doc);
 				}
+				this.publishHighlights();
 			}
 		},
 		{ decorations: (instance) => instance.decorations, provide: () => [correctionHistory, paragraphPreview] }

@@ -55,7 +55,7 @@ import { buildStatisticsReport, statisticsWords } from "./modes/statistics";
 import { dictionaryFile, personalDictionaryFile, personalDictionaryPath } from "./lexicon/shared";
 import { structureCategoryWords } from "./modes/structure-signature";
 import { LoadingNotice } from "./ui/loading-message";
-import { AnalysisNavigation, navigationFocus, revealAnalysisResult, setNavigationFocus } from "./ui/analysis-navigation";
+import { AnalysisNavigation, navigationFocus, setNavigationFocus } from "./ui/analysis-navigation";
 import { migrateAISecrets } from "./ai/secrets";
 import { countDocument, formatDocumentCount } from "./ui/document-count";
 import { registerSingleNote } from "./ui/single-note";
@@ -533,7 +533,11 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	updateGrammalecteHighlights(view: EditorView, highlights: Pick<Highlight, "from" | "to">[]): void {
-		this.analysisNavigation?.updateGrammalecte(view, highlights);
+		this.analysisNavigation?.updateCorrections(view, highlights, "grammalecte");
+	}
+
+	updateAICorrectionHighlights(view: EditorView, highlights: Pick<Highlight, "from" | "to">[]): void {
+		this.analysisNavigation?.updateCorrections(view, highlights, "ai");
 	}
 
 	updateTicIAStats(view: EditorView, tagged: number, total: number, pending: boolean): void {
@@ -757,7 +761,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 	private revealCorrection(view: MarkdownView, offset: number): void {
 		const cm = (view.editor as { cm?: EditorView }).cm;
-		if (cm?.dom?.isConnected) { revealAnalysisResult(cm, { from: offset, to: offset }); return; }
+		// L’éditeur affiché publie ses résultats au composant de navigation commun.
+		if (cm?.dom?.isConnected) return;
 		const position = view.editor.offsetToPos(offset);
 		view.editor.setCursor(position);
 		view.editor.scrollIntoView({ from: position, to: position }, true);
@@ -852,7 +857,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				}
 				this.aiGroupsVersion++;
 				this.refreshAllEditors(); // les suggestions déjà calculées s'affichent au fil de l'eau, pas seulement à la toute fin
-				if (!revealed && this.aiGroups.length) {
+				if (!cm?.dom?.isConnected && !revealed && this.aiGroups.length) {
 					this.revealCorrection(view, this.aiGroups[0].delFrom);
 					revealed = true;
 				}

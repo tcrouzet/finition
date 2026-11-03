@@ -28,7 +28,7 @@ export function revealAnalysisResult(view: EditorView, highlight: Pick<Highlight
 
 interface AnalysisSnapshot {
 	doc: EditorView["state"]["doc"];
-	mode: FinitionMode | "grammalecte";
+	mode: FinitionMode | "grammalecte" | "ai";
 	highlights: Array<Pick<Highlight, "from" | "to"> & { lemma?: string }>;
 	pending: boolean;
 	initialized: boolean;
@@ -37,7 +37,10 @@ interface AnalysisSnapshot {
 
 export class AnalysisNavigation {
 	private snapshots = new WeakMap<EditorView, AnalysisSnapshot>();
-	private grammalecteSnapshots = new WeakMap<EditorView, AnalysisSnapshot>();
+	private correctionSnapshots = {
+		grammalecte: new WeakMap<EditorView, AnalysisSnapshot>(),
+		ai: new WeakMap<EditorView, AnalysisSnapshot>(),
+	};
 	private disposed = false;
 	private count: HTMLSpanElement;
 	private previous: HTMLButtonElement;
@@ -86,11 +89,12 @@ export class AnalysisNavigation {
 		this.refresh();
 	}
 
-	updateGrammalecte(view: EditorView, highlights: Pick<Highlight, "from" | "to">[]): void {
+	updateCorrections(view: EditorView, highlights: Pick<Highlight, "from" | "to">[], source: "grammalecte" | "ai"): void {
 		if (this.disposed) return;
-		const previous = this.grammalecteSnapshots.get(view);
+		const snapshots = this.correctionSnapshots[source];
+		const previous = snapshots.get(view);
 		const initialized = highlights.length > 0 && previous?.initialized === true && previous.doc === view.state.doc;
-		this.grammalecteSnapshots.set(view, { doc: view.state.doc, mode: "grammalecte", highlights, pending: false, initialized });
+		snapshots.set(view, { doc: view.state.doc, mode: source, highlights, pending: false, initialized });
 		this.refresh();
 	}
 
@@ -102,13 +106,13 @@ export class AnalysisNavigation {
 		const enabled = this.analysisActive = !!view && mode !== "none" && mode !== "tic-ia";
 		const ready = snapshot && !snapshot.pending;
 		const percent = mode === "repetition" && this.plugin.settings.repetitionCountDisplay === "percent";
-		this.count.title = percent && ready ? `${snapshot.highlights.length} mots répétés sur ${snapshot.wordCount ?? 0} mots analysés` : mode === "grammalecte" ? "Fautes Grammalecte" : "Occurrences surlignées";
+		this.count.title = percent && ready ? `${snapshot.highlights.length} mots répétés sur ${snapshot.wordCount ?? 0} mots analysés` : mode === "grammalecte" ? "Fautes Grammalecte" : mode === "ai" ? "Corrections IA" : "Occurrences surlignées";
 		this.count.hidden = !enabled;
 		const total = snapshot?.wordCount ?? 0;
 		const value = percent && ready ? `${String(total ? Math.round(snapshot.highlights.length / total * 1000) / 10 : 0).replace(".", ",")} %` : String(snapshot?.highlights.length ?? 0);
 		this.count.setText(enabled ? ready ? value : "…" : "");
 		if (!enabled) { this.refreshDocuments(); return; }
-		for (const [button, label] of [[this.previous, mode === "grammalecte" ? "Faute précédente" : "Occurrence précédente"], [this.next, mode === "grammalecte" ? "Faute suivante" : "Occurrence suivante"]] as const) {
+		for (const [button, label] of [[this.previous, mode === "grammalecte" || mode === "ai" ? "Faute précédente" : "Occurrence précédente"], [this.next, mode === "grammalecte" || mode === "ai" ? "Faute suivante" : "Occurrence suivante"]] as const) {
 			button.setAttribute("aria-label", label);
 			button.title = label;
 			button.hidden = false;
@@ -147,8 +151,10 @@ export class AnalysisNavigation {
 
 	private current(view: EditorView | undefined): AnalysisSnapshot | undefined {
 		const mode = this.mode(view);
-		const grammalecte = view ? this.grammalecteSnapshots.get(view) : undefined;
-		if (mode === "none" && grammalecte?.doc === view?.state.doc && grammalecte?.highlights.length) return grammalecte;
+		if (view && mode === "none") for (const source of ["ai", "grammalecte"] as const) {
+			const corrections = this.correctionSnapshots[source].get(view);
+			if (corrections?.doc === view.state.doc && corrections.highlights.length) return corrections;
+		}
 		const snapshot = view ? this.snapshots.get(view) : undefined;
 		return snapshot?.doc === view?.state.doc && snapshot?.mode === mode ? snapshot : undefined;
 	}
