@@ -98,14 +98,15 @@ export class AnalysisNavigation {
 		this.refresh();
 	}
 
-	finishCorrections(view: EditorView, source: "grammalecte" | "ai"): void {
+	finishCorrections(view: EditorView, highlights: Pick<Highlight, "from" | "to">[], source: "grammalecte" | "ai"): void {
+		if (this.disposed || !highlights.length) return;
+		this.updateCorrections(view, highlights, source);
 		const snapshot = this.correctionSnapshots[source].get(view);
-		if (this.disposed || !snapshot?.highlights.length) return;
+		if (snapshot) snapshot.initialized = true;
 		if (this.initialTimer !== null) window.clearTimeout(this.initialTimer);
-		this.initialTimer = window.setTimeout(() => {
-			this.initialTimer = null;
-			if (this.activeView() === view && view.state.doc === snapshot.doc && this.current(view)?.mode === source) this.selectInitial(true);
-		}, 0);
+		this.initialTimer = null;
+		const first = highlights.reduce((best, highlight) => highlight.from < best.from ? highlight : best);
+		revealAnalysisResult(view, first);
 	}
 
 	reset(): void {
@@ -150,14 +151,14 @@ export class AnalysisNavigation {
 		if (this.initialTimer !== null) window.clearTimeout(this.initialTimer);
 	}
 
-	private selectInitial(completed = false): void {
+	private selectInitial(): void {
 		this.initialTimer = null;
 		if (this.disposed || !this.analysisActive) return;
 		const view = this.activeView();
 		const snapshot = this.current(view);
-		if (!view || !snapshot || snapshot.initialized && !completed || !snapshot.highlights.length) return;
+		if (!view || !snapshot || snapshot.initialized || !snapshot.highlights.length) return;
 		const selection = view.state.selection.main;
-		const matches = completed || selection.empty ? snapshot.highlights : snapshot.highlights.filter(highlight => highlight.from >= selection.from && highlight.from < selection.to);
+		const matches = selection.empty ? snapshot.highlights : snapshot.highlights.filter(highlight => highlight.from >= selection.from && highlight.from < selection.to);
 		if (!matches.length) return;
 		const first = matches.reduce((best, highlight) => highlight.from < best.from ? highlight : best);
 		snapshot.initialized = true;

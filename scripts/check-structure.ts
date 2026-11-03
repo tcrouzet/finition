@@ -368,8 +368,8 @@ async function main() {
 	await finalCorrection;
 	assert.equal(finalCorrectionNotice.hidden, true);
 	assert.equal(modePlugin.grammalecteErrors.length, 1);
-	assert.deepEqual(correctionPositions, [0], "Le correcteur ne sélectionne pas sa première suggestion");
-	assert.deepEqual(correctionScrolls, [0], "Le correcteur ne montre pas sa première suggestion");
+	assert.deepEqual(correctionPositions, [0, 0], "Le correcteur doit revenir à la première suggestion à la fin du traitement");
+	assert.deepEqual(correctionScrolls, [0, 0], "Le correcteur doit montrer sa première suggestion à la fin du traitement");
 	await modePlugin.runGrammalecte();
 	assert.equal(modePlugin.grammalecteErrors.length, 0, "Le reclic sur Corrections ne désactive plus l’analyse");
 	const stoppedCorrection = modePlugin.runGrammalecte();
@@ -827,8 +827,8 @@ async function main() {
 		assert.equal(apply(sourceText, aiPlugin.aiGroups), expected, "Les corrections IA perdent leurs positions dans la note");
 		assert.equal(sourceText, scopeSource, "L’analyse IA modifie le texte source");
 		const firstSuggestion = sourceText.indexOf("fote", scope === "selection" ? aiFrom : 0);
-		assert.deepEqual(aiRevealed, [firstSuggestion], "L’IA doit sélectionner une seule fois la première suggestion de la portée analysée");
-		assert.deepEqual(aiScrolled, [firstSuggestion], "L’IA laisse la première suggestion hors écran");
+		assert.deepEqual(aiRevealed, [firstSuggestion, firstSuggestion], "L’IA doit montrer la première suggestion à son arrivée puis y revenir à la fin du traitement");
+		assert.deepEqual(aiScrolled, [firstSuggestion, firstSuggestion], "L’IA laisse la première suggestion hors écran à la fin du traitement");
 	}
 	for (const blank of ["", " \n\n "]) {
 		sourceText = blank; aiFrom = aiTo = 0;

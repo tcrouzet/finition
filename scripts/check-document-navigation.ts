@@ -173,7 +173,7 @@ export async function checkDocumentNavigation(Navigation: typeof AnalysisNavigat
 	assert.equal(count.title, "Corrections IA");
 	editor.dispatch({ selection: { anchor: 23, head: 16 } });
 	navigation.updateCorrections(view, marks, "ai");
-	navigation.finishCorrections(view, "ai"); await turn();
+	navigation.finishCorrections(view, marks, "ai"); await turn();
 	assert.equal(editor.state.selection.main.head, 2, "La fin du travail IA doit revenir à sa première correction même après un déplacement pendant l’attente");
 	navigation.updateCorrections(view, [], "grammalecte");
 	assert.equal(count.textContent, "3", "Un autre correcteur vide ne doit pas effacer la navigation IA");
@@ -182,7 +182,7 @@ export async function checkDocumentNavigation(Navigation: typeof AnalysisNavigat
 	editor.dispatch({ selection: { anchor: 23, head: 9 } });
 	navigation.updateCorrections(view, marks, "ai"); await turn();
 	assert.equal(editor.state.selection.main.head, 10, "Les corrections IA doivent commencer au premier résultat de la sélection");
-	navigation.finishCorrections(view, "ai");
+	navigation.finishCorrections(view, marks, "ai");
 	editor.dispatch({ changes: { from: 0, to: 6 }, selection: { anchor: 0 } });
 	navigation.updateCorrections(view, [{ from: 4, to: 5 }, { from: 14, to: 15 }], "ai");
 	for (const [index, letter] of ["N", "o"].entries()) {

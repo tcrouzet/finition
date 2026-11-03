@@ -761,12 +761,16 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	private revealCorrection(view: MarkdownView, offset: number): void {
-		const cm = (view.editor as { cm?: EditorView }).cm;
-		// L’éditeur affiché publie ses résultats au composant de navigation commun.
-		if (cm?.dom?.isConnected) return;
 		const position = view.editor.offsetToPos(offset);
 		view.editor.setCursor(position);
 		view.editor.scrollIntoView({ from: position, to: position }, true);
+	}
+
+	private finishCorrectionAnalysis(view: MarkdownView, highlights: Pick<Highlight, "from" | "to">[], source: "grammalecte" | "ai"): void {
+		if (!highlights.length) return;
+		const cm = (view.editor as { cm?: EditorView }).cm;
+		if (cm?.dom?.isConnected && this.analysisNavigation) this.analysisNavigation.finishCorrections(cm, highlights, source);
+		else this.revealCorrection(view, highlights.reduce((first, highlight) => Math.min(first, highlight.from), view.editor.getValue().length));
 	}
 
 	private async runOrthoTypoIA(): Promise<void> {
@@ -875,8 +879,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		}
 
 		if (!isCurrent()) return;
-		const cm = (editor as { cm?: EditorView }).cm;
-		if (cm?.dom?.isConnected) this.analysisNavigation?.finishCorrections(cm, "ai");
+		this.finishCorrectionAnalysis(view, this.aiGroups.map(group => ({ from: group.delFrom, to: group.delTo })), "ai");
 		if (errors.length > 0) {
 			new Notice(`Corrections IA : ${errors.length} erreur(s).\n${errors[0]}`, 12000);
 			console.error("Corrections IA : erreurs détaillées", errors);
@@ -924,8 +927,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			this.aiGroupsVersion++;
 			this.updateStatusBarIcon();
 			this.refreshAllEditors();
-			const first = this.aiGroups.find(group => !selection || selection.empty || group.delFrom >= selection.from && group.delFrom < selection.to);
-			if (first) this.revealCorrection(view, first.delFrom);
+			const highlights = this.aiGroups
+				.filter(group => !selection || selection.empty || group.delFrom >= selection.from && group.delFrom < selection.to)
+				.map(group => ({ from: group.delFrom, to: group.delTo }));
+			this.finishCorrectionAnalysis(view, highlights, "ai");
 			new Notice(`Ponctuation : ${this.aiGroups.length} correction(s) à valider.`);
 		} else if (applied !== original) {
 			new Notice("Ponctuation : corrections appliquées.");
@@ -1346,6 +1351,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		const document = editor.getValue();
 		const from = editor.posToOffset(editor.getCursor("from"));
 		const to = editor.posToOffset(editor.getCursor("to"));
+		const cm = (editor as { cm?: EditorView }).cm;
 		const reset = this.resetAnalysis();
 		const request = this.spellingRequest;
 
@@ -1365,7 +1371,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			);
 			this.grammalecteErrorsVersion++;
 			this.refreshAllEditors(this.grammalecteErrors.length === 0);
-			if (!revealed && this.grammalecteErrors.length) {
+			if (!cm?.dom?.isConnected && !revealed && this.grammalecteErrors.length) {
 				this.revealCorrection(view, this.grammalecteErrors.reduce((first, error) => Math.min(first, error.nStart), document.length));
 				revealed = true;
 			}
@@ -1378,6 +1384,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			if (request !== this.spellingRequest) return;
 			const rawErrors = await analyzeCorrections(engine, document, from, to, publish);
 			if (!publish(rawErrors)) return;
+			this.finishCorrectionAnalysis(view, this.grammalecteErrors.map(error => ({ from: error.nStart, to: error.nEnd })), "grammalecte");
 			this.finishAnalysisProgress(notice);
 			if (this.grammalecteErrors.length === 0) {
 				new Notice(`${label} : aucune suggestion.`);
