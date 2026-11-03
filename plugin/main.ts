@@ -874,7 +874,9 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			this.finishAnalysisProgress(progress);
 		}
 
-		if (request !== this.spellingRequest) return;
+		if (!isCurrent()) return;
+		const cm = (editor as { cm?: EditorView }).cm;
+		if (cm?.dom?.isConnected) this.analysisNavigation?.finishCorrections(cm, "ai");
 		if (errors.length > 0) {
 			new Notice(`Corrections IA : ${errors.length} erreur(s).\n${errors[0]}`, 12000);
 			console.error("Corrections IA : erreurs détaillées", errors);
