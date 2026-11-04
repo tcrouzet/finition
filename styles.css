@@ -11,6 +11,12 @@
 .finition-correction-spinner { display: inline-flex; vertical-align: middle; margin-right: 0.5em; }
 .finition-correction-spinner svg { width: 1em; height: 1em; animation: finition-correction-spin 1s linear infinite; }
 .finition-loading-cancel { display: inline-flex; vertical-align: middle; margin-left: 0.5em; }
+.notice .finition-loading-cancel {
+	color: inherit;
+	--icon-color: currentColor;
+	--icon-color-hover: currentColor;
+	--icon-opacity: 1;
+}
 @keyframes finition-correction-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .finition-correction-spinner svg { animation: none; } }
 
@@ -189,14 +195,14 @@
 /*
  * Au clic sur une occurrence surlignée, toutes les occurrences du même
  * groupe (même lemme, ou même locution pour l'atténuation) basculent en
- * fond noir / texte blanc, par-dessus leur couleur habituelle. Reclic pour
+ * couleurs du thème inversées, par-dessus leur couleur habituelle. Reclic pour
  * désélectionner.
  */
 .cm-content .finition-focused,
 .cm-content .finition-navigation-focused,
 .cm-content .finition-navigation-focused * {
-	background: #000000;
-	color: #ffffff;
+	background: var(--text-normal);
+	color: var(--background-primary);
 	cursor: pointer;
 }
 

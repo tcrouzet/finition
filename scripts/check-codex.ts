@@ -132,14 +132,21 @@ export async function checkCodex(): Promise<void> {
 		assert.ok(children.at(-1)!.closed, value);
 		if (["login", "permissions", "rpc-error"].includes(value)) assert.ok(!requests.some(request => request.method === "turn/start"), "Le texte ne doit pas être envoyé après un échec de connexion");
 	}
-	for (const timeout of [false, true]) {
+	for (const cancel of [false, true]) {
 		scenario = "wait"; requests.length = 0;
 		const waiting = api.callCodex(options);
 		for (let round = 0; round < 100 && !requests.some(request => request.method === "turn/start"); round++) await new Promise(resolve => setImmediate(resolve));
 		assert.ok(requests.some(request => request.method === "turn/start"));
-		if (timeout) { const timer = [...timers.values()].find(timer => timer.delay === 120_000); assert.ok(timer); timer.callback(); }
-		else api.cancelCodex();
-		assert.match((await waiting).error!, timeout ? /deux minutes/ : /annulée/);
+		assert.equal(timers.size, 0, "Codex doit attendre la réponse sans délai d’expiration");
+		assert.equal(children.at(-1)!.closed, false, "Le processus doit rester actif pendant l’attente");
+		if (cancel) {
+			api.cancelCodex();
+			assert.match((await waiting).error!, /annulée/);
+		} else {
+			children.at(-1)!.reply({ method: "item/completed", params: { threadId: "test-thread", item: { type: "agentMessage", phase: "final_answer", text: "Réponse attendue." } } });
+			children.at(-1)!.reply({ method: "turn/completed", params: { threadId: "test-thread", turn: { status: "completed" } } });
+			assert.equal((await waiting).text, "Réponse attendue.");
+		}
 		assert.ok(children.at(-1)!.closed);
 	}
 	scenario = "success";

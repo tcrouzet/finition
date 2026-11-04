@@ -143,7 +143,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	private spellingRequest = 0;
 	private pendingCorrectionRequest: number | null = null;
 	private unlockAINote: (() => void) | null = null;
-	private analysisProgress: { notice: Notice; view: MarkdownView | null; mode?: FinitionMode } | null = null;
+	private analysisProgress: { notice: Notice; view: MarkdownView | null; file: TFile | null; mode?: FinitionMode } | null = null;
 	private linguisticResources: LinguisticResources | null = null;
 	private neuralModels: NeuralModels | null = null;
 	wordDictionaries: WordDictionaries | null = null;
@@ -181,7 +181,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.addSettingTab(this.settingsTab);
 		registerNoteReset(this, file => this.changeAnalysisNote(file));
 		this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
-			if (this.analysisProgress?.view !== getCurrentNote(this.app)) this.finishAnalysisProgress();
+			if (this.pendingCorrectionRequest === null && this.analysisProgress?.view !== getCurrentNote(this.app)) this.finishAnalysisProgress();
 			this.updateStatusBarIcon();
 		}));
 		this.registerEvent(this.app.workspace.on("editor-change", () => this.updateDocumentCounts()));
@@ -594,7 +594,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			if (this.analysisProgress?.notice !== notice) return;
 			void this.resetAnalysis().catch(error => new Notice(`Arrêt : ${error instanceof Error ? error.message : String(error)}`));
 		});
-		this.analysisProgress = { notice, view, mode };
+		this.analysisProgress = { notice, view, file: view?.file ?? null, mode };
 		return notice;
 	}
 
@@ -631,7 +631,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 
 	private async changeAnalysisNote(file: TFile | null): Promise<void> {
 		this.noteAnalyses.current.mode = this.settings.mode;
-		const request = this.cancelPendingAnalysis();
+		const progress = this.analysisProgress;
+		const replaced = this.pendingCorrectionRequest !== null && progress?.view && progress.view.file !== progress.file;
+		const request = this.pendingCorrectionRequest === null || replaced ? this.cancelPendingAnalysis() : this.spellingRequest;
+		if (replaced) new Notice("Corrections : la note d’origine a été fermée ou remplacée. Relance l’analyse.");
 		this.settings.mode = this.noteAnalyses.activate(file).mode;
 		await this.saveSettings();
 		if (request !== this.spellingRequest) return;
@@ -767,7 +770,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	}
 
 	private finishCorrectionAnalysis(view: MarkdownView, highlights: Pick<Highlight, "from" | "to">[], source: "grammalecte" | "ai"): void {
-		if (!highlights.length) return;
+		if (!highlights.length || getCurrentNote(this.app) !== view) return;
 		const cm = (view.editor as { cm?: EditorView }).cm;
 		if (cm?.dom?.isConnected && this.analysisNavigation) this.analysisNavigation.finishCorrections(cm, highlights, source);
 		else this.revealCorrection(view, highlights.reduce((first, highlight) => Math.min(first, highlight.from), view.editor.getValue().length));
@@ -789,9 +792,11 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		const request = this.spellingRequest;
 		this.pendingCorrectionRequest = request;
 		const document = editor.getValue();
+		const file = view.file;
+		const analysis = this.noteAnalyses.current;
 
-		this.aiSourcePath = view.file?.path ?? null;
-		this.correctionSource = "ai";
+		analysis.aiSourcePath = file?.path ?? null;
+		analysis.correctionSource = "ai";
 		const selectionFrom = selected ? editor.posToOffset(editor.getCursor("from")) : 0;
 		const original = selected ? editor.getSelection() : document;
 		const chunks = splitIntoChunks(original, this.settings.aiChunkSize);
@@ -809,7 +814,11 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		let revealed = false;
 		let unlock: (() => void) | undefined;
 		const isCurrent = () => {
-			if (request !== this.spellingRequest || getCurrentNote(this.app) !== view) return false;
+			if (request !== this.spellingRequest) return false;
+			if (view.file !== file) {
+				new Notice("Corrections IA : la note d’origine a été fermée ou remplacée. Relance l’analyse.");
+				return false;
+			}
 			if (document === editor.getValue()) return true;
 			new Notice("Corrections IA : le texte a changé, l’analyse a été interrompue. Relance-la pour traiter toute la note.", 8000);
 			return false;
@@ -852,7 +861,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 				if (debugMode) debugChunks.push(revisedRaw);
 				const groups = protectedText.diff(revisedRaw);
 				for (const g of groups) {
-					this.aiGroups.push({
+					analysis.aiGroups.push({
 						id: this.nextAiGroupId++,
 						delFrom: selectionFrom + chunk.start + g.delFrom,
 						delTo: selectionFrom + chunk.start + g.delTo,
@@ -860,10 +869,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 						insText: g.insText,
 					});
 				}
-				this.aiGroupsVersion++;
-				this.refreshAllEditors(); // les suggestions déjà calculées s'affichent au fil de l'eau, pas seulement à la toute fin
-				if (!cm?.dom?.isConnected && !revealed && this.aiGroups.length) {
-					this.revealCorrection(view, this.aiGroups[0].delFrom);
+				analysis.aiGroupsVersion++;
+				this.refreshAllEditors(false); // les suggestions déjà calculées s'affichent au fil de l'eau, pas seulement à la toute fin
+				if (!cm?.dom?.isConnected && !revealed && analysis.aiGroups.length && getCurrentNote(this.app) === view) {
+					this.revealCorrection(view, analysis.aiGroups[0].delFrom);
 					revealed = true;
 				}
 			}
@@ -879,16 +888,16 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		}
 
 		if (!isCurrent()) return;
-		this.finishCorrectionAnalysis(view, this.aiGroups.map(group => ({ from: group.delFrom, to: group.delTo })), "ai");
+		this.finishCorrectionAnalysis(view, analysis.aiGroups.map(group => ({ from: group.delFrom, to: group.delTo })), "ai");
 		if (errors.length > 0) {
 			new Notice(`Corrections IA : ${errors.length} erreur(s).\n${errors[0]}`, 12000);
 			console.error("Corrections IA : erreurs détaillées", errors);
 		}
-		if (this.aiGroups.length === 0 && errors.length === 0) {
+		if (analysis.aiGroups.length === 0 && errors.length === 0) {
 			new Notice("Corrections IA : aucune correction proposée.");
-		} else if (this.aiGroups.length > 0) {
+		} else if (analysis.aiGroups.length > 0) {
 			new Notice(
-				`Corrections IA : ${this.aiGroups.length} suggestion(s). Clique sur le texte en couleur pour valider.`
+				`Corrections IA : ${analysis.aiGroups.length} suggestion(s). Clique sur le texte en couleur pour valider.`
 			);
 		}
 	}
@@ -1356,23 +1365,25 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		const request = this.spellingRequest;
 
 		const label = this.settings.spellingEngine === "finition-corrector" && this.settings.spellingNeural ? "Correction neurale" : "Corrections";
+		const file = view.file;
+		const analysis = this.noteAnalyses.current;
 		this.pendingCorrectionRequest = request;
 		const notice = this.startAnalysisProgress(label, view);
 		let revealed = false;
 		const publish = (rawErrors: GrammalecteError[]): boolean => {
-			if (request !== this.spellingRequest || document !== editor.getValue() || getCurrentNote(this.app) !== view) return false;
+			if (request !== this.spellingRequest || document !== editor.getValue() || view.file !== file) return false;
 			const dictionary = parseGrammalecteDictionary(this.settings.grammalecteCustomDictionary);
 			// Les noms propres et mots inconnus ajoutés au dictionnaire
 			// personnel ne doivent plus jamais être soulignés — uniquement
 			// filtré côté orthographe : une erreur de grammaire portant sur un
 			// groupe de mots n'a pas de sValue unique à comparer.
-			this.grammalecteErrors = rawErrors.filter(
+			analysis.grammalecteErrors = rawErrors.filter(
 				(err) => !(err.sType === "orthographe" && err.sValue && dictionary.has(err.sValue.toLowerCase()))
 			);
-			this.grammalecteErrorsVersion++;
-			this.refreshAllEditors(this.grammalecteErrors.length === 0);
-			if (!cm?.dom?.isConnected && !revealed && this.grammalecteErrors.length) {
-				this.revealCorrection(view, this.grammalecteErrors.reduce((first, error) => Math.min(first, error.nStart), document.length));
+			analysis.grammalecteErrorsVersion++;
+			this.refreshAllEditors(analysis.grammalecteErrors.length === 0 && getCurrentNote(this.app) === view);
+			if (!cm?.dom?.isConnected && !revealed && analysis.grammalecteErrors.length && getCurrentNote(this.app) === view) {
+				this.revealCorrection(view, analysis.grammalecteErrors.reduce((first, error) => Math.min(first, error.nStart), document.length));
 				revealed = true;
 			}
 			return true;
@@ -1384,12 +1395,12 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			if (request !== this.spellingRequest) return;
 			const rawErrors = await analyzeCorrections(engine, document, from, to, publish);
 			if (!publish(rawErrors)) return;
-			this.finishCorrectionAnalysis(view, this.grammalecteErrors.map(error => ({ from: error.nStart, to: error.nEnd })), "grammalecte");
+			this.finishCorrectionAnalysis(view, analysis.grammalecteErrors.map(error => ({ from: error.nStart, to: error.nEnd })), "grammalecte");
 			this.finishAnalysisProgress(notice);
-			if (this.grammalecteErrors.length === 0) {
+			if (analysis.grammalecteErrors.length === 0) {
 				new Notice(`${label} : aucune suggestion.`);
 			} else {
-				new Notice(`${label} : ${this.grammalecteErrors.length} suggestion(s).`);
+				new Notice(`${label} : ${analysis.grammalecteErrors.length} suggestion(s).`);
 			}
 		} catch (e) {
 			if (request !== this.spellingRequest) return;

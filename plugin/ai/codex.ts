@@ -51,7 +51,6 @@ async function runCodex(opts: CodexTask): Promise<CodexResult> {
 	if (!Platform.isDesktop) return { text: null, error: "Codex est disponible uniquement sur ordinateur." };
 	let hostProcess: typeof import("process") | undefined;
 	let child: import("child_process").ChildProcessWithoutNullStreams | undefined;
-	let timer: number | undefined;
 	let buffer = "", threadId = "", answer = "";
 	let nextId = 0, stopped = false;
 	const pending = new Map<number, { resolve: (value: ObjectValue) => void; reject: (error: Error) => void }>();
@@ -88,7 +87,6 @@ async function runCodex(opts: CodexTask): Promise<CodexResult> {
 		child = spawn(executable, ["app-server", "--listen", "stdio://", ...disabled.flatMap(feature => ["--disable", feature])], {
 			cwd: tmpdir(), stdio: ["pipe", "pipe", "pipe"], windowsHide: true, detached: process.platform !== "win32",
 		});
-		timer = window.setTimeout(() => fail("Codex n’a pas répondu dans les deux minutes."), 120_000);
 		child.once("error", error => fail(`Impossible de lancer Codex : ${error.message}`));
 		child.once("close", () => { if (!stopped) fail("La connexion Codex s’est arrêtée avant la fin de la réponse."); });
 		child.stdin.on("error", error => fail(`Connexion Codex : ${error.message}`));
@@ -168,7 +166,6 @@ async function runCodex(opts: CodexTask): Promise<CodexResult> {
 	} finally {
 		stopped = true;
 		cancellations.delete(cancel);
-		if (timer !== undefined) window.clearTimeout(timer);
 		if (child && hostProcess && child.exitCode === null && child.signalCode === null) {
 			const process = hostProcess;
 			child.stdin.destroy();
