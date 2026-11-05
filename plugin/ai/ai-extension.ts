@@ -133,7 +133,7 @@ export function finitionAIExtension(host: AIGroupHost) {
 					const action = marker.dataset.finitionAiAction;
 					const group = this.host.aiGroups.find((g) => g.id === id);
 					if (!group) return;
-					this.view.dispatch(resolveCorrection(this.host, group, action === "accept"));
+					resolveCorrection(this.view, this.host, group, action === "accept");
 					this.view.focus();
 					event.preventDefault();
 				};

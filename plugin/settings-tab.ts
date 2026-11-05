@@ -485,6 +485,8 @@ export class FinitionSettingTab extends PluginSettingTab {
 		apiKeyLink.target = "_blank";
 		apiKeyLink.rel = "noopener";
 		apiKeyDesc.appendChild(apiKeyLink);
+		const anthropicReference = createEl("code", { text: this.plugin.settings.anthropicSecretId || "Aucune" });
+		apiKeyDesc.append(createEl("br"), "Référence Obsidian : ", anthropicReference);
 
 		new Setting(containerEl)
 			.setName("Clé API Anthropic")
@@ -493,6 +495,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.anthropicSecretId)
 				.onChange(async id => {
 					this.plugin.settings.anthropicSecretId = id ?? "";
+					anthropicReference.setText(id || "Aucune");
 					await this.plugin.saveSettings();
 				}));
 
@@ -506,6 +509,8 @@ export class FinitionSettingTab extends PluginSettingTab {
 		openaiKeyLink.target = "_blank";
 		openaiKeyLink.rel = "noopener";
 		openaiKeyDesc.appendChild(openaiKeyLink);
+		const openaiReference = createEl("code", { text: this.plugin.settings.openaiSecretId || "Aucune" });
+		openaiKeyDesc.append(createEl("br"), "Référence Obsidian : ", openaiReference);
 
 		new Setting(containerEl)
 			.setName("Clé API OpenAI")
@@ -514,6 +519,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.openaiSecretId)
 				.onChange(async id => {
 					this.plugin.settings.openaiSecretId = id ?? "";
+					openaiReference.setText(id || "Aucune");
 					await this.plugin.saveSettings();
 				}));
 

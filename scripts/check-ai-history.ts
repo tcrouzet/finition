@@ -28,6 +28,7 @@ export function checkAIHistory(): void {
 			const resolved = view.state.doc.toString();
 			for (let cycle = 0; cycle < 2; cycle++) {
 				check(undo(view), `Annuler indisponible : ${kind}, ${action}`);
+				check(view.state.selection.main.empty && view.state.selection.main.head === group.delFrom, "Annuler une décision retourne à l’ancien curseur au lieu de la correction restaurée");
 				check(view.state.doc.toString() === source && JSON.stringify(analysis.aiGroups) === JSON.stringify([group]), "Annuler ne restaure pas le texte et la suggestion");
 				check(!!view.dom.querySelector(".finition-ai-reject"), "La suggestion annulée ne réapparaît pas");
 				check(redo(view), "Rétablir indisponible");
@@ -44,6 +45,7 @@ export function checkAIHistory(): void {
 			check(view.hasFocus, "Le clic ne rend pas le clavier à l’éditeur");
 			view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "z", code: "KeyZ", keyCode: 90, metaKey: mac, ctrlKey: !mac, bubbles: true, cancelable: true }));
 			check(view.state.doc.toString() === source && analysis.aiGroups.length === 2, "Le raccourci standard n’annule pas une décision IA");
+			check(view.state.selection.main.head === groups[0].delFrom, "Le raccourci standard place le curseur hors de la correction restaurée");
 			view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: mac ? "Z" : "y", code: mac ? "KeyZ" : "KeyY", keyCode: mac ? 90 : 89, metaKey: mac, ctrlKey: !mac, shiftKey: mac, bubbles: true, cancelable: true }));
 			check(view.state.doc.toString() === resolved && analysis.aiGroups.length === 1, "Le raccourci standard ne rétablit pas une décision IA");
 		} finally { fixture.destroy(); }

@@ -1,5 +1,6 @@
-import { StateEffect, Transaction, type ChangeDesc, type TransactionSpec, type Text } from "@codemirror/state";
+import { StateEffect, Transaction, type ChangeDesc, type Text } from "@codemirror/state";
 import { history, invertedEffects, isolateHistory } from "@codemirror/commands";
+import type { EditorView } from "@codemirror/view";
 import type { AIGroup, AIGroupHost } from "./ai-extension";
 
 export function mapAIGroups(groups: AIGroup[], changes: ChangeDesc): AIGroup[] {
@@ -28,12 +29,14 @@ export const correctionHistory = [
 		? [resolution.of({ ...effect.value, restore: !effect.value.restore })] : [])),
 ];
 
-export function resolveCorrection(host: AIGroupHost, group: AIGroup, accept: boolean): TransactionSpec {
-	return {
+export function resolveCorrection(view: EditorView, host: AIGroupHost, group: AIGroup, accept: boolean): void {
+	// L’historique natif mémorise la sélection avant la décision.
+	view.dispatch({ selection: { anchor: group.delFrom }, annotations: Transaction.addToHistory.of(false) });
+	view.dispatch({
 		changes: accept ? { from: group.delFrom, to: group.delTo, insert: group.insText ?? "" } : undefined,
 		effects: resolution.of({ host, epoch: epoch(host), group: { ...group }, from: group.delFrom, restore: false }),
 		annotations: [isolateHistory.of("full"), Transaction.userEvent.of("input.finition-correction")],
-	};
+	});
 }
 
 export function applyCorrectionHistory(host: AIGroupHost, transactions: readonly Transaction[], document: Text): void {
