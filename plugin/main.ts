@@ -177,6 +177,12 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.registerEditorExtension(finitionAIExtension(this));
 		this.registerEditorExtension(finitionGrammalecteExtension(this));
 		this.registerEditorExtension(correctionGutter(this));
+		this.registerEditorExtension(EditorView.updateListener.of(update => {
+			if (update.focusChanged || update.selectionSet && (
+				update.startState.selection.ranges.some(range => !range.empty) ||
+				update.state.selection.ranges.some(range => !range.empty)
+			)) this.updateDocumentCounts();
+		}));
 		addIcon("finition", finitionIcon);
 		this.settingsTab = new FinitionSettingTab(this.app, this);
 		this.addSettingTab(this.settingsTab);
@@ -519,9 +525,10 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		const markdown = display === "none" ? null : getCurrentNote(this.app);
 		this.documentCountEl.hidden = !markdown;
 		if (!markdown) { this.documentCountCache = null; return; }
-		const text = markdown.editor.getValue();
+		const selection = markdown.editor.getSelection();
+		const text = selection || markdown.editor.getValue();
 		const counts = this.documentCountCache?.text === text ? this.documentCountCache : this.documentCountCache = { text, ...countDocument(text) };
-		this.documentCountEl.title = `${counts.words.toLocaleString("fr-FR")} mot${counts.words === 1 ? "" : "s"} · ${counts.characters.toLocaleString("fr-FR")} signe${counts.characters === 1 ? "" : "s"} (espaces compris)`;
+		this.documentCountEl.title = `${selection ? "Sélection : " : ""}${counts.words.toLocaleString("fr-FR")} mot${counts.words === 1 ? "" : "s"} · ${counts.characters.toLocaleString("fr-FR")} signe${counts.characters === 1 ? "" : "s"} (espaces compris)`;
 		const values: string[] = [];
 		if (display === "words" || display === "both") values.push(formatDocumentCount(counts.words, "mot"));
 		if (display === "characters" || display === "both") values.push(formatDocumentCount(counts.characters, "signe"));
