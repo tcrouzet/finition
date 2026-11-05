@@ -9,7 +9,7 @@ export async function checkCodex(): Promise<void> {
 	const compiled = await build({ stdin: { contents: 'export * from "./plugin/ai/codex"; export * from "./plugin/ai/provider"; export { cancelSynonyms, runSynonyms } from "./plugin/ai/synonyms"; export { DEFAULT_SETTINGS } from "./plugin/types";', resolveDir: process.cwd() }, bundle: true, platform: "node", format: "cjs", supported: { "dynamic-import": false }, loader: { ".md": "text" }, write: false, external: ["obsidian"] });
 	const platform = { isDesktop: true };
 	let available = true, scenario = "success", launches = 0;
-	const requests: Array<{ method: string; params: Record<string, unknown> }> = [];
+	const requests: Array<{ id?: number; method: string; params: Record<string, unknown> }> = [];
 	const timers = new Map<number, { callback: () => void; delay: number }>();
 	let timerId = 0;
 	const children: Array<{ closed: boolean; reply: (message: unknown) => void }> = [];
@@ -26,11 +26,12 @@ export async function checkCodex(): Promise<void> {
 			requests.push(message);
 			queueMicrotask(() => {
 				if (this.closed || message.id === undefined) return;
+				const turnId = `test-turn-${message.id}`;
 				const result: Record<string, unknown> = message.method === "account/read" ? { requiresOpenaiAuth: true, account: scenario === "login" ? null : { type: "chatgpt" } }
-					: message.method === "model/list" ? { data: scenario === "invalid-models" ? [{ model: 42, displayName: "Invalide" }] : message.params.cursor ? [{ model: "codex-b", displayName: "Modèle B" }] : [{ model: "codex-a", displayName: "Modèle A" }, { model: "cache", displayName: "Masqué", hidden: true }], nextCursor: scenario === "loop-models" || !message.params.cursor ? "page-2" : null }
+					: message.method === "model/list" ? { data: scenario === "invalid-models" ? [{ model: 42, displayName: "Invalide" }] : message.params.cursor ? [{ model: "codex-b", displayName: "Modèle B" }] : [{ model: "codex-a", displayName: "Modèle A", supportedReasoningEfforts: [{ reasoningEffort: scenario === "invalid-efforts" ? 42 : "low" }, { reasoningEffort: "medium" }] }, { model: "cache", displayName: "Masqué", hidden: true }], nextCursor: scenario === "loop-models" || !message.params.cursor ? "page-2" : null }
 					: message.method === "config/read" ? { config: { mcp_servers: { unsafe: { enabled: true } } } }
 					: message.method === "thread/start" ? { model: message.params.model ?? "codex-modele-test", thread: { id: "test-thread", ephemeral: true }, sandbox: { type: scenario === "permissions" ? "workspaceWrite" : "readOnly" }, approvalPolicy: "never" }
-					: message.method === "turn/start" ? { turn: { id: "test-turn" } } : {};
+					: message.method === "turn/start" ? { turn: { id: turnId } } : {};
 				if (scenario === "rpc-error" && message.method === "account/read") { this.reply({ id: message.id, error: { message: "Version incompatible" } }); return; }
 				this.reply({ id: message.id, result });
 				if (message.method !== "turn/start") return;
@@ -40,10 +41,12 @@ export async function checkCodex(): Promise<void> {
 				if (scenario === "large") { this.stdout.write("x".repeat(4 * 1024 * 1024 + 1)); return; }
 				if (scenario === "approval") { this.reply({ id: "approval", method: "item/commandExecution/requestApproval", params: { threadId: "test-thread" } }); return; }
 				if (scenario === "tool") { this.reply({ method: "item/completed", params: { threadId: "test-thread", item: { type: "commandExecution" } } }); return; }
+				if (scenario === "echo") this.reply({ method: "item/completed", params: { threadId: "test-thread", turnId, item: { type: "contextCompaction" } } });
 				this.reply({ method: "item/completed", params: { threadId: "other-thread", item: { type: "agentMessage", text: "À ignorer." } } });
-				this.reply({ method: "item/completed", params: { threadId: "test-thread", item: { type: "agentMessage", phase: "commentary", text: "Je réfléchis." } } });
-				this.reply({ method: "item/completed", params: { threadId: "test-thread", item: { type: "agentMessage", phase: "final_answer", text: scenario === "empty" ? "" : "Une faute, un œil.\n- vif\n- véloce" } } });
-				this.reply({ method: "turn/completed", params: { threadId: "test-thread", turn: { id: "test-turn", status: scenario === "failed" ? "failed" : scenario === "interrupted" ? "interrupted" : "completed", error: { message: "Quota atteint" } } } });
+				this.reply({ method: "item/completed", params: { threadId: "test-thread", turnId, item: { type: "agentMessage", phase: "commentary", text: "Je réfléchis." } } });
+				const input = message.params.input as Array<{ text: string }>;
+				this.reply({ method: "item/completed", params: { threadId: "test-thread", turnId, item: { type: "agentMessage", phase: "final_answer", text: scenario === "empty" ? "" : scenario === "echo" ? input[0].text.replace("fote", "faute") : "Une faute, un œil.\n- vif\n- véloce" } } });
+				this.reply({ method: "turn/completed", params: { threadId: "test-thread", turn: { id: turnId, status: scenario === "failed" ? "failed" : scenario === "interrupted" ? "interrupted" : "completed", error: { message: "Quota atteint" } } } });
 			});
 			done();
 		} });
@@ -75,6 +78,7 @@ export async function checkCodex(): Promise<void> {
 			assert.equal(options.shell, undefined, "Aucune commande ne doit passer par un shell");
 			assert.ok(!args.includes("danger-full-access"));
 			for (const feature of ["apps", "plugins", "hooks", "shell_tool", "unified_exec", "multi_agent", "multi_agent_v2"]) assert.equal(args[args.indexOf(feature) - 1], "--disable");
+			for (const config of ["notify=[]", "project_doc_max_bytes=0"]) assert.equal(args[args.indexOf(config) - 1], "-c", "Les notifications externes et instructions locales doivent être désactivées dès le démarrage");
 			const child = new Child(); children.push(child); return child;
 		} },
 	};
@@ -88,6 +92,7 @@ export async function checkCodex(): Promise<void> {
 	const connection = api.getAIConnection({ ...api.DEFAULT_SETTINGS, aiModel: api.CODEX_MODEL, localAIServer: "http://localhost:11434", anthropicSecretId: "secret-anthropic", openaiSecretId: "secret-openai" }, secretStorage);
 	assert.equal(connection.provider, "codex", "Le choix explicite de Codex doit prendre le pas sur le serveur local");
 	assert.equal(connection.apiKey, "");
+	assert.equal(connection.effort, "low", "L’effort de Finition ne doit pas hériter du réglage global de Codex");
 	assert.equal(api.detectProvider(api.CODEX_MODEL), "codex");
 	assert.equal(api.detectProvider("gpt-test"), "openai");
 	assert.equal(api.detectProvider("claude-test"), "anthropic");
@@ -107,11 +112,11 @@ export async function checkCodex(): Promise<void> {
 	assert.ok(!JSON.stringify(requests).includes("secret-"), "Les clés API de Finition ne doivent pas être envoyées à Codex");
 	assert.ok(children.every(child => child.closed), "Le processus Codex doit être arrêté après la réponse");
 	requests.length = 0;
-	assert.deepEqual(JSON.parse(JSON.stringify(await api.listCodexModels())), [{ value: "codex-a", label: "Modèle A" }, { value: "codex-b", label: "Modèle B" }], "Le catalogue doit inclure toutes les pages et exclure les modèles masqués");
+	assert.deepEqual(JSON.parse(JSON.stringify(await api.listCodexModels())), [{ value: "codex-a", label: "Modèle A", efforts: ["low", "medium"] }, { value: "codex-b", label: "Modèle B" }], "Le catalogue doit inclure toutes les pages et les efforts disponibles, et exclure les modèles masqués");
 	assert.equal(requests.filter(request => request.method === "model/list").length, 2);
 	assert.ok(!requests.some(request => request.method === "thread/start" || request.method === "turn/start"), "Charger les modèles ne doit pas envoyer de prompt ni lancer une génération");
 	assert.ok(children.at(-1)!.closed, "La lecture du catalogue doit arrêter son processus");
-	for (const [value, message] of [["login", /codex login/], ["invalid-models", /Modèle Codex invalide/], ["loop-models", /Pagination/]] as const) {
+	for (const [value, message] of [["login", /codex login/], ["invalid-models", /Modèle Codex invalide/], ["invalid-efforts", /Effort de raisonnement/], ["loop-models", /Pagination/]] as const) {
 		scenario = value;
 		await assert.rejects(api.listCodexModels(), message);
 		assert.ok(children.at(-1)!.closed);
@@ -121,6 +126,57 @@ export async function checkCodex(): Promise<void> {
 	assert.equal(selectedConnection.model, "codex-b");
 	await api.reviseChunkWithCodex("Une fote.", "Corrige.", selectedConnection);
 	assert.equal(requests.filter(request => request.method === "thread/start").at(-1)!.params.model, "codex-b", "Les corrections doivent transmettre le choix exact de modèle à Codex");
+	assert.equal(requests.filter(request => request.method === "turn/start").at(-1)!.params.effort, "low");
+	const highEffort = api.getAIConnection({ ...api.DEFAULT_SETTINGS, aiModel: api.CODEX_MODEL, codexEffort: " high " }, secretStorage);
+	await api.callCodex({ ...options, ...highEffort });
+	assert.equal(requests.filter(request => request.method === "turn/start").at(-1)!.params.effort, "high", "Le choix d’effort doit aussi être transmis aux appels simples utilisés par Synonymes IA");
+	assert.throws(() => api.getAIConnection({ ...api.DEFAULT_SETTINGS, aiModel: api.CODEX_MODEL, codexEffort: "effort invalide" }, secretStorage), /effort de raisonnement/);
+	scenario = "echo"; requests.length = 0;
+	const sessionLaunches = launches;
+	let sessionModels = 0;
+	await api.withCodexSession({ system: options.system, model: "codex-a", effort: "medium", onModel: () => { sessionModels++; } }, async revise => {
+		for (const text of ["Une fote.", "Deuxième fote.", "Troisième fote."]) {
+			assert.equal((await revise(text)).text, text.replace("fote", "faute"), "Les réponses des tronçons sont mélangées");
+			assert.equal(children.at(-1)!.closed, false, "Codex est arrêté entre les tronçons");
+		}
+	});
+	assert.equal(launches, sessionLaunches + 1, "Une correction doit démarrer un seul processus Codex");
+	assert.equal(sessionModels, 1);
+	for (const method of ["initialize", "account/read", "config/read", "thread/start"]) assert.equal(requests.filter(request => request.method === method).length, 1, method);
+	const turns = requests.filter(request => request.method === "turn/start");
+	assert.equal(turns.length, 3);
+	assert.ok(turns.every(turn => turn.params.threadId === "test-thread" && turn.params.effort === "medium"));
+	assert.equal((requests.find(request => request.method === "thread/start")!.params.config as Record<string, unknown>).model_reasoning_effort, "medium");
+	assert.equal(children.at(-1)!.closed, true, "Le processus doit être arrêté à la fin de la correction");
+	requests.length = 0;
+	await api.withCodexSession({ system: options.system }, async revise => {
+		await revise("Une fote.");
+		const firstTurn = `test-turn-${requests.filter(request => request.method === "turn/start").at(-1)!.id}`;
+		scenario = "wait";
+		const next = revise("Deuxième fote.");
+		for (let round = 0; round < 100 && requests.filter(request => request.method === "turn/start").length < 2; round++) await new Promise(resolve => setImmediate(resolve));
+		assert.equal(requests.filter(request => request.method === "turn/start").length, 2);
+		const nextTurn = `test-turn-${requests.filter(request => request.method === "turn/start").at(-1)!.id}`;
+		for (const [turnId, text] of [[firstTurn, "Ancienne réponse."], [nextTurn, "Deuxième faute."]]) {
+			children.at(-1)!.reply({ method: "item/completed", params: { threadId: "test-thread", turnId, item: { type: "agentMessage", phase: "final_answer", text } } });
+			children.at(-1)!.reply({ method: "turn/completed", params: { threadId: "test-thread", turn: { id: turnId, status: "completed" } } });
+		}
+		assert.equal((await next).text, "Deuxième faute.", "Une notification tardive du tronçon précédent remplace la réponse actuelle");
+	});
+	scenario = "echo";
+	await assert.rejects(api.withCodexSession({ system: options.system }, async revise => {
+		await revise("Une fote.");
+		api.cancelCodex();
+		assert.match((await revise("Deuxième fote.")).error!, /annulée/);
+	}), /annulée/);
+	assert.equal(children.at(-1)!.closed, true);
+	await assert.rejects(api.withCodexSession({ system: options.system }, async revise => {
+		await revise("Une fote.");
+		scenario = "empty";
+		assert.match((await revise("Deuxième fote.")).error!, /aucun texte/, "Une réponse vide réutilise la réponse du tronçon précédent");
+	}), /aucun texte/);
+	assert.equal(children.at(-1)!.closed, true);
+	scenario = "success";
 	let correctionModel = "";
 	assert.equal((await api.reviseChunkWithCodex("x".repeat(1000), "Corrige.", { onModel: model => { correctionModel = model; } })).text, "x".repeat(1000), "Une réponse tronquée ne doit pas remplacer le texte");
 	assert.equal(correctionModel, "codex-modele-test", "Le modèle Codex doit aussi être transmis à la progression des corrections");

@@ -159,6 +159,7 @@ export interface FinitionSettings {
 	anthropicSecretId: string;
 	aiModel: string;
 	codexModel: string;
+	codexEffort: string;
 	localAIServer: string;
 	localAIModel: string;
 	// Taille maximale d'un tronçon envoyé à l'IA, en caractères (le texte est
@@ -270,6 +271,7 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	anthropicSecretId: "",
 	aiModel: AI_MODEL_PRESETS[0].value,
 	codexModel: "",
+	codexEffort: "low",
 	localAIServer: "",
 	localAIModel: "",
 	aiChunkSize: 5000,

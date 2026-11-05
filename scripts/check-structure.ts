@@ -430,15 +430,18 @@ async function main() {
 	await plugin.loadSettings();
 	assert.equal(plugin.settings.apostrophesAutoApply, false, "Le choix de désactiver la validation des apostrophes est perdu au rechargement");
 	assert.equal(plugin.settings.codexModel, "", "Sans choix explicite, le modèle configuré dans Codex doit être conservé");
+	assert.equal(plugin.settings.codexEffort, "low", "Une nouvelle installation doit privilégier un effort faible pour la correction");
 	assert.equal(plugin.settings.singleNoteOpen, false, "Une seule note ouverte doit être désactivé par défaut");
 	assert.equal(plugin.settings.showLeftSidebarToggle, true, "Le bouton de barre latérale doit être proposé par défaut");
 	plugin.settings.showLeftSidebarToggle = false;
 	plugin.settings.singleNoteOpen = true;
 	plugin.settings.codexModel = " codex-choisi ";
+	plugin.settings.codexEffort = " medium ";
 	await plugin.saveData(plugin.settings);
 	await plugin.loadSettings();
 	assert.equal(plugin.settings.singleNoteOpen, true, "Une seule note ouverte doit être conservé au rechargement");
 	assert.equal(plugin.settings.codexModel, "codex-choisi", "Le modèle Codex choisi doit être conservé et normalisé au rechargement");
+	assert.equal(plugin.settings.codexEffort, "medium", "L’effort Codex doit être conservé et normalisé au rechargement");
 	assert.equal(plugin.settings.showLeftSidebarToggle, false, "Le choix de masquer le bouton doit être conservé");
 	assert.equal(plugin.settings.copuleColorIndex, 14, "Une nouvelle installation n’attribue pas la couleur 14 aux copules");
 	const colorPlugin = new api.FinitionPlugin();

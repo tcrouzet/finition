@@ -17,8 +17,12 @@ export function detectProvider(model: string): AIProvider {
 	return "anthropic";
 }
 
-export function getAIConnection(settings: FinitionSettings, secrets: Pick<SecretStorage, "getSecret">): { provider: AIProvider; apiKey: string; model: string; baseUrl?: string } {
-	if (settings.aiModel === CODEX_MODEL) return { provider: "codex", apiKey: "", model: settings.codexModel.trim() };
+export function getAIConnection(settings: FinitionSettings, secrets: Pick<SecretStorage, "getSecret">): { provider: AIProvider; apiKey: string; model: string; baseUrl?: string; effort?: string } {
+	if (settings.aiModel === CODEX_MODEL) {
+		const effort = settings.codexEffort.trim();
+		if (!/^[a-z][a-z0-9_-]{0,31}$/u.test(effort)) throw new Error("Choisis un effort de raisonnement Codex dans les réglages de Finition.");
+		return { provider: "codex", apiKey: "", model: settings.codexModel.trim(), effort };
+	}
 	if (settings.localAIServer.trim()) {
 		let url: URL;
 		try { url = new URL(settings.localAIServer.trim()); }

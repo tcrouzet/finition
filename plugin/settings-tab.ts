@@ -544,10 +544,29 @@ export class FinitionSettingTab extends PluginSettingTab {
 					}
 					dropdown.setValue(selected).setDisabled(this.loadingCodexModels).onChange(async value => {
 						this.plugin.settings.codexModel = value;
+						const efforts = this.codexModels?.find(model => model.value === value)?.efforts;
+						if (efforts?.length && !efforts.includes(this.plugin.settings.codexEffort)) this.plugin.settings.codexEffort = efforts.includes("low") ? "low" : efforts[0];
 						await this.plugin.saveSettings();
+						this.update();
 					});
 				})
 				.addButton(button => button.setButtonText("Recharger").setDisabled(this.loadingCodexModels).onClick(() => this.loadCodexModels()));
+			new Setting(containerEl).setName("Codex : effort de raisonnement")
+				.setDesc("Faible pour une correction rapide ; moyen pour une révision plus approfondie. S’applique aux corrections et synonymes IA. La configuration de la machine reste inchangée.")
+				.addDropdown(dropdown => {
+					const labels: Record<string, string> = { none: "Aucun", minimal: "Minimal", low: "Faible", medium: "Moyen", high: "Élevé", xhigh: "Très élevé", max: "Maximum", ultra: "Ultra" };
+					const efforts = this.codexModels?.find(model => model.value === this.plugin.settings.codexModel)?.efforts ?? ["low", "medium", "high", "xhigh", "max"];
+					for (const effort of efforts) dropdown.addOption(effort, labels[effort] ?? effort);
+					const selected = this.plugin.settings.codexEffort;
+					if (!efforts.includes(selected)) {
+						dropdown.addOption(selected, `${labels[selected] ?? selected} (indisponible)`);
+						dropdown.selectEl.lastElementChild?.setAttribute("disabled", "");
+					}
+					dropdown.setValue(selected).setDisabled(this.loadingCodexModels).onChange(async value => {
+						this.plugin.settings.codexEffort = value;
+						await this.plugin.saveSettings();
+					});
+				});
 		}
 
 		const modelDesc = createFragment();

@@ -41,7 +41,7 @@ import { hasResponseText } from "./ai/clean";
 import { markdownLinks } from "./markdown-links";
 import { reviseChunkWithRetryAnthropic } from "./ai/anthropic";
 import { reviseChunkWithRetryOpenAI } from "./ai/openai";
-import { cancelCodex, reviseChunkWithCodex } from "./ai/codex";
+import { cancelCodex, withCodexSession, type CodexRevision } from "./ai/codex";
 import { aiModelName, getAIConnection } from "./ai/provider";
 import { cancelSynonyms, runSynonyms } from "./ai/synonyms";
 import { fixPunctuationSpacing, fixBlankLinesProtected, fixApostrophesProtected } from "./modes/punctuation";
@@ -276,6 +276,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.settings.anthropicSecretId = typeof this.settings.anthropicSecretId === "string" ? this.settings.anthropicSecretId.trim() : "";
 		this.settings.openaiSecretId = typeof this.settings.openaiSecretId === "string" ? this.settings.openaiSecretId.trim() : "";
 		this.settings.codexModel = typeof this.settings.codexModel === "string" ? this.settings.codexModel.trim() : "";
+		this.settings.codexEffort = typeof this.settings.codexEffort === "string" && /^[a-z][a-z0-9_-]{0,31}$/u.test(this.settings.codexEffort.trim()) ? this.settings.codexEffort.trim() : DEFAULT_SETTINGS.codexEffort;
 		this.settings.localAIServer = typeof this.settings.localAIServer === "string" ? this.settings.localAIServer.trim() : "";
 		this.settings.localAIModel = typeof this.settings.localAIModel === "string" ? this.settings.localAIModel.trim() : "";
 		if (!["none", "words", "characters", "both"].includes(this.settings.documentCountDisplay)) this.settings.documentCountDisplay = "none";
@@ -838,49 +839,50 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			const cm = (editor as { cm?: EditorView }).cm;
 			unlock = cm && target.findView() === view ? lockAINote(cm) : undefined;
 			this.unlockAINote = unlock ?? null;
-			for (let i = 0; i < chunks.length; i++) {
-				if (!await isCurrent()) return;
-				const chunk = chunks[i];
-				const reportProgress = () => progress.setMessage(`Corrections IA · ${modelName} : tronçon ${i + 1}/${chunks.length}…`);
-				reportProgress();
-				if (chunk.text.trim().length === 0) continue;
-				const reviseChunk = connection.provider === "codex" ? reviseChunkWithCodex : connection.provider === "openai" ? reviseChunkWithRetryOpenAI : reviseChunkWithRetryAnthropic;
-				const start = selectionFrom + chunk.start;
-				const protectedText = protectLinks(document, start, start + chunk.text.length, links);
-				if (!protectedText.text.trim()) continue;
-				const { text: revisedRaw, error } = await reviseChunk(protectedText.text, this.settings.aiPrompt, {
-					...connection,
-					maxTokens: this.settings.aiMaxTokens,
-					isCancelled: () => request !== this.spellingRequest,
-					onModel: model => { modelName = `Codex · ${model}`; if (request === this.spellingRequest) reportProgress(); },
-				});
-				if (!await isCurrent()) return;
-				if (error) {
-					// Échec sur ce tronçon : on garde le texte d'origine (pas de
-					// fausse correction), mais on prévient — plutôt que de laisser
-					// croire silencieusement qu'"aucune correction" n'était nécessaire.
-					errors.push(`Tronçon ${i + 1}/${chunks.length} : ${error}`);
-					continue;
+			let processed = false;
+			const processChunks = async (reviseChunk: CodexRevision) => {
+				for (let i = 0; i < chunks.length; i++) {
+					if (!await isCurrent()) return;
+					const chunk = chunks[i];
+					progress.setMessage(`Corrections IA · ${modelName} : tronçon ${i + 1}/${chunks.length}…`);
+					if (chunk.text.trim().length === 0) continue;
+					const start = selectionFrom + chunk.start;
+					const protectedText = protectLinks(document, start, start + chunk.text.length, links);
+					if (!protectedText.text.trim()) continue;
+					const { text: revisedRaw, error } = await reviseChunk(protectedText.text);
+					if (!await isCurrent()) return;
+					if (error) {
+						errors.push(`Tronçon ${i + 1}/${chunks.length} : ${error}`);
+						continue;
+					}
+					if (debugMode) debugChunks.push(revisedRaw);
+					const groups = protectedText.diff(revisedRaw);
+					analysis.document = target.document;
+					for (const g of groups) {
+						analysis.aiGroups.push({
+							id: this.nextAiGroupId++,
+							delFrom: selectionFrom + chunk.start + g.delFrom,
+							delTo: selectionFrom + chunk.start + g.delTo,
+							delText: g.delText,
+							insText: g.insText,
+						});
+					}
+					analysis.aiGroupsVersion++;
+					this.refreshAllEditors(false);
+					if (!cm?.dom?.isConnected && !revealed && analysis.aiGroups.length && view.file === target.file && getCurrentNote(this.app) === view) {
+						this.revealCorrection(view, analysis.aiGroups[0].delFrom);
+						revealed = true;
+					}
 				}
-				if (debugMode) debugChunks.push(revisedRaw);
-				const groups = protectedText.diff(revisedRaw);
-				analysis.document = target.document;
-				for (const g of groups) {
-					analysis.aiGroups.push({
-						id: this.nextAiGroupId++,
-						delFrom: selectionFrom + chunk.start + g.delFrom,
-						delTo: selectionFrom + chunk.start + g.delTo,
-						delText: g.delText,
-						insText: g.insText,
-					});
-				}
-				analysis.aiGroupsVersion++;
-				this.refreshAllEditors(false); // les suggestions déjà calculées s'affichent au fil de l'eau, pas seulement à la toute fin
-				if (!cm?.dom?.isConnected && !revealed && analysis.aiGroups.length && view.file === target.file && getCurrentNote(this.app) === view) {
-					this.revealCorrection(view, analysis.aiGroups[0].delFrom);
-					revealed = true;
-				}
+				processed = true;
+			};
+			if (connection.provider === "codex") {
+				await withCodexSession({ ...connection, system: this.settings.aiPrompt, onModel: model => { modelName = `Codex · ${model}`; } }, processChunks);
+			} else {
+				const reviseChunk = connection.provider === "openai" ? reviseChunkWithRetryOpenAI : reviseChunkWithRetryAnthropic;
+				await processChunks(text => reviseChunk(text, this.settings.aiPrompt, { ...connection, maxTokens: this.settings.aiMaxTokens, isCancelled: () => request !== this.spellingRequest }));
 			}
+			if (!processed) return;
 			if (debugMode && errors.length === 0 && debugChunks.length) await this.createDebugNote({ file: target.file }, debugChunks.join("\n\n"), "");
 			if (!await isCurrent()) return;
 		} catch (e) {
