@@ -22,7 +22,7 @@ import { migrateAISecrets } from "../plugin/ai/secrets";
 import { checkForms } from "./check-formes";
 import modelPresets from "../plugin/ai/models.json";
 import { checkSingleNote } from "./check-single-note";
-import { formatDocumentCount } from "../plugin/ui/document-count";
+import { countDocument, formatDocumentCount } from "../plugin/ui/document-count";
 import { checkDocumentNavigation } from "./check-document-navigation";
 import { computeHingeHighlights } from "../plugin/modes/hinges";
 import { computeHedgingHighlights } from "../plugin/modes/hedging";
@@ -55,6 +55,26 @@ async function main() {
 		assert.equal(formatDocumentCount(value, "mot"), words, `Compteur de mots : ${value}`);
 		assert.equal(formatDocumentCount(value, "signe"), characters, `Compteur de signes : ${value}`);
 	}
+	for (const [markdown, visible] of [
+		['Un [lien](https://example.org/un-chemin "Titre caché").', "Un lien."],
+		["Un [[Une autre note|lien]].", "Un lien."],
+		["Un [lien][ref].\n\n[ref]: https://example.org/adresse\n", "Un lien.\n\n"],
+		['Un <a href="https://example.org/adresse">lien</a>.', "Un lien."],
+		["Un%% commentaire\nsur deux lignes %% lien.", "Un lien."],
+		["Un<!-- commentaire caché --> lien.", "Un lien."],
+		["Un<!-- %% ignoré --> lien.", "Un lien."],
+		["Un%% [crochet ignoré %% lien.", "Un lien."],
+		["Un lien.%% commentaire non refermé", "Un lien."],
+		["---\ntitre: Caché\n---\nUn lien.", "Un lien."],
+		["Un lien 😀\u00a0!", "Un lien 😀\u00a0!"],
+	]) assert.deepEqual(countDocument(markdown), countDocument(visible), `Compteur de prose : ${markdown}`);
+	const countedMarkdown = "Un [lien](https://example.org/adresse) et %%commentaire%% du texte.";
+	for (const selected of ["https://example.org/adresse", "commentaire"]) {
+		const from = countedMarkdown.indexOf(selected);
+		assert.deepEqual(countDocument(countedMarkdown, from, from + selected.length), { words: 0, characters: 0 }, "Une sélection dans une adresse ou un commentaire est comptée");
+	}
+	const selectedLink = countedMarkdown.indexOf("[lien]");
+	assert.deepEqual(countDocument(countedMarkdown, selectedLink, selectedLink + "[lien](https://example.org/adresse)".length), countDocument("lien"), "Le compteur d’une sélection perd le libellé visible du lien");
 	await checkSharedLexicon();
 	await checkFamily();
 	await checkExtraDictionaryFormat();

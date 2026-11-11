@@ -110,7 +110,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 	settingsVersion = 0;
 	private statusBarItem: HTMLElement | null = null;
 	private documentCountEl: HTMLElement | null = null;
-	private documentCountCache: { text: string; words: number; characters: number } | null = null;
+	private documentCountCache: { text: string; from: number; to: number; words: number; characters: number } | null = null;
 	updateSingleNote: () => void = () => {};
 	private analysisNavigation: AnalysisNavigation | null = null;
 	private settingsTab: FinitionSettingTab | null = null;
@@ -526,8 +526,11 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.documentCountEl.hidden = !markdown;
 		if (!markdown) { this.documentCountCache = null; return; }
 		const selection = markdown.editor.getSelection();
-		const text = selection || markdown.editor.getValue();
-		const counts = this.documentCountCache?.text === text ? this.documentCountCache : this.documentCountCache = { text, ...countDocument(text) };
+		const text = markdown.editor.getValue();
+		const from = selection ? markdown.editor.posToOffset(markdown.editor.getCursor("from")) : 0;
+		const to = selection ? markdown.editor.posToOffset(markdown.editor.getCursor("to")) : text.length;
+		const counts = this.documentCountCache?.text === text && this.documentCountCache.from === from && this.documentCountCache.to === to
+			? this.documentCountCache : this.documentCountCache = { text, from, to, ...countDocument(text, from, to) };
 		this.documentCountEl.title = `${selection ? "Sélection : " : ""}${counts.words.toLocaleString("fr-FR")} mot${counts.words === 1 ? "" : "s"} · ${counts.characters.toLocaleString("fr-FR")} signe${counts.characters === 1 ? "" : "s"} (espaces compris)`;
 		const values: string[] = [];
 		if (display === "words" || display === "both") values.push(formatDocumentCount(counts.words, "mot"));
