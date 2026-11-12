@@ -10,7 +10,7 @@ import { DEFAULT_PALETTE, DEFAULT_SETTINGS, FORM_TYPES, parseGrammalecteDictiona
 import { dictionaryDocumentation, dictionaryCommands, dictionaryLabels, isPublicDictionaryKind, publicDictionaryMetadata, type DictionaryKind } from "./dictionaries";
 import { lexiconDocumentation, publicLexiconMetadata } from "./lexicon/dictionaries";
 import AI_MODEL_PRESETS from "./ai/models.json";
-import { CODEX_MODEL, findCodex, listCodexModels, type CodexModel } from "./ai/codex";
+import { CODEX_MODEL, findCodex, listCodexModels, testCodex, type CodexModel } from "./ai/codex";
 
 type ColorFunctionKey = "hedgingColorIndex" | "stereotypeColorIndex" | "hingeColorIndex" | "copuleColorIndex" | "grammalecteColorIndex" | typeof FORM_TYPES[number]["key"];
 
@@ -36,8 +36,12 @@ export class FinitionSettingTab extends PluginSettingTab {
 	private pendingPromptName: string | null = null;
 	private pendingPromptModel: string | null = null;
 	private promptModelCustom = false;
-	private codexAvailable = false;
+	private detectedCodexPath: string | null | undefined;
+	private get codexAvailable(): boolean { return Boolean(this.detectedCodexPath); }
 	private checkingCodex = false;
+	private testingCodex = false;
+	private codexStatus = "";
+	private disposed = false;
 	private codexModels: CodexModel[] | null = null;
 	private loadingCodexModels = false;
 	private codexModelError = "";
@@ -58,6 +62,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 	constructor(app: App, plugin: FinitionPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
+		plugin.register(() => { this.disposed = true; });
 	}
 
 	private describeResource(setting: Setting, metadata: SynonymMetadata): void {
@@ -449,26 +454,71 @@ export class FinitionSettingTab extends PluginSettingTab {
 	}
 
 	private async loadCodexModels(): Promise<void> {
-		if (this.loadingCodexModels) return;
+		if (this.disposed || this.loadingCodexModels) return;
 		this.loadingCodexModels = true;
 		this.codexModelError = "";
 		this.update();
-		try { this.codexModels = await listCodexModels(); }
-		catch (error) { this.codexModels = []; this.codexModelError = error instanceof Error ? error.message : String(error); }
-		finally { this.loadingCodexModels = false; this.update(); }
+		const configured = this.plugin.settings.codexPath;
+		try {
+			const models = await listCodexModels(configured);
+			if (configured === this.plugin.settings.codexPath) this.codexModels = models;
+		} catch (error) {
+			if (configured === this.plugin.settings.codexPath) {
+				this.codexModels = [];
+				this.codexModelError = error instanceof Error ? error.message : String(error);
+			}
+		}
+		finally { this.loadingCodexModels = false; if (!this.disposed) this.update(); }
+		if (this.codexAvailable && this.codexModels === null && configured !== this.plugin.settings.codexPath) await this.loadCodexModels();
+	}
+
+	private async detectCodex(): Promise<void> {
+		if (this.disposed || this.checkingCodex || this.testingCodex) return;
+		const configured = this.plugin.settings.codexPath;
+		this.checkingCodex = true;
+		this.detectedCodexPath = null;
+		this.codexStatus = "Recherche de Codex…";
+		this.update();
+		try {
+			const path = await findCodex(configured);
+			if (this.disposed || configured !== this.plugin.settings.codexPath) return;
+			this.detectedCodexPath = path;
+			this.codexModels = null;
+			this.codexModelError = "";
+			this.codexStatus = path ? `Détecté : ${path}` : "Codex introuvable. Renseigne son chemin ou installe Codex CLI.";
+		} catch (error) {
+			this.codexStatus = error instanceof Error ? error.message : String(error);
+		} finally {
+			this.checkingCodex = false;
+			if (!this.disposed) this.update();
+		}
+		if (this.codexAvailable) await this.loadCodexModels();
+	}
+
+	private async testCodexConnection(): Promise<void> {
+		if (this.disposed || this.testingCodex || this.checkingCodex) return;
+		const controller = new AbortController();
+		const progress = new LoadingNotice("Codex : vérification de la connexion…", () => controller.abort());
+		this.testingCodex = true;
+		this.codexStatus = "Vérification de la connexion…";
+		this.update();
+		try {
+			const version = await testCodex(this.plugin.settings.codexPath, controller.signal);
+			this.codexStatus = `Connexion disponible · Codex ${version}`;
+		} catch (error) {
+			this.codexStatus = error instanceof Error ? error.message : String(error);
+		} finally {
+			progress.hide();
+			this.testingCodex = false;
+			if (!this.disposed) this.update();
+		}
 	}
 
 	private displayAICorrections(containerEl: HTMLElement): void {
 		containerEl = this.section(containerEl, "Corrections IA");
-		if (!this.checkingCodex) {
-			this.checkingCodex = true;
-			void findCodex().then(path => {
-				const changed = Boolean(path) !== this.codexAvailable;
-				this.codexAvailable = Boolean(path);
-				if (!path) this.codexModels = null;
-				if (path && this.codexModels === null) void this.loadCodexModels();
-				else if (changed && containerEl.isConnected) this.update();
-			}).catch(() => { this.codexAvailable = false; }).finally(() => { this.checkingCodex = false; });
+		if (this.detectedCodexPath === undefined) {
+			this.detectedCodexPath = null;
+			queueMicrotask(() => { void this.detectCodex(); });
 		}
 		const models = [...AI_MODEL_PRESETS];
 		if (this.codexAvailable || this.plugin.settings.aiModel === CODEX_MODEL || this.pendingPromptModel === CODEX_MODEL || this.plugin.settings.savedPrompts.some(prompt => prompt.model === CODEX_MODEL)) models.push({ value: CODEX_MODEL, label: this.codexAvailable ? "Codex" : "Codex (indisponible)" });
@@ -537,6 +587,20 @@ export class FinitionSettingTab extends PluginSettingTab {
 				this.plugin.settings.localAIModel = value.trim();
 				await this.plugin.saveSettings();
 			}));
+		const codexConnection = new Setting(containerEl).setName("Codex : connexion")
+			.setDesc(`${this.codexStatus} Le test vérifie la connexion sans envoyer de texte ni lancer de génération.`)
+			.addButton(button => button.setButtonText("Détecter").setDisabled(this.checkingCodex || this.testingCodex).onClick(() => this.detectCodex()))
+			.addButton(button => button.setButtonText("Tester").setDisabled(!this.codexAvailable || this.checkingCodex || this.testingCodex).onClick(() => this.testCodexConnection()));
+		codexConnection.descEl.setAttribute("role", "status");
+		new Setting(containerEl).setName("Codex : chemin")
+			.setDesc("Chemin absolu de l’exécutable. Laisser vide pour la détection automatique.")
+			.addText(text => {
+				text.setValue(this.plugin.settings.codexPath).setPlaceholder("Chemin de l’exécutable").onChange(async value => {
+					this.plugin.settings.codexPath = value.trim();
+					await this.plugin.saveSettings();
+				});
+				text.inputEl.onblur = () => { void this.detectCodex(); };
+			});
 		if (this.codexAvailable) {
 			new Setting(containerEl).setName("Codex : modèle")
 				.setDesc(this.codexModelError || (this.loadingCodexModels ? "Chargement des modèles Codex…" : "Pour corrections et synonymes quand Codex est choisi. Le réglage de Codex sur la machine reste inchangé."))

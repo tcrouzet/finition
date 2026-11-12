@@ -282,6 +282,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.settings.anthropicSecretId = typeof this.settings.anthropicSecretId === "string" ? this.settings.anthropicSecretId.trim() : "";
 		this.settings.openaiSecretId = typeof this.settings.openaiSecretId === "string" ? this.settings.openaiSecretId.trim() : "";
 		this.settings.codexModel = typeof this.settings.codexModel === "string" ? this.settings.codexModel.trim() : "";
+		this.settings.codexPath = typeof this.settings.codexPath === "string" ? this.settings.codexPath.trim() : "";
 		this.settings.codexEffort = typeof this.settings.codexEffort === "string" && /^[a-z][a-z0-9_-]{0,31}$/u.test(this.settings.codexEffort.trim()) ? this.settings.codexEffort.trim() : DEFAULT_SETTINGS.codexEffort;
 		this.settings.localAIServer = typeof this.settings.localAIServer === "string" ? this.settings.localAIServer.trim() : "";
 		this.settings.localAIModel = typeof this.settings.localAIModel === "string" ? this.settings.localAIModel.trim() : "";

@@ -159,6 +159,7 @@ export interface FinitionSettings {
 	anthropicSecretId: string;
 	aiModel: string;
 	codexModel: string;
+	codexPath: string;
 	codexEffort: string;
 	localAIServer: string;
 	localAIModel: string;
@@ -271,6 +272,7 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	anthropicSecretId: "",
 	aiModel: AI_MODEL_PRESETS[0].value,
 	codexModel: "",
+	codexPath: "",
 	codexEffort: "low",
 	localAIServer: "",
 	localAIModel: "",

@@ -4,11 +4,13 @@ import { PassThrough, Writable } from "node:stream";
 import { runInNewContext } from "node:vm";
 import { build } from "esbuild";
 import modelPresets from "../plugin/ai/models.json";
+import { posix as path } from "node:path";
 
 export async function checkCodex(): Promise<void> {
 	const compiled = await build({ stdin: { contents: 'export * from "./plugin/ai/codex"; export * from "./plugin/ai/provider"; export { cancelSynonyms, runSynonyms } from "./plugin/ai/synonyms"; export { DEFAULT_SETTINGS } from "./plugin/types";', resolveDir: process.cwd() }, bundle: true, platform: "node", format: "cjs", supported: { "dynamic-import": false }, loader: { ".md": "text" }, write: false, external: ["obsidian"] });
 	const platform = { isDesktop: true };
 	let available = true, scenario = "success", launches = 0;
+	let npmLauncher = false, nativeAvailable = true;
 	const requests: Array<{ id?: number; method: string; params: Record<string, unknown> }> = [];
 	const timers = new Map<number, { callback: () => void; delay: number }>();
 	let timerId = 0;
@@ -26,12 +28,13 @@ export async function checkCodex(): Promise<void> {
 			requests.push(message);
 			queueMicrotask(() => {
 				if (this.closed || message.id === undefined) return;
+				if (scenario === "wait-account" && message.method === "account/read") return;
 				const turnId = `test-turn-${message.id}`;
 				const result: Record<string, unknown> = message.method === "account/read" ? { requiresOpenaiAuth: true, account: scenario === "login" ? null : { type: "chatgpt" } }
 					: message.method === "model/list" ? { data: scenario === "invalid-models" ? [{ model: 42, displayName: "Invalide" }] : message.params.cursor ? [{ model: "codex-b", displayName: "Modèle B" }] : [{ model: "codex-a", displayName: "Modèle A", supportedReasoningEfforts: [{ reasoningEffort: scenario === "invalid-efforts" ? 42 : "low" }, { reasoningEffort: "medium" }] }, { model: "cache", displayName: "Masqué", hidden: true }], nextCursor: scenario === "loop-models" || !message.params.cursor ? "page-2" : null }
 					: message.method === "config/read" ? { config: { mcp_servers: { unsafe: { enabled: true } } } }
 					: message.method === "thread/start" ? { model: message.params.model ?? "codex-modele-test", thread: { id: "test-thread", ephemeral: true }, sandbox: { type: scenario === "permissions" ? "workspaceWrite" : "readOnly" }, approvalPolicy: "never" }
-					: message.method === "turn/start" ? { turn: { id: turnId } } : {};
+					: message.method === "turn/start" ? { turn: { id: turnId } } : message.method === "initialize" ? { userAgent: "codex_cli_rs/0.166.0" } : {};
 				if (scenario === "rpc-error" && message.method === "account/read") { this.reply({ id: message.id, error: { message: "Version incompatible" } }); return; }
 				this.reply({ id: message.id, result });
 				if (message.method !== "turn/start") return;
@@ -65,14 +68,21 @@ export async function checkCodex(): Promise<void> {
 	}
 	const modules: Record<string, unknown> = {
 		obsidian: { Platform: platform, Modal: class { constructor() { modalAttempts++; } }, MarkdownView: class {}, Notice, setIcon() {}, requestUrl: () => replyHttp() },
-		"fs/promises": { readdir: async () => [], access: async () => { if (!available) throw new Error("Absent"); }, stat: async () => ({ isFile: () => true }) },
+		"fs/promises": {
+			readdir: async () => [],
+			access: async (file: string) => { if (!available || !nativeAvailable && file.includes("/vendor/")) throw new Error("Absent"); },
+			stat: async () => ({ isFile: () => true }),
+			realpath: async (file: string) => npmLauncher ? "/npm/@openai/codex/bin/codex.js" : file,
+			readFile: async () => JSON.stringify({ name: "@openai/codex" }),
+		},
 		fs: { constants: { X_OK: 1 } },
 		os: { homedir: () => "/home/test", tmpdir: () => "/tmp" },
-		path: { delimiter: ":", join: (...parts: string[]) => parts.join("/") },
-		process: { env: { PATH: "/usr/bin" }, platform: "darwin", kill: (pid: number, signal: string) => { assert.equal(pid, -12345); (children.at(-1) as Child).kill(signal); } },
+		path,
+		module: { createRequire: () => ({ resolve: () => "/npm/@openai/codex-darwin-arm64/package.json" }) },
+		process: { env: { PATH: "/usr/bin" }, platform: "darwin", arch: "arm64", kill: (pid: number, signal: string) => { assert.equal(pid, -12345); (children.at(-1) as Child).kill(signal); } },
 		child_process: { spawn: (executable: string, args: string[], options: Record<string, unknown>) => {
 			launches++;
-			assert.equal(executable, "/usr/bin/codex");
+			assert.equal(executable, npmLauncher ? "/npm/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex" : "/usr/bin/codex");
 			assert.equal(options.cwd, "/tmp", "Le modèle ne doit pas travailler dans le coffre");
 			assert.equal(options.windowsHide, true);
 			assert.equal(options.shell, undefined, "Aucune commande ne doit passer par un shell");
@@ -98,6 +108,28 @@ export async function checkCodex(): Promise<void> {
 	assert.equal(api.detectProvider("claude-test"), "anthropic");
 	for (const preset of modelPresets) assert.equal(api.aiModelName({ provider: api.detectProvider(preset.value), model: preset.value }), preset.label);
 	assert.equal(await api.findCodex(), "/usr/bin/codex");
+	assert.equal(await api.findCodex("~/bin/codex"), "/home/test/bin/codex");
+	await assert.rejects(api.findCodex("codex"), /absolu/);
+	requests.length = 0;
+	assert.equal(await api.testCodex(), "0.166.0");
+	assert.ok(!requests.some(request => request.method === "thread/start" || request.method === "turn/start"), "Le test de connexion ne doit envoyer aucun prompt");
+	assert.ok(children.at(-1)!.closed, "Le test de connexion laisse son processus ouvert");
+	npmLauncher = true;
+	assert.equal(await api.testCodex("/usr/bin/codex"), "0.166.0", "Une installation npm doit lancer son binaire natif sans dépendre de Node dans le PATH d’Obsidian");
+	nativeAvailable = false;
+	await assert.rejects(api.testCodex(), /binaire natif introuvable/);
+	nativeAvailable = true; npmLauncher = false;
+	scenario = "login";
+	await assert.rejects(api.testCodex(), /codex login/);
+	scenario = "wait-account"; requests.length = 0;
+	const diagnosticAbort = new AbortController();
+	const diagnostic = api.testCodex("", diagnosticAbort.signal);
+	for (let round = 0; round < 100 && !requests.some(request => request.method === "account/read"); round++) await new Promise(resolve => setImmediate(resolve));
+	assert.ok(requests.some(request => request.method === "account/read"));
+	diagnosticAbort.abort();
+	await assert.rejects(diagnostic, /annulée/);
+	assert.ok(children.at(-1)!.closed, "Un diagnostic arrêté doit fermer son processus");
+	scenario = "success"; requests.length = 0;
 	const result = await api.callCodex(options);
 	assert.equal(result.error, null);
 	assert.equal(result.text, "Une faute, un œil.\n- vif\n- véloce", "Seule la réponse finale doit être conservée, avec Unicode et retours à la ligne");
@@ -122,8 +154,9 @@ export async function checkCodex(): Promise<void> {
 		assert.ok(children.at(-1)!.closed);
 	}
 	scenario = "success";
-	const selectedConnection = api.getAIConnection({ ...api.DEFAULT_SETTINGS, aiModel: api.CODEX_MODEL, codexModel: " codex-b " }, secretStorage);
+	const selectedConnection = api.getAIConnection({ ...api.DEFAULT_SETTINGS, aiModel: api.CODEX_MODEL, codexModel: " codex-b ", codexPath: " /usr/bin/codex " }, secretStorage);
 	assert.equal(selectedConnection.model, "codex-b");
+	assert.equal(selectedConnection.executable, "/usr/bin/codex", "Le chemin manuel doit être utilisé par les corrections et synonymes IA");
 	await api.reviseChunkWithCodex("Une fote.", "Corrige.", selectedConnection);
 	assert.equal(requests.filter(request => request.method === "thread/start").at(-1)!.params.model, "codex-b", "Les corrections doivent transmettre le choix exact de modèle à Codex");
 	assert.equal(requests.filter(request => request.method === "turn/start").at(-1)!.params.effort, "low");

@@ -2,50 +2,35 @@
 
 import { Platform } from "obsidian";
 import { hasResponseText } from "./clean";
+import { codexExecutable, findCodex } from "./codex-executable";
+export { findCodex } from "./codex-executable";
 
 export const CODEX_MODEL = "__codex__";
 export interface CodexModel { value: string; label: string; efforts?: string[] }
-interface CodexSessionOptions { system: string; model?: string; effort?: string; onModel?: (model: string) => void }
+interface CodexLaunchOptions { executable?: string; signal?: AbortSignal }
+interface CodexSessionOptions extends CodexLaunchOptions { system: string; model?: string; effort?: string; onModel?: (model: string) => void }
 interface CodexCallOptions extends CodexSessionOptions { userText: string }
 type CodexReply = { text: string | null; error: string | null };
 export type CodexRevision = (chunk: string) => Promise<{ text: string; error: string | null }>;
-type CodexTask = { kind: "models" } | ({ kind: "text" } & CodexCallOptions) | ({ kind: "session"; work: (revise: CodexRevision) => Promise<void> } & CodexSessionOptions);
-interface CodexResult { text: string | null; error: string | null; models?: CodexModel[] }
+type CodexTask = ({ kind: "models" } & CodexLaunchOptions) | ({ kind: "text" } & CodexCallOptions) | ({ kind: "session"; work: (revise: CodexRevision) => Promise<void> } & CodexSessionOptions);
+interface CodexResult { text: string | null; error: string | null; models?: CodexModel[]; version?: string }
 type ObjectValue = Record<string, unknown>;
 const object = (value: unknown): ObjectValue => value !== null && typeof value === "object" && !Array.isArray(value) ? value as ObjectValue : {};
 const cancellations = new Set<() => void>();
 
-export async function findCodex(): Promise<string | null> {
-	if (!Platform.isDesktop) return null;
-	const fs = await import("fs/promises");
-	const { constants } = await import("fs");
-	const { homedir } = await import("os");
-	const path = await import("path");
-	const { env, platform } = await import("process");
-	const home = homedir(), name = platform === "win32" ? "codex.exe" : "codex";
-	const candidates = [
-		...(env.PATH ?? "").split(path.delimiter).filter(Boolean).map(directory => path.join(directory, name)),
-		...[[".local", "bin"], [".volta", "bin"], [".npm-global", "bin"]].map(parts => path.join(home, ...parts, name)),
-		"/opt/homebrew/bin/codex", "/usr/local/bin/codex", "/Applications/Codex.app/Contents/Resources/codex",
-	];
-	for (const directory of [[".codex", "packages", "standalone", "releases"], [".nvm", "versions", "node"]]) {
-		const root = path.join(home, ...directory);
-		const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
-		for (const entry of entries.filter(entry => entry.isDirectory()).sort((left, right) => right.name.localeCompare(left.name, undefined, { numeric: true }))) candidates.push(path.join(root, entry.name, "bin", name));
-	}
-	for (const candidate of new Set(candidates)) {
-		try { await fs.access(candidate, constants.X_OK); if ((await fs.stat(candidate)).isFile()) return candidate; }
-		catch { /* Essayer le prochain emplacement standard. */ }
-	}
-	return null;
-}
-
 export function cancelCodex(): void { for (const cancel of cancellations) cancel(); }
 
-export async function listCodexModels(): Promise<CodexModel[]> {
-	const result = await runCodex({ kind: "models" });
+export async function listCodexModels(executable = ""): Promise<CodexModel[]> {
+	const result = await runCodex({ kind: "models", executable });
 	if (result.error || !result.models) throw new Error(result.error ?? "Liste des modèles Codex absente.");
 	return result.models;
+}
+
+export async function testCodex(executable = "", signal?: AbortSignal): Promise<string> {
+	const result = await runCodex({ kind: "models", executable, signal });
+	if (result.error) throw new Error(result.error);
+	if (!result.version) throw new Error("Codex : le serveur n’a pas fourni son identification. Mets Codex à jour.");
+	return result.version;
 }
 
 export function callCodex(opts: CodexCallOptions): Promise<CodexResult> { return runCodex({ ...opts, kind: "text" }); }
@@ -75,6 +60,8 @@ async function runCodex(opts: CodexTask): Promise<CodexResult> {
 	};
 	const cancel = () => fail("Requête Codex annulée.");
 	cancellations.add(cancel);
+	opts.signal?.addEventListener("abort", cancel, { once: true });
+	if (opts.signal?.aborted) cancel();
 	const write = (value: ObjectValue) => {
 		if (stopped || !child || child.stdin.destroyed) throw new Error("Connexion Codex fermée.");
 		child.stdin.write(`${JSON.stringify(value)}\n`);
@@ -90,12 +77,14 @@ async function runCodex(opts: CodexTask): Promise<CodexResult> {
 		const { tmpdir } = await import("os");
 		const process = hostProcess = await import("process");
 		if (stopped) return { text: null, error: failure };
-		const executable = await findCodex();
+		const executable = await findCodex(opts.executable);
 		if (stopped) return { text: null, error: failure };
 		if (!executable) throw new Error("Codex introuvable. Installe Codex CLI et connecte-le avant de réessayer.");
 		// Les outils et intégrations ne sont pas nécessaires à une réponse éditoriale.
 		const disabled = ["apps", "plugins", "hooks", "multi_agent", "multi_agent_v2", "shell_tool", "unified_exec", "code_mode", "code_mode_host", "computer_use", "browser_use", "image_generation", "view_image"];
-		child = spawn(executable, ["app-server", "--listen", "stdio://", "-c", "notify=[]", "-c", "project_doc_max_bytes=0", ...disabled.flatMap(feature => ["--disable", feature])], {
+		const binary = await codexExecutable(executable);
+		if (stopped) return { text: null, error: failure };
+		child = spawn(binary, ["app-server", "--listen", "stdio://", "-c", "notify=[]", "-c", "project_doc_max_bytes=0", ...disabled.flatMap(feature => ["--disable", feature])], {
 			cwd: tmpdir(), stdio: ["pipe", "pipe", "pipe"], windowsHide: true, detached: process.platform !== "win32",
 		});
 		child.once("error", error => fail(`Impossible de lancer Codex : ${error.message}`));
@@ -142,7 +131,7 @@ async function runCodex(opts: CodexTask): Promise<CodexResult> {
 				} catch { fail("Réponse Codex invalide."); }
 			}
 		});
-		await request("initialize", { clientInfo: { name: "finition", title: "Finition", version: "1.0.0" } });
+		const server = await request("initialize", { clientInfo: { name: "finition", title: "Finition", version: "1.0.0" } });
 		write({ method: "initialized" });
 		const account = await request("account/read", { refreshToken: false });
 		if (account.requiresOpenaiAuth === true && !account.account) throw new Error("Codex n’est pas connecté. Lance « codex login » dans le terminal, puis réessaie.");
@@ -169,7 +158,8 @@ async function runCodex(opts: CodexTask): Promise<CodexResult> {
 				}
 				cursor = typeof page.nextCursor === "string" ? page.nextCursor : null;
 			} while (cursor);
-			return { text: null, error: null, models: [...models.values()] };
+			const version = typeof server.userAgent === "string" ? server.userAgent.match(/\b\d+\.\d+\.\d+(?:-[\da-zA-Z.-]+)?(?:\+[\da-zA-Z.-]+)?\b/u)?.[0] : undefined;
+			return { text: null, error: null, models: [...models.values()], version };
 		}
 		const { config } = await request("config/read", { cwd: tmpdir(), includeLayers: false });
 		if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("Configuration Codex incompatible. Mets Codex à jour.");
@@ -201,6 +191,7 @@ async function runCodex(opts: CodexTask): Promise<CodexResult> {
 	} finally {
 		stopped = true;
 		cancellations.delete(cancel);
+		opts.signal?.removeEventListener("abort", cancel);
 		if (child && hostProcess && child.exitCode === null && child.signalCode === null) {
 			const process = hostProcess;
 			child.stdin.destroy();
@@ -222,6 +213,6 @@ function codexRevision(chunk: string, result: CodexReply): { text: string; error
 		: { text: chunk, error: result.error ?? "Réponse Codex trop courte par rapport au texte d’origine." };
 }
 
-export async function reviseChunkWithCodex(chunk: string, system: string, opts?: { model?: string; effort?: string; onModel?: (model: string) => void }): Promise<{ text: string; error: string | null }> {
+export async function reviseChunkWithCodex(chunk: string, system: string, opts?: Omit<CodexSessionOptions, "system">): Promise<{ text: string; error: string | null }> {
 	return codexRevision(chunk, await callCodex({ system, userText: chunk, ...opts }));
 }
