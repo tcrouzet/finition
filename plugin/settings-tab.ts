@@ -11,6 +11,7 @@ import { dictionaryDocumentation, dictionaryCommands, dictionaryLabels, isPublic
 import { lexiconDocumentation, publicLexiconMetadata } from "./lexicon/dictionaries";
 import AI_MODEL_PRESETS from "./ai/models.json";
 import { CODEX_MODEL, findCodex, listCodexModels, testCodex, type CodexModel } from "./ai/codex";
+import { CLAUDE_CODE_MODEL, findClaudeCode, testClaudeCode } from "./ai/claude-code";
 
 type ColorFunctionKey = "hedgingColorIndex" | "stereotypeColorIndex" | "hingeColorIndex" | "copuleColorIndex" | "grammalecteColorIndex" | typeof FORM_TYPES[number]["key"];
 
@@ -41,6 +42,11 @@ export class FinitionSettingTab extends PluginSettingTab {
 	private checkingCodex = false;
 	private testingCodex = false;
 	private codexStatus = "";
+	private detectedClaudeCodePath: string | null | undefined;
+	private get claudeCodeAvailable(): boolean { return Boolean(this.detectedClaudeCodePath); }
+	private checkingClaudeCode = false;
+	private testingClaudeCode = false;
+	private claudeCodeStatus = "";
 	private disposed = false;
 	private codexModels: CodexModel[] | null = null;
 	private loadingCodexModels = false;
@@ -514,14 +520,59 @@ export class FinitionSettingTab extends PluginSettingTab {
 		}
 	}
 
+	private async detectClaudeCode(): Promise<void> {
+		if (this.disposed || this.checkingClaudeCode || this.testingClaudeCode) return;
+		const configured = this.plugin.settings.claudeCodePath;
+		this.checkingClaudeCode = true;
+		this.detectedClaudeCodePath = null;
+		this.claudeCodeStatus = "Recherche de Claude Code…";
+		this.update();
+		try {
+			const path = await findClaudeCode(configured);
+			if (this.disposed || configured !== this.plugin.settings.claudeCodePath) return;
+			this.detectedClaudeCodePath = path;
+			this.claudeCodeStatus = path ? `Détecté : ${path}` : "Claude Code introuvable. Renseigne son chemin ou installe Claude Code.";
+		} catch (error) {
+			if (configured === this.plugin.settings.claudeCodePath) this.claudeCodeStatus = error instanceof Error ? error.message : String(error);
+		} finally {
+			this.checkingClaudeCode = false;
+			if (!this.disposed) this.update();
+		}
+	}
+
+	private async testClaudeCodeConnection(): Promise<void> {
+		if (this.disposed || this.testingClaudeCode || this.checkingClaudeCode) return;
+		const configured = this.plugin.settings.claudeCodePath;
+		const controller = new AbortController();
+		const progress = new LoadingNotice("Claude Code : vérification de la connexion…", () => controller.abort());
+		this.testingClaudeCode = true;
+		this.claudeCodeStatus = "Vérification de la connexion…";
+		this.update();
+		try {
+			const version = await testClaudeCode(configured, controller.signal);
+			if (configured === this.plugin.settings.claudeCodePath) this.claudeCodeStatus = `Connexion configurée · Claude Code ${version}`;
+		} catch (error) {
+			if (configured === this.plugin.settings.claudeCodePath) this.claudeCodeStatus = error instanceof Error ? error.message : String(error);
+		} finally {
+			progress.hide();
+			this.testingClaudeCode = false;
+			if (!this.disposed) this.update();
+		}
+	}
+
 	private displayAICorrections(containerEl: HTMLElement): void {
 		containerEl = this.section(containerEl, "Corrections IA");
 		if (this.detectedCodexPath === undefined) {
 			this.detectedCodexPath = null;
 			queueMicrotask(() => { void this.detectCodex(); });
 		}
+		if (this.detectedClaudeCodePath === undefined) {
+			this.detectedClaudeCodePath = null;
+			queueMicrotask(() => { void this.detectClaudeCode(); });
+		}
 		const models = [...AI_MODEL_PRESETS];
 		if (this.codexAvailable || this.plugin.settings.aiModel === CODEX_MODEL || this.pendingPromptModel === CODEX_MODEL || this.plugin.settings.savedPrompts.some(prompt => prompt.model === CODEX_MODEL)) models.push({ value: CODEX_MODEL, label: this.codexAvailable ? "Codex" : "Codex (indisponible)" });
+		if (this.claudeCodeAvailable || this.plugin.settings.aiModel === CLAUDE_CODE_MODEL || this.pendingPromptModel === CLAUDE_CODE_MODEL || this.plugin.settings.savedPrompts.some(prompt => prompt.model === CLAUDE_CODE_MODEL)) models.push({ value: CLAUDE_CODE_MODEL, label: this.claudeCodeAvailable ? "Claude Code" : "Claude Code (indisponible)" });
 
 		const apiKeyDesc = createFragment();
 		apiKeyDesc.appendChild(
@@ -639,10 +690,31 @@ export class FinitionSettingTab extends PluginSettingTab {
 				});
 		}
 
+		const claudeConnection = new Setting(containerEl).setName("Claude code : connexion")
+			.setDesc(`${this.claudeCodeStatus} Le test vérifie la version et l’authentification enregistrée, sans envoyer de texte ni lancer de génération.`)
+			.addButton(button => button.setButtonText("Détecter").setDisabled(this.checkingClaudeCode || this.testingClaudeCode).onClick(() => this.detectClaudeCode()))
+			.addButton(button => button.setButtonText("Tester").setDisabled(!this.claudeCodeAvailable || this.checkingClaudeCode || this.testingClaudeCode).onClick(() => this.testClaudeCodeConnection()));
+		claudeConnection.descEl.setAttribute("role", "status");
+		new Setting(containerEl).setName("Claude code : chemin")
+			.setDesc("Chemin absolu du binaire natif. Laisser vide pour la détection automatique.")
+			.addText(text => {
+				text.setValue(this.plugin.settings.claudeCodePath).setPlaceholder("Chemin de l’exécutable").onChange(async value => {
+					this.plugin.settings.claudeCodePath = value.trim();
+					await this.plugin.saveSettings();
+				});
+				text.inputEl.onblur = () => { void this.detectClaudeCode(); };
+			});
+		if (this.claudeCodeAvailable) new Setting(containerEl).setName("Claude code : modèle")
+			.setDesc("Pour corrections et synonymes : alias (sonnet, opus, haiku) ou identifiant complet. Vide : modèle configuré dans Claude code.")
+			.addText(text => text.setValue(this.plugin.settings.claudeCodeModel).setPlaceholder("Modèle configuré par défaut").onChange(async value => {
+				this.plugin.settings.claudeCodeModel = value.trim();
+				await this.plugin.saveSettings();
+			}));
+
 		const modelDesc = createFragment();
 		modelDesc.appendChild(
 			document.createTextNode(
-				"Codex utilise la connexion de cet ordinateur, sans clé API dans Finition. Sinon, le serveur local est prioritaire lorsqu’il est renseigné ; Claude et GPT utilisent leur clé API. "
+				"Codex et Claude Code utilisent leur connexion sur cet ordinateur, sans clé API dans Finition. Sinon, le serveur local est prioritaire lorsqu’il est renseigné ; les modèles Claude et GPT utilisent leur clé API. "
 			)
 		);
 		const modelLink = createEl("a");
@@ -669,6 +741,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 				for (const preset of models) {
 					dropdown.addOption(preset.value, preset.label);
 					if (preset.value === CODEX_MODEL && !this.codexAvailable) dropdown.selectEl.lastElementChild?.setAttribute("disabled", "");
+					if (preset.value === CLAUDE_CODE_MODEL && !this.claudeCodeAvailable) dropdown.selectEl.lastElementChild?.setAttribute("disabled", "");
 				}
 				dropdown.addOption(CUSTOM_MODEL_VALUE, "Autre (saisir un identifiant)…");
 				dropdown
@@ -823,6 +896,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 				for (const preset of models) {
 					dropdown.addOption(preset.value, preset.label);
 					if (preset.value === CODEX_MODEL && !this.codexAvailable) dropdown.selectEl.lastElementChild?.setAttribute("disabled", "");
+					if (preset.value === CLAUDE_CODE_MODEL && !this.claudeCodeAvailable) dropdown.selectEl.lastElementChild?.setAttribute("disabled", "");
 				}
 				dropdown.addOption(PROMPT_MODEL_CUSTOM_VALUE, "Autre (saisir un identifiant)…");
 				dropdown
@@ -1257,7 +1331,7 @@ export class FinitionSettingTab extends PluginSettingTab {
 			...this.generalDefinitions(),
 			this.sectionDefinition("Ponctuation", ["Apostrophes validées automatiquement", "Autres ponctuations validées automatiquement", "Validation", "Automatique"], container => this.displayPunctuation(container)),
 			this.sectionDefinition("Corrections", ["Lexique", "Charger un lexique", ...(this.plugin.lexiconDictionaries?.options.map(option => option.name) ?? []), "Dictionnaire Finition", "Moteur d’analyse", "Neuronal", "Structure", "Tricolons", "Grammalecte", "Correcteur neuronal par défaut", "CamemBERT", "Charger un modèle neuronal", "Dictionnaire personnel", ...this.plugin.neuralModelOptions.map(option => option.name)], container => this.displayCorrections(container)),
-			this.sectionDefinition("Corrections IA", ["Clé API Anthropic", "Clé API OpenAI", "Serveur local", "Modèle local", "Modèle Codex", "Modèle par défaut", "Identifiant du modèle personnalisé", "Taille des tronçons (caractères)", "Prompt enregistré", "Prompt de révision", "Modèle pour ce prompt", "Identifiant du modèle pour ce prompt", "Enregistrer sous ce nom"], container => this.displayAICorrections(container)),
+			this.sectionDefinition("Corrections IA", ["Clé API Anthropic", "Clé API OpenAI", "Serveur local", "Modèle local", "Modèle Codex", "Claude code : connexion", "Claude code : chemin", "Claude code : modèle", "Modèle par défaut", "Identifiant du modèle personnalisé", "Taille des tronçons (caractères)", "Prompt enregistré", "Prompt de révision", "Modèle pour ce prompt", "Identifiant du modèle pour ce prompt", "Enregistrer sous ce nom"], container => this.displayAICorrections(container)),
 			this.sectionDefinition("Synonymes", ["Dictionnaire", "Finition", "Charger un dictionnaire", ...this.plugin.synonymDictionaryOptions.map(option => option.name)], container => this.displaySynonyms(container)),
 			...dictionaryCommands.map(kind => this.sectionDefinition(dictionaryLabels[kind], ["Dictionnaire", "Charger un dictionnaire", ...(this.plugin.wordDictionaries?.options.filter(option => option.kind === kind).map(option => option.name) ?? [])], container => this.displayWordDictionary(container, kind))),
 			this.sectionDefinition("Répétitions", ["Compteur des répétitions", "Nombre", "Pourcentage", "Empan de répétition (caractères)", "Longueur minimale d'un mot (caractères)", "Mots-outils"], container => this.displayRepetitions(container)),

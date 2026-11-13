@@ -6,6 +6,7 @@ import { createRemarkInsertion } from "../ui/insert-remark";
 import { callAnthropic } from "./anthropic";
 import { callOpenAI } from "./openai";
 import { callCodex, cancelCodex } from "./codex";
+import { callClaudeCode, cancelClaudeCode } from "./claude-code";
 import { splitIntoChunks } from "./chunk";
 import { aiModelName, getAIConnection } from "./provider";
 import { selectionTouchesLink } from "../markdown-links";
@@ -78,10 +79,11 @@ export async function runSynonyms(app: App, settings: FinitionSettings): Promise
 		if (requestId !== synonymRequest) return;
 		cancelSynonyms();
 		if (connection.provider === "codex") cancelCodex();
+		if (connection.provider === "claude-code") cancelClaudeCode();
 	});
 	try {
-		const request = connection.provider === "codex" ? callCodex : connection.provider === "openai" ? callOpenAI : callAnthropic;
-		const result = await request({ ...connection, maxTokens: settings.aiMaxTokens, system: systemPrompt, userText: synonymContext(document, from, to), onModel: model => { if (requestId === synonymRequest) progress.setMessage(progressMessage(`Codex · ${model}`)); } });
+		const request = connection.provider === "codex" ? callCodex : connection.provider === "claude-code" ? callClaudeCode : connection.provider === "openai" ? callOpenAI : callAnthropic;
+		const result = await request({ ...connection, maxTokens: settings.aiMaxTokens, system: systemPrompt, userText: synonymContext(document, from, to), onModel: model => { if (requestId === synonymRequest) progress.setMessage(progressMessage(aiModelName({ ...connection, model }))); } });
 		if (requestId !== synonymRequest) return;
 		if (result.error || typeof result.text !== "string") throw new Error(result.error ?? "Réponse vide.");
 		const synonyms = parseSynonyms(result.text);

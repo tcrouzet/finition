@@ -1,16 +1,19 @@
 import type { FinitionSettings } from "../types";
 import type { SecretStorage } from "obsidian";
 import { CODEX_MODEL } from "./codex";
+import { CLAUDE_CODE_MODEL } from "./claude-code";
 import modelPresets from "./models.json";
 
-export type AIProvider = "anthropic" | "openai" | "codex";
+export type AIProvider = "anthropic" | "openai" | "codex" | "claude-code";
 
 export function aiModelName(connection: { provider: AIProvider; model: string }): string {
+	if (connection.provider === "claude-code") return connection.model ? `Claude Code · ${connection.model}` : "Claude Code";
 	return connection.provider === "codex" ? connection.model ? `Codex · ${connection.model}` : "Codex" : modelPresets.find(preset => preset.value === connection.model)?.label ?? connection.model;
 }
 
 export function detectProvider(model: string): AIProvider {
 	if (model === CODEX_MODEL) return "codex";
+	if (model === CLAUDE_CODE_MODEL) return "claude-code";
 	const m = model.toLowerCase();
 	// "gpt-...", "o1-...", "o3-...", "o4-..." : familles de modèles OpenAI.
 	if (m.startsWith("gpt") || /^o\d/.test(m)) return "openai";
@@ -18,6 +21,7 @@ export function detectProvider(model: string): AIProvider {
 }
 
 export function getAIConnection(settings: FinitionSettings, secrets: Pick<SecretStorage, "getSecret">): { provider: AIProvider; apiKey: string; model: string; baseUrl?: string; effort?: string; executable?: string } {
+	if (settings.aiModel === CLAUDE_CODE_MODEL) return { provider: "claude-code", apiKey: "", model: settings.claudeCodeModel.trim(), executable: settings.claudeCodePath.trim() };
 	if (settings.aiModel === CODEX_MODEL) {
 		const effort = settings.codexEffort.trim();
 		if (!/^[a-z][a-z0-9_-]{0,31}$/u.test(effort)) throw new Error("Choisis un effort de raisonnement Codex dans les réglages de Finition.");

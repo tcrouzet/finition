@@ -161,6 +161,8 @@ export interface FinitionSettings {
 	codexModel: string;
 	codexPath: string;
 	codexEffort: string;
+	claudeCodeModel: string;
+	claudeCodePath: string;
 	localAIServer: string;
 	localAIModel: string;
 	// Taille maximale d'un tronçon envoyé à l'IA, en caractères (le texte est
@@ -274,6 +276,8 @@ export const DEFAULT_SETTINGS: FinitionSettings = {
 	codexModel: "",
 	codexPath: "",
 	codexEffort: "low",
+	claudeCodeModel: "",
+	claudeCodePath: "",
 	localAIServer: "",
 	localAIModel: "",
 	aiChunkSize: 5000,

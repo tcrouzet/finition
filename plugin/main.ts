@@ -42,6 +42,7 @@ import { markdownLinks } from "./markdown-links";
 import { reviseChunkWithRetryAnthropic } from "./ai/anthropic";
 import { reviseChunkWithRetryOpenAI } from "./ai/openai";
 import { cancelCodex, withCodexSession, type CodexRevision } from "./ai/codex";
+import { cancelClaudeCode, withClaudeCodeSession } from "./ai/claude-code";
 import { aiModelName, getAIConnection } from "./ai/provider";
 import { cancelSynonyms, runSynonyms } from "./ai/synonyms";
 import { fixPunctuationSpacing, fixBlankLinesProtected, fixApostrophesProtected } from "./modes/punctuation";
@@ -261,6 +262,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		closeGrammalectePopup();
 		cancelSynonyms();
 		cancelCodex();
+		cancelClaudeCode();
 		this.finishAnalysisProgress();
 		this.lexiconEngine?.destroy();
 		this.lexiconLoad = undefined;
@@ -283,6 +285,8 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		this.settings.openaiSecretId = typeof this.settings.openaiSecretId === "string" ? this.settings.openaiSecretId.trim() : "";
 		this.settings.codexModel = typeof this.settings.codexModel === "string" ? this.settings.codexModel.trim() : "";
 		this.settings.codexPath = typeof this.settings.codexPath === "string" ? this.settings.codexPath.trim() : "";
+		this.settings.claudeCodeModel = typeof this.settings.claudeCodeModel === "string" ? this.settings.claudeCodeModel.trim() : "";
+		this.settings.claudeCodePath = typeof this.settings.claudeCodePath === "string" ? this.settings.claudeCodePath.trim() : "";
 		this.settings.codexEffort = typeof this.settings.codexEffort === "string" && /^[a-z][a-z0-9_-]{0,31}$/u.test(this.settings.codexEffort.trim()) ? this.settings.codexEffort.trim() : DEFAULT_SETTINGS.codexEffort;
 		this.settings.localAIServer = typeof this.settings.localAIServer === "string" ? this.settings.localAIServer.trim() : "";
 		this.settings.localAIModel = typeof this.settings.localAIModel === "string" ? this.settings.localAIModel.trim() : "";
@@ -636,6 +640,7 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 		closeGrammalectePopup();
 		cancelSynonyms();
 		cancelCodex();
+		cancelClaudeCode();
 		const request = ++this.spellingRequest;
 		this.finishAnalysisProgress();
 		this.pendingCorrectionRequest = null;
@@ -889,6 +894,11 @@ export default class FinitionPlugin extends Plugin implements FinitionRuntime {
 			};
 			if (connection.provider === "codex") {
 				await withCodexSession({ ...connection, system: this.settings.aiPrompt, onModel: model => { modelName = `Codex · ${model}`; } }, processChunks);
+			} else if (connection.provider === "claude-code") {
+				await withClaudeCodeSession({ ...connection, system: this.settings.aiPrompt, onModel: model => {
+					modelName = `Claude Code · ${model}`;
+					progress.setMessage(`Corrections IA · ${modelName} : analyse en cours…`);
+				} }, processChunks);
 			} else {
 				const reviseChunk = connection.provider === "openai" ? reviseChunkWithRetryOpenAI : reviseChunkWithRetryAnthropic;
 				await processChunks(text => reviseChunk(text, this.settings.aiPrompt, { ...connection, maxTokens: this.settings.aiMaxTokens, isCancelled: () => request !== this.spellingRequest }));

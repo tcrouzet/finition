@@ -31,6 +31,7 @@ import { checkExtraDictionaryFormat } from "./check-extra-dictionary-format";
 import { checkMarkdownExclusions } from "./check-markdown-exclusions";
 import { checkDictionaryLemmas } from "./check-dictionary-lemmas";
 import { checkCodex } from "./check-codex";
+import { checkClaudeCode } from "./check-claude-code";
 import { checkNoteReset } from "./check-note-reset";
 import { checkAIDiff } from "./check-ai-diff";
 
@@ -81,6 +82,7 @@ async function main() {
 	await checkMarkdownExclusions();
 	await checkDictionaryLemmas();
 	await checkCodex();
+	await checkClaudeCode();
 	await checkNoteReset();
 	const dataSources = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "plugin/data"], { encoding: "utf8" }).split("\0").filter(file => file && existsSync(file));
 	assert.ok(dataSources.every(file => file.endsWith(".json")), "Les sources de plugin/data doivent être uniquement des JSON d’analyse");
