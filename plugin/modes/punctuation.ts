@@ -125,6 +125,27 @@ function fixApostrophes(text: string): string {
 	return text.replace(/'/g, "’");
 }
 
+function fixEditorialBrackets(text: string): string {
+	const openings: number[] = [], escapes = new Set<number>();
+	for (const match of text.matchAll(/[[\]]|\r?\n[ \t]*(?:\r?\n)+/gu)) {
+		if (match[0].includes("\n")) { openings.length = 0; continue; }
+		if (match[0] === "[") { openings.push(match.index); continue; }
+		const opening = openings.pop();
+		if (opening === undefined) continue;
+		let slashes = 0;
+		for (let index = opening - 1; index >= 0 && text[index] === "\\"; index--) slashes++;
+		if (slashes % 2 || text[opening + 1] === "^" || text[opening - 1] === "^") continue;
+		const content = text.slice(opening + 1, match.index);
+		if (/^[ xX-]$/u.test(content) || content.startsWith("!")) {
+			const prefix = text.slice(text.lastIndexOf("\n", opening - 1) + 1, opening);
+			if (/^[ xX-]$/u.test(content) && /^[ \t]*(?:>[ \t]*)*(?:[-+*]|\d+[.)])[ \t]+$/u.test(prefix)) continue;
+			if (content.startsWith("!") && /^[ \t]*(?:>[ \t]*)+$/u.test(prefix)) continue;
+		}
+		escapes.add(opening);
+	}
+	return text.replace(/\[/gu, (bracket, offset: number) => escapes.has(offset) ? `\\${bracket}` : bracket);
+}
+
 export function fixApostrophesProtected(text: string): string {
 	const protectedText = protectSpans(text);
 	return protectedText.restore(fixApostrophes(protectedText.text));
@@ -176,6 +197,7 @@ export function fixPunctuationSpacing(text: string, replaceApostrophes = true): 
 	result = fixDoublePunctuation(result);
 	result = fixLineStartDashes(result);
 	result = fixInciseDashes(result);
+	result = fixEditorialBrackets(result);
 	if (replaceApostrophes) result = fixApostrophes(result);
 	result = result.replace(symbolUnits, "$1$2\u00a0$3").replace(namedUnits, "$1$2\u00a0$3");
 	return preserveNonbreakingSpaces(text, restore(result));

@@ -1,5 +1,12 @@
 export type TextRange = readonly [number, number];
 export interface MarkdownLink { from: number; to: number; label?: TextRange }
+
+export function bracketEscapeRanges(text: string): TextRange[] {
+	return [...text.matchAll(/\\+(?=[[\]])/gu)]
+		.filter(match => match[0].length % 2 === 1)
+		.map(match => [match.index + match[0].length - 1, match.index + match[0].length]);
+}
+
 const definitions = /^ {0,3}\[((?:\\.|[^\]\\\r\n])+)\]:[^\r\n]+/gm;
 const candidates = /!\[\[[^\]\r\n]*\]\]|\[\[[^\]\r\n]*\]\]|!?\[(?:\\.|[^\]\\])*\]|<a\b[^>]*>[\s\S]*?<\/a\s*>|<[a-z][a-z0-9:-]*\b(?:[^>"']|"[^"]*"|'[^']*')*>|<(?:[a-z][a-z0-9+.-]*:[^<>\r\n]*|[^<>\s]+@[^<>\s]+)>/gi;
 const addresses = /[a-z][a-z0-9+.-]*:\/\/[^\s<>]+|(?:mailto|tel|sms):[^\s<>]+|www\.[^\s<>]+|[\p{L}\p{N}._%+'-]+@[\p{L}\p{N}.-]+\.[\p{L}]{2,}/giu;

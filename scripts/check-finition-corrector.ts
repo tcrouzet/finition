@@ -6,6 +6,7 @@ import { structureCategoryWords } from "../plugin/modes/structure-signature";
 import { buildStructureReport } from "../plugin/modes/structure-report";
 import { analyzeCorrections } from "../plugin/modes/corrections";
 import { resourceFixture } from "./check-linguistic-resources";
+import type { GrammalecteError } from "../plugin/modes/grammalecte";
 
 export const grammarRegressionText = "Cinq heures du matin, je m’éveille avec les idées plus claires. Pourquoi ne pas proposer aux utilisateurs de créer leur propre modèle ? C’est un énorme travail : il faut créer un dataset de dizaine de millier de phrases fautives avec leur version correcte, puis entraîné un modèle sur une machine musclée, voire sur les serveurs de [Hugging Face](https://huggingface.co). En attendant, j’utilise [CamenBERT](https://huggingface.co/docs/transformers/model_doc/camembert), un modèle libre, dont la dernière itération date de 2025 : résultats moins bon qu’avec le modèle Antidote chargé dans Finition, mais satisfaisant, surtout quand derrière je peux appeler la surpuissante correction IA.";
 
@@ -37,6 +38,19 @@ export async function checkGrammarRelations(engine: Pick<GrammalecteEngine, "par
 }
 
 export async function checkCorrectionScope(engine: Pick<GrammalecteEngine, "parse">): Promise<void> {
+	const bracketed = "😀 Une \\[fote\\].";
+	const sourceStart = bracketed.indexOf("\\");
+	const sourceEnd = bracketed.indexOf("]") + 1;
+	const unsafe: GrammalecteError = { nStart: sourceStart, nEnd: sourceEnd, sType: "grammaire", sRuleId: "brackets", sMessage: "Correction", aSuggestions: ["[faute]", "\\[faute\\]"] };
+	const bracketEngine = { async parse(_text: string, onPartial?: (errors: GrammalecteError[]) => void) { onPartial?.([unsafe]); return [unsafe]; } };
+	let partialSuggestions: string[] = [];
+	const safe = await analyzeCorrections(bracketEngine, bracketed, 0, 0, errors => { partialSuggestions = errors.flatMap(error => error.aSuggestions); });
+	if (safe.length !== 1 || safe[0].aSuggestions.join() !== "\\[faute\\]" || partialSuggestions.join() !== "\\[faute\\]") throw new Error("Un correcteur classique supprime un échappement Markdown ou perd la correction intérieure");
+	const slashOnly = { async parse() { return [{ ...unsafe, nEnd: sourceStart + 1, aSuggestions: [""] }]; } };
+	if ((await analyzeCorrections(slashOnly, bracketed, 0, 0)).length) throw new Error("Un correcteur classique propose de supprimer l’antislash seul");
+	const selectionEngine = { async parse() { return [{ ...unsafe, nStart: 0, nEnd: sourceEnd - sourceStart }]; } };
+	const scopedBrackets = await analyzeCorrections(selectionEngine, bracketed, sourceStart, bracketed.length);
+	if (scopedBrackets[0]?.nStart !== sourceStart || scopedBrackets[0].aSuggestions.join() !== "\\[faute\\]") throw new Error("La protection des échappements perd les bornes de la sélection");
 	const text = "Une bonjor.\r\n😀 Une bonjor.\r\nUne bonjor.";
 	const from = text.indexOf("😀");
 	const to = text.lastIndexOf("\r\n");

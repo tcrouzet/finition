@@ -11,6 +11,8 @@
  * - un ajout proposé (delFrom === delTo, pas de texte original concerné)
  */
 
+import { bracketEscapeRanges } from "../markdown-links";
+
 export interface DiffGroup {
 	delFrom: number; // offset de début dans le texte original (du tronçon)
 	delTo: number; // offset de fin (exclusif) dans le texte original
@@ -177,6 +179,33 @@ export function diffToGroups(original: string, revised: string): DiffGroup[] {
 		});
 	}
 	return groups;
+}
+
+export function preserveBracketEscapes(source: string, revised: string): string {
+	const sourceRanges = bracketEscapeRanges(source);
+	if (!sourceRanges.length || source === revised) return revised;
+	const strip = (text: string, ranges = bracketEscapeRanges(text)) => {
+		let plain = "", cursor = 0;
+		const escapes: number[] = [];
+		for (const [from, to] of ranges) {
+			plain += text.slice(cursor, from);
+			escapes.push(plain.length);
+			cursor = to;
+		}
+		return { text: plain + text.slice(cursor), escapes };
+	};
+	const before = strip(source, sourceRanges), after = strip(revised);
+	const escapes = new Set(after.escapes), changes = diffToGroups(before.text, after.text);
+	let index = 0, delta = 0;
+	for (const position of before.escapes) {
+		while (index < changes.length && changes[index].delTo <= position) {
+			const group = changes[index++];
+			delta += (group.insText?.length ?? 0) - (group.delTo - group.delFrom);
+		}
+		if (index < changes.length && changes[index].delFrom <= position) continue;
+		escapes.add(position + delta);
+	}
+	return after.text.replace(/[[\]]/gu, (bracket, offset: number) => escapes.has(offset) ? `\\${bracket}` : bracket);
 }
 
 export function preserveNonbreakingSpaces(source: string, revised: string): string {

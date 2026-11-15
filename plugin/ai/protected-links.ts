@@ -1,5 +1,5 @@
 import { cleanTypography, hasResponseText } from "./clean";
-import { diffToGroups, preserveNonbreakingSpaces, type DiffGroup } from "./diff";
+import { diffToGroups, preserveNonbreakingSpaces, preserveBracketEscapes, type DiffGroup } from "./diff";
 import { markdownLinks, linkRanges, mergeRanges, type MarkdownLink } from "../markdown-links";
 import { frontmatterRanges, hashtagRanges } from "../markdown-tags";
 import { annotationRanges, htmlTagRanges, stripHTMLTags } from "./annotations";
@@ -34,7 +34,7 @@ export function protectLinks(original: string, from = 0, to = original.length, l
 	return { text, diff(revised) {
 		const groups: DiffGroup[] = [];
 		// Les séparateurs Markdown en fin de plage restent ceux du texte source.
-		const cleaned = cleanTypography(stripHTMLTags(revised)).replace(/[\r\n]*$/u, text.match(/[\r\n]*$/u)?.[0] ?? "");
+		const cleaned = preserveBracketEscapes(text, cleanTypography(stripHTMLTags(revised))).replace(/[\r\n]*$/u, text.match(/[\r\n]*$/u)?.[0] ?? "");
 		for (const group of diffToGroups(text, preserveNonbreakingSpaces(text, cleaned))) {
 			let start = group.delFrom, end = group.delTo, replacement = group.insText ?? "";
 			if (!parts.some(part => start >= part.from && end <= part.to)) {

@@ -9,6 +9,36 @@ const apply = (source: string, groups: DiffGroup[]) => [...groups].reverse().red
 
 export function checkAIDiff(): void {
 	for (const [source, expected] of [
+		["Il cite [une précision].", "Il cite \\[une précision]."],
+		["Il cite \\[une précision].", "Il cite \\[une précision]."],
+		["Il cite \\[une précision\\].", "Il cite \\[une précision\\]."],
+		["[première] et [seconde]", "\\[première] et \\[seconde]"],
+		["[une [autre] précision]", "\\[une \\[autre] précision]"],
+		["\\\\[précision]", "\\\\\\[précision]"],
+		["[inachevé", "[inachevé"],
+		["[lien](https://example.org)", "[lien](https://example.org)"],
+		["[lien][ref]\n\n[ref]: https://example.org", "[lien][ref]\n\n[ref]: https://example.org"],
+		["[ref]\n\n[ref]: https://example.org", "[ref]\n\n[ref]: https://example.org"],
+		["[[note|libellé]] ![image](image.png)", "[[note|libellé]] ![image](image.png)"],
+		["- [ ] tâche\n- [x] faite\n1. [-] en cours", "- [ ] tâche\n- [x] faite\n1. [-] en cours"],
+		["> [!note]\n> Une précision [ici].", "> [!note]\n> Une précision \\[ici]."],
+		["Une note[^n] et ^[une note inline].", "Une note[^n] et ^[une note inline]."],
+		["`[code]`\n\n```md\n[code]\n```", "`[code]`\n\n```md\n[code]\n```"],
+		["---\ntitle: [note]\n---\n[précision]", "---\ntitle: [note]\n---\n\\[précision]"],
+	] as const) {
+		assert.equal(fixPunctuationSpacing(source), expected, "Ponctuation : échappement des précisions ou protection Markdown incorrecte");
+		assert.equal(fixPunctuationSpacing(expected), expected, "L’échappement des crochets n’est pas idempotent");
+	}
+	for (const [source, revised, expected] of [
+		["Une \\[fote] ici.", "Une [faute] ici.", "Une \\[faute] ici."],
+		["Une \\[fote\\] ici.", "Une [faute] ici.", "Une \\[faute\\] ici."],
+		["Une \\[précision] ici.", "Une [précision] ici.", "Une \\[précision] ici."],
+		["Une [précision] ici.", "Une [précision] ici.", "Une \\[précision] ici."],
+	] as const) assert.equal(apply(source, protectLinks(source).diff(revised)), expected, "L’IA supprime un échappement ou perd la correction dans une précision");
+	const bracketSelection = "Avant.\n\nUne \\[fote] ici.\n\nAprès.";
+	const bracketFrom = bracketSelection.indexOf("Une"), bracketTo = bracketSelection.indexOf("\n\nAprès");
+	assert.equal(apply(bracketSelection.slice(bracketFrom, bracketTo), protectLinks(bracketSelection, bracketFrom, bracketTo).diff("Une [faute] ici.")), "Une \\[faute] ici.", "Les échappements d’une sélection sont recalés sur le mauvais texte");
+	for (const [source, expected] of [
 		["Saison 1, épisode 2, en 2026 : 25 tonnes.", "Saison 1, épisode 2, en 2026\u00a0: 25\u00a0tonnes."],
 		["25 tonnes, 27 ans, 40Mo.", "25\u00a0tonnes, 27\u00a0ans, 40\u00a0Mo."],
 		["1. Un titre\n\n  2. Une liste\nTrois\n4 choses.", "1. Un titre\n\n  2. Une liste\nTrois\n4 choses."],
