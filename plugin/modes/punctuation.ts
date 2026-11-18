@@ -38,7 +38,7 @@ import units from "../data/units.json";
 // la note pouvait apparier avec un ``` sans rapport bien plus loin, et
 // avaler plusieurs paragraphes (et leurs sauts de ligne) comme "protégés",
 // jamais corrigés par erreur.
-const PROTECT_RE = /^[ \t]*```.*$[\s\S]*?^[ \t]*```[ \t]*$|`[^`\n]*`|\b\d{1,2}:\d{2}(?::\d{2})?\b/gm;
+const PROTECT_RE = /^[ \t]*```.*$[\s\S]*?^[ \t]*```[ \t]*$|`[^`\n]*`|^[ \t]*(?:>[ \t]*)+\[![^\]\r\n]+\][+-]?|\b\d{1,2}:\d{2}(?::\d{2})?\b/gm;
 
 export function protectSpans(text: string): { text: string; restore: (s: string) => string } {
 	const ranges = mergeRanges([...linkRanges(text), ...markdownExclusionRanges(text), ...[...text.matchAll(PROTECT_RE)].map(match => [match.index, match.index + match[0].length] as const)]);

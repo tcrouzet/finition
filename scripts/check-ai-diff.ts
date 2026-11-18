@@ -22,6 +22,8 @@ export function checkAIDiff(): void {
 		["[[note|libellé]] ![image](image.png)", "[[note|libellé]] ![image](image.png)"],
 		["- [ ] tâche\n- [x] faite\n1. [-] en cours", "- [ ] tâche\n- [x] faite\n1. [-] en cours"],
 		["> [!note]\n> Une précision [ici].", "> [!note]\n> Une précision \\[ici]."],
+		["> [!warning]+ Attention!\n> [précision]", "> [!warning]+ Attention\u00a0!\n> \\[précision]"],
+		["> > [!TIP]-", "> > [!TIP]-"],
 		["Une note[^n] et ^[une note inline].", "Une note[^n] et ^[une note inline]."],
 		["`[code]`\n\n```md\n[code]\n```", "`[code]`\n\n```md\n[code]\n```"],
 		["---\ntitle: [note]\n---\n[précision]", "---\ntitle: [note]\n---\n\\[précision]"],
@@ -29,6 +31,7 @@ export function checkAIDiff(): void {
 		assert.equal(fixPunctuationSpacing(source), expected, "Ponctuation : échappement des précisions ou protection Markdown incorrecte");
 		assert.equal(fixPunctuationSpacing(expected), expected, "L’échappement des crochets n’est pas idempotent");
 	}
+	assert.equal(protectLinks("> [!note]\n> Une précision \\[ici].").diff("> [!note]\n> Une précision [ici].").length, 0, "Le retour IA transforme un marqueur d’encadré ou retire l’échappement d’une précision");
 	for (const [source, revised, expected] of [
 		["Une \\[fote] ici.", "Une [faute] ici.", "Une \\[faute] ici."],
 		["Une \\[fote\\] ici.", "Une [faute] ici.", "Une \\[faute\\] ici."],

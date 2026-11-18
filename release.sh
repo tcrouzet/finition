@@ -15,6 +15,7 @@ trap 'rm -rf -- "$RESOURCE_ASSETS_DIR"' EXIT
 npm run resources -- "$RESOURCE_ASSETS_DIR"
 npm run typecheck
 npm run lint
+npx --no-install jiti scripts/check-structure.ts
 npm run build
 
 git add .
